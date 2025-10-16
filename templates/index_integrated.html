@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Integrated Health & Environmental Platform</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.1/anime.min.js"></script>
+    <style>
+        :root {
+            --navy: #1a3a52;
+            --light-navy: #2d5166;
+            --emerald: #10b981;
+            --light-emerald: #34d399;
+            --gray: #f3f4f6;
+            --dark-gray: #6b7280;
+        }
+        
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, var(--navy) 0%, var(--light-navy) 100%);
+            min-height: 100vh;
+        }
+        
+        #three-bg {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 0;
+        }
+        
+        .content-wrapper {
+            position: relative;
+            z-index: 1;
+        }
+        
+        .glass-card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 16px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .metric-card {
+            transition: all 0.3s ease;
+        }
+        
+        .metric-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 12px 40px rgba(16, 185, 129, 0.2);
+        }
+        
+        .aqi-badge {
+            padding: 0.5rem 1rem;
+            border-radius: 9999px;
+            font-weight: 600;
+            display: inline-block;
+        }
+        
+        .select-enhanced {
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='currentColor'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 0.75rem center;
+            background-size: 1.5em 1.5em;
+            padding-right: 2.5rem;
+        }
+        
+        .pathogen-card {
+            border-left: 4px solid var(--emerald);
+            transition: all 0.3s ease;
+        }
+        
+        .pathogen-card:hover {
+            border-left-width: 6px;
+            transform: translateX(4px);
+        }
+        
+        .chart-container {
+            position: relative;
+            height: 300px;
+            margin: 1rem 0;
+        }
+        
+        .correlation-viz {
+            min-height: 400px;
+        }
+        
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(16, 185, 129, 0.3);
+            border-radius: 50%;
+            border-top-color: var(--emerald);
+            animation: spin 1s ease-in-out infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .fade-in {
+            animation: fadeIn 0.5s ease-in;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body class="antialiased">
+    <!-- Three.js Background -->
+    <canvas id="three-bg"></canvas>
+    
+    <!-- Main Content -->
+    <div class="content-wrapper">
+        <!-- Header -->
+        <header class="py-6 px-4">
+            <div class="max-w-7xl mx-auto">
+                <div class="glass-card p-6">
+                    <h1 class="text-4xl font-bold text-gray-900 mb-2">
+                        🌍 Integrated Health & Environmental Platform
+                    </h1>
+                    <p class="text-gray-600">
+                        County-level analysis of air quality and infectious disease correlations
+                    </p>
+                </div>
+            </div>
+        </header>
+
+        <!-- Location Selector -->
+        <section class="px-4 mb-6">
+            <div class="max-w-7xl mx-auto">
+                <div class="glass-card p-6">
+                    <h2 class="text-2xl font-bold text-gray-900 mb-4">📍 Select Location</h2>
+                    
+                    <div class="grid md:grid-cols-3 gap-4 mb-4">
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700 mb-2">State</label>
+                            <select id="state-select" class="select-enhanced w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-emerald-500 focus:outline-none">
+                                <option value="">Select a state...</option>
+                            </select>
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700 mb-2">County</label>
+                            <select id="county-select" class="select-enhanced w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-emerald-500 focus:outline-none" disabled>
+                                <option value="">Select a county...</option>
+                            </select>
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700 mb-2">Time Period</label>
+                            <select id="days-select" class="select-enhanced w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-emerald-500 focus:outline-none">
+                                <option value="30">Last 30 Days</option>
+                                <option value="60">Last 60 Days</option>
+                                <option value="90" selected>Last 90 Days</option>
+                                <option value="180">Last 6 Months</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <button id="load-data-btn" class="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-semibold py-3 px-6 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                        <span id="btn-text">Load Data</span>
+                        <span id="btn-loading" class="hidden"><span class="loading"></span> Loading...</span>
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Results Section (Hidden by default) -->
+        <div id="results-section" class="hidden">
+            <!-- Summary Cards -->
+            <section class="px-4 mb-6">
+                <div class="max-w-7xl mx-auto">
+                    <div class="grid md:grid-cols-4 gap-4">
+                        <div class="glass-card p-6 metric-card">
+                            <div class="text-sm font-semibold text-gray-600 mb-1">Average PM2.5</div>
+                            <div class="text-3xl font-bold text-gray-900" id="avg-pm25">--</div>
+                            <div class="text-xs text-gray-500 mt-1">µg/m³</div>
+                        </div>
+                        
+                        <div class="glass-card p-6 metric-card">
+                            <div class="text-sm font-semibold text-gray-600 mb-1">Average AQI</div>
+                            <div class="text-3xl font-bold text-gray-900" id="avg-aqi">--</div>
+                            <div class="text-xs text-gray-500 mt-1" id="aqi-category">--</div>
+                        </div>
+                        
+                        <div class="glass-card p-6 metric-card">
+                            <div class="text-sm font-semibold text-gray-600 mb-1">Total Disease Isolates</div>
+                            <div class="text-3xl font-bold text-gray-900" id="total-isolates">--</div>
+                            <div class="text-xs text-gray-500 mt-1">Past 6 months</div>
+                        </div>
+                        
+                        <div class="glass-card p-6 metric-card">
+                            <div class="text-sm font-semibold text-gray-600 mb-1">Correlation</div>
+                            <div class="text-3xl font-bold text-gray-900" id="correlation">--</div>
+                            <div class="text-xs text-gray-500 mt-1" id="correlation-desc">--</div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Main Comparison -->
+            <section class="px-4 mb-6">
+                <div class="max-w-7xl mx-auto">
+                    <div class="grid lg:grid-cols-2 gap-6">
+                        <!-- Air Quality Panel -->
+                        <div class="glass-card p-6">
+                            <h3 class="text-2xl font-bold text-gray-900 mb-4">🌫️ Air Quality Data</h3>
+                            
+                            <div class="mb-4">
+                                <div class="flex justify-between items-center mb-2">
+                                    <span class="text-sm font-semibold text-gray-600">Air Quality Status</span>
+                                    <span id="aqi-badge" class="aqi-badge">Loading...</span>
+                                </div>
+                                
+                                <div class="grid grid-cols-3 gap-2 mt-4">
+                                    <div class="text-center p-3 bg-green-50 rounded-lg">
+                                        <div class="text-2xl font-bold text-green-600" id="good-days">0</div>
+                                        <div class="text-xs text-gray-600">Good Days</div>
+                                    </div>
+                                    <div class="text-center p-3 bg-yellow-50 rounded-lg">
+                                        <div class="text-2xl font-bold text-yellow-600" id="moderate-days">0</div>
+                                        <div class="text-xs text-gray-600">Moderate Days</div>
+                                    </div>
+                                    <div class="text-center p-3 bg-red-50 rounded-lg">
+                                        <div class="text-2xl font-bold text-red-600" id="unhealthy-days">0</div>
+                                        <div class="text-xs text-gray-600">Unhealthy Days</div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="chart-container">
+                                <canvas id="air-quality-chart"></canvas>
+                            </div>
+                            
+                            <div class="mt-4 text-sm text-gray-600">
+                                <strong>Monitoring Sites:</strong> <span id="monitoring-sites">0</span>
+                            </div>
+                        </div>
+
+                        <!-- Disease Data Panel -->
+                        <div class="glass-card p-6">
+                            <h3 class="text-2xl font-bold text-gray-900 mb-4">🦠 Infectious Disease Data</h3>
+                            
+                            <div class="mb-4">
+                                <div class="flex justify-between items-center mb-2">
+                                    <span class="text-sm font-semibold text-gray-600">Unique Pathogens</span>
+                                    <span class="text-2xl font-bold text-emerald-600" id="unique-pathogens">0</span>
+                                </div>
+                            </div>
+                            
+                            <div class="chart-container">
+                                <canvas id="disease-trend-chart"></canvas>
+                            </div>
+                            
+                            <div class="mt-4 max-h-60 overflow-y-auto">
+                                <h4 class="font-semibold text-gray-700 mb-2">Top Pathogens</h4>
+                                <div id="pathogen-list" class="space-y-2">
+                                    <!-- Populated by JavaScript -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Correlation Analysis -->
+            <section class="px-4 mb-6">
+                <div class="max-w-7xl mx-auto">
+                    <div class="glass-card p-6">
+                        <h3 class="text-2xl font-bold text-gray-900 mb-4">📊 Correlation Analysis</h3>
+                        
+                        <div class="grid lg:grid-cols-2 gap-6">
+                            <div class="correlation-viz">
+                                <canvas id="correlation-chart"></canvas>
+                            </div>
+                            
+                            <div>
+                                <h4 class="font-semibold text-gray-900 mb-3">AI-Powered Insights</h4>
+                                <div id="ai-analysis" class="bg-gray-50 p-4 rounded-lg text-gray-700 leading-relaxed">
+                                    Click "Get AI Analysis" to generate insights...
+                                </div>
+                                
+                                <button id="ai-analyze-btn" class="mt-4 w-full bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white font-semibold py-3 px-6 rounded-lg transition">
+                                    🤖 Get AI Analysis
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <!-- Footer -->
+        <footer class="py-8 px-4 text-center text-white">
+            <p class="text-sm opacity-75">
+                Data sources: EPA Air Quality System & CDC BEAM Dashboard
+            </p>
+        </footer>
+    </div>
+
+    <!-- Three.js Background Script -->
+    <script src="/static/js/three-bg.js"></script>
+    
+    <!-- Main Application Script -->
+    <script>
+        let airChart, diseaseChart, correlationChart;
+        let currentState, currentCounty;
+        
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            loadStates();
+            setupEventListeners();
+        });
+        
+        function setupEventListeners() {
+            document.getElementById('state-select').addEventListener('change', function() {
+                const state = this.value;
+                if (state) {
+                    loadCounties(state);
+                    document.getElementById('county-select').disabled = false;
+                } else {
+                    document.getElementById('county-select').disabled = true;
+                    document.getElementById('load-data-btn').disabled = true;
+                }
+            });
+            
+            document.getElementById('county-select').addEventListener('change', function() {
+                document.getElementById('load-data-btn').disabled = !this.value;
+            });
+            
+            document.getElementById('load-data-btn').addEventListener('click', loadAllData);
+            document.getElementById('ai-analyze-btn').addEventListener('click', getAIAnalysis);
+        }
+        
+        async function loadStates() {
+            try {
+                const response = await fetch('/api/counties');
+                const data = await response.json();
+                
+                const states = [...new Set(data.counties.map(c => c.state))].sort();
+                const select = document.getElementById('state-select');
+                
+                states.forEach(state => {
+                    const option = document.createElement('option');
+                    option.value = state;
+                    option.textContent = state;
+                    select.appendChild(option);
+                });
+            } catch (error) {
+                console.error('Error loading states:', error);
+            }
+        }
+        
+        async function loadCounties(state) {
+            try {
+                const response = await fetch(`/api/counties?state=${encodeURIComponent(state)}`);
+                const data = await response.json();
+                
+                const select = document.getElementById('county-select');
+                select.innerHTML = '<option value="">Select a county...</option>';
+                
+                data.counties.forEach(county => {
+                    const option = document.createElement('option');
+                    option.value = county.county;
+                    option.textContent = `${county.county} (Avg PM2.5: ${county.avg_pm25} µg/m³)`;
+                    select.appendChild(option);
+                });
+            } catch (error) {
+                console.error('Error loading counties:', error);
+            }
+        }
+        
+        async function loadAllData() {
+            currentState = document.getElementById('state-select').value;
+            currentCounty = document.getElementById('county-select').value;
+            const days = document.getElementById('days-select').value;
+            
+            // Show loading state
+            document.getElementById('btn-text').classList.add('hidden');
+            document.getElementById('btn-loading').classList.remove('hidden');
+            document.getElementById('load-data-btn').disabled = true;
+            
+            try {
+                // Load air quality data
+                const airResponse = await fetch(`/api/county/air-quality?state=${encodeURIComponent(currentState)}&county=${encodeURIComponent(currentCounty)}&days=${days}`);
+                const airData = await airResponse.json();
+                
+                // Load disease data
+                const diseaseResponse = await fetch(`/api/state/disease?state=${encodeURIComponent(currentState)}&months=6`);
+                const diseaseData = await diseaseResponse.json();
+                
+                // Load correlation data
+                const correlationResponse = await fetch(`/api/correlation?state=${encodeURIComponent(currentState)}&county=${encodeURIComponent(currentCounty)}`);
+                const correlationData = await correlationResponse.json();
+                
+                // Update UI
+                updateSummaryCards(airData, diseaseData, correlationData);
+                updateAirQualityPanel(airData);
+                updateDiseasePanel(diseaseData);
+                updateCorrelationPanel(correlationData);
+                
+                // Show results
+                document.getElementById('results-section').classList.remove('hidden');
+                document.getElementById('results-section').classList.add('fade-in');
+                
+            } catch (error) {
+                console.error('Error loading data:', error);
+                alert('Error loading data. Please try again.');
+            } finally {
+                // Hide loading state
+                document.getElementById('btn-text').classList.remove('hidden');
+                document.getElementById('btn-loading').classList.add('hidden');
+                document.getElementById('load-data-btn').disabled = false;
+            }
+        }
+        
+        function updateSummaryCards(airData, diseaseData, correlationData) {
+            // Air quality metrics
+            document.getElementById('avg-pm25').textContent = airData.statistics.avg_pm25 || '--';
+            document.getElementById('avg-aqi').textContent = airData.statistics.avg_aqi || '--';
+            document.getElementById('aqi-category').textContent = getAQICategory(airData.statistics.avg_aqi);
+            
+            // Disease metrics
+            document.getElementById('total-isolates').textContent = diseaseData.total_isolates.toLocaleString();
+            
+            // Correlation
+            const corr = correlationData.correlation;
+            document.getElementById('correlation').textContent = corr !== null ? corr.toFixed(3) : 'N/A';
+            document.getElementById('correlation-desc').textContent = getCorrelationDescription(corr);
+        }
+        
+        function updateAirQualityPanel(data) {
+            // Update badge
+            const aqi = data.statistics.avg_aqi;
+            const badge = document.getElementById('aqi-badge');
+            badge.textContent = getAQICategory(aqi);
+            badge.style.backgroundColor = getAQIColor(aqi);
+            badge.style.color = aqi > 100 ? 'white' : '#1f2937';
+            
+            // Update day counts
+            document.getElementById('good-days').textContent = data.statistics.days_good;
+            document.getElementById('moderate-days').textContent = data.statistics.days_moderate;
+            document.getElementById('unhealthy-days').textContent = data.statistics.days_unhealthy;
+            document.getElementById('monitoring-sites').textContent = data.monitoring_sites;
+            
+            // Update chart
+            updateAirQualityChart(data.daily_data);
+        }
+        
+        function updateDiseasePanel(data) {
+            document.getElementById('unique-pathogens').textContent = data.unique_pathogens;
+            
+            // Update pathogen list
+            const listContainer = document.getElementById('pathogen-list');
+            listContainer.innerHTML = '';
+            
+            data.pathogens.slice(0, 5).forEach(pathogen => {
+                const div = document.createElement('div');
+                div.className = 'pathogen-card bg-gray-50 p-3 rounded-lg';
+                div.innerHTML = `
+                    <div class="flex justify-between items-center">
+                        <span class="font-semibold text-gray-900">${pathogen.pathogen}</span>
+                        <span class="text-emerald-600 font-bold">${pathogen.total_isolates}</span>
+                    </div>
+                    <div class="text-xs text-gray-600 mt-1">
+                        ${Object.entries(pathogen.sources).map(([source, count]) => 
+                            `${source}: ${count}`
+                        ).join(' • ')}
+                    </div>
+                `;
+                listContainer.appendChild(div);
+            });
+            
+            // Update chart
+            updateDiseaseTrendChart(data.monthly_trend);
+        }
+        
+        function updateCorrelationPanel(data) {
+            updateCorrelationChart(data.monthly_comparison);
+        }
+        
+        function updateAirQualityChart(dailyData) {
+            const ctx = document.getElementById('air-quality-chart').getContext('2d');
+            
+            if (airChart) airChart.destroy();
+            
+            airChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: dailyData.map(d => d.date),
+                    datasets: [{
+                        label: 'PM2.5 (µg/m³)',
+                        data: dailyData.map(d => d.pm25_mean),
+                        borderColor: '#10b981',
+                        backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                        fill: true,
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: true }
+                    },
+                    scales: {
+                        y: { beginAtZero: true }
+                    }
+                }
+            });
+        }
+        
+        function updateDiseaseTrendChart(trendData) {
+            const ctx = document.getElementById('disease-trend-chart').getContext('2d');
+            
+            if (diseaseChart) diseaseChart.destroy();
+            
+            diseaseChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: trendData.map(d => `${d.year}-${String(d.month).padStart(2, '0')}`),
+                    datasets: [{
+                        label: 'Total Isolates',
+                        data: trendData.map(d => d.total_isolates),
+                        backgroundColor: '#10b981',
+                        borderColor: '#059669',
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: true }
+                    },
+                    scales: {
+                        y: { beginAtZero: true }
+                    }
+                }
+            });
+        }
+        
+        function updateCorrelationChart(comparisonData) {
+            const ctx = document.getElementById('correlation-chart').getContext('2d');
+            
+            if (correlationChart) correlationChart.destroy();
+            
+            correlationChart = new Chart(ctx, {
+                type: 'scatter',
+                data: {
+                    datasets: [{
+                        label: 'PM2.5 vs Disease Isolates',
+                        data: comparisonData.map(d => ({
+                            x: d.pm25,
+                            y: d.isolates
+                        })),
+                        backgroundColor: '#10b981',
+                        borderColor: '#059669',
+                        pointRadius: 8,
+                        pointHoverRadius: 12
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: true },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return `PM2.5: ${context.parsed.x.toFixed(2)} µg/m³, Isolates: ${context.parsed.y}`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'PM2.5 (µg/m³)'
+                            }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Disease Isolates'
+                            },
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+        }
+        
+        async function getAIAnalysis() {
+            const btn = document.getElementById('ai-analyze-btn');
+            const analysisDiv = document.getElementById('ai-analysis');
+            
+            btn.disabled = true;
+            btn.innerHTML = '<span class="loading"></span> Analyzing...';
+            analysisDiv.innerHTML = '<div class="text-center"><span class="loading"></span> Generating AI analysis...</div>';
+            
+            try {
+                const response = await fetch('/api/analyze-correlation', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        state: currentState,
+                        county: currentCounty
+                    })
+                });
+                
+                const data = await response.json();
+                analysisDiv.innerHTML = data.analysis.replace(/\n/g, '<br>');
+                
+            } catch (error) {
+                console.error('Error getting AI analysis:', error);
+                analysisDiv.innerHTML = '<p class="text-red-600">Error generating analysis. Please try again.</p>';
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '🤖 Get AI Analysis';
+            }
+        }
+        
+        function getAQICategory(aqi) {
+            if (aqi <= 50) return 'Good';
+            if (aqi <= 100) return 'Moderate';
+            if (aqi <= 150) return 'Unhealthy for Sensitive Groups';
+            if (aqi <= 200) return 'Unhealthy';
+            if (aqi <= 300) return 'Very Unhealthy';
+            return 'Hazardous';
+        }
+        
+        function getAQIColor(aqi) {
+            if (aqi <= 50) return '#00E400';
+            if (aqi <= 100) return '#FFFF00';
+            if (aqi <= 150) return '#FF7E00';
+            if (aqi <= 200) return '#FF0000';
+            if (aqi <= 300) return '#8F3F97';
+            return '#7E0023';
+        }
+        
+        function getCorrelationDescription(corr) {
+            if (corr === null) return 'Insufficient data';
+            const abs = Math.abs(corr);
+            if (abs < 0.3) return 'Weak correlation';
+            if (abs < 0.7) return 'Moderate correlation';
+            return 'Strong correlation';
+        }
+    </script>
+</body>
+</html>
