@@ -1,6 +1,8 @@
 import asyncio
 import datetime
+import os
 from zoneinfo import ZoneInfo
+from dotenv import load_dotenv
 from google.adk.agents import Agent
 from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
@@ -11,6 +13,9 @@ from google.adk.tools.bigquery.config import WriteMode
 from google.genai import types
 import google.auth
 from typing import Optional, Dict, List, Tuple
+
+# Load environment variables from .env file
+load_dotenv()
 
 # County to State mapping for intelligent state inference
 COUNTY_STATE_MAPPING = {
@@ -515,7 +520,18 @@ AGENT_NAME = "epa_air_quality_agent"
 APP_NAME = "epa_air_quality_app"
 USER_ID = "user1234"
 SESSION_ID = "1234"
-GEMINI_MODEL = "gemini-2.0-flash"
+
+# Get Gemini API key from environment and ensure it's set as GOOGLE_API_KEY
+GEMINI_API_KEY = os.getenv('GOOGLE_API_KEY') or os.getenv('GEMINI_API_KEY')
+
+if GEMINI_API_KEY:
+    # ADK looks for GOOGLE_API_KEY, so ensure it's set
+    os.environ['GOOGLE_API_KEY'] = GEMINI_API_KEY
+    print(f"✅ Gemini API key loaded from environment")
+    GEMINI_MODEL = "gemini-2.0-flash"
+else:
+    print("⚠️ WARNING: No Gemini API key found. Set GOOGLE_API_KEY or GEMINI_API_KEY")
+    GEMINI_MODEL = "gemini-2.0-flash"
 
 # Define a tool configuration to block any write operations
 tool_config = BigQueryToolConfig(write_mode=WriteMode.BLOCKED)
@@ -532,26 +548,34 @@ bigquery_toolset = BigQueryToolset(
     bigquery_tool_config=tool_config
 )
 
-# Agent Definition
-root_agent = Agent(
-    name=AGENT_NAME,
-    model=GEMINI_MODEL,
-    description=(
-        "Intelligent agent for EPA air quality data queries using BigQuery ADK tools with flexible location and date filtering, state inference, and semantic metadata support."
-    ),
-    instruction=(
-        "You are an intelligent air quality agent that can answer questions about air quality data from EPA's BigQuery dataset using ADK BigQuery tools. "
-        "You have access to the BigQueryToolset which includes: list_dataset_ids, get_dataset_info, list_table_ids, get_table_info, execute_sql, forecast, and ask_data_insights. "
-        "The main dataset is 'bigquery-public-data.epa_historical_air_quality' and the table is 'pm25_frm_daily_summary'. "
-        "You can query by state OR county - if only a county is provided, you'll intelligently infer the state. "
-        "If a county exists in multiple states, you'll ask the user to clarify. "
-        "You support flexible date queries including specific dates, months, years, or relative dates like 'last 10 days' (calculated from 2021-11-08 data cutoff). "
-        "You can also provide metadata about available states, counties, cities, and data availability to help users understand what data is available. "
-        "The air quality data includes PM2.5 concentrations with health impact assessments based on EPA standards, along with monitoring site information and AQI values. "
-        "Use the BigQuery tools to execute SQL queries, get table information, and provide data insights."
-    ),
-    tools=[bigquery_toolset, get_air_quality, get_current_time, get_metadata, get_table_schema, test_table_columns],
-)
+# Agent Definition with API key
+if GEMINI_API_KEY:
+    # Use Gemini API with API key - ADK will pick it up from GOOGLE_API_KEY env var
+    root_agent = Agent(
+        name=AGENT_NAME,
+        model=GEMINI_MODEL,
+        description=(
+            "Intelligent agent for EPA air quality data queries using BigQuery ADK tools with flexible location and date filtering, state inference, and semantic metadata support."
+        ),
+        instruction=(
+            "You are an intelligent air quality agent that can answer questions about air quality data from EPA's BigQuery dataset using ADK BigQuery tools. "
+            "You have access to the BigQueryToolset which includes: list_dataset_ids, get_dataset_info, list_table_ids, get_table_info, execute_sql, forecast, and ask_data_insights. "
+            "The main dataset is 'bigquery-public-data.epa_historical_air_quality' and the table is 'pm25_frm_daily_summary'. "
+            "You can query by state OR county - if only a county is provided, you'll intelligently infer the state. "
+            "If a county exists in multiple states, you'll ask the user to clarify. "
+            "You support flexible date queries including specific dates, months, years, or relative dates like 'last 10 days' (calculated from 2021-11-08 data cutoff). "
+            "You can also provide metadata about available states, counties, cities, and data availability to help users understand what data is available. "
+            "The air quality data includes PM2.5 concentrations with health impact assessments based on EPA standards, along with monitoring site information and AQI values. "
+            "Use the BigQuery tools to execute SQL queries, get table information, and provide data insights."
+        ),
+        tools=[bigquery_toolset, get_air_quality, get_current_time, get_metadata, get_table_schema, test_table_columns],
+    )
+else:
+    raise ValueError(
+        "Missing Gemini API key! Please set GOOGLE_API_KEY or GEMINI_API_KEY environment variable.\n"
+        "Get your API key from: https://makersuite.google.com/app/apikey\n"
+        "Then set it in your .env file: GOOGLE_API_KEY=your-key-here"
+    )
 
 # Global variables for session and runner (initialized lazily)
 _session_service = None
