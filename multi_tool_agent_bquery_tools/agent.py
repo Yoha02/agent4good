@@ -3,6 +3,7 @@ import datetime
 import os
 import random
 from zoneinfo import ZoneInfo
+from dotenv import load_dotenv
 from google.adk.agents import Agent
 from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
@@ -13,6 +14,13 @@ from google.adk.tools.bigquery.config import WriteMode
 from google.genai import types
 import google.auth
 from typing import Optional, Dict, List, Tuple
+
+# Load environment variables from .env file
+# Try loading from current directory, parent directory, or module directory
+from pathlib import Path
+load_dotenv()  # Try current directory first
+load_dotenv(Path(__file__).parent / '.env')  # Try module directory
+load_dotenv(Path(__file__).parent.parent / '.env')  # Try parent directory
 
 # County to State mapping for intelligent state inference
 COUNTY_STATE_MAPPING = {
@@ -476,6 +484,20 @@ def get_current_time(city: str) -> dict:
 APP_NAME = "community_health_app"
 USER_ID = "user1234"
 SESSION_ID = "1234"
+
+# Get Gemini API key from environment and ensure it's set as GOOGLE_API_KEY
+GEMINI_API_KEY = os.getenv('GOOGLE_API_KEY') or os.getenv('GEMINI_API_KEY')
+
+if GEMINI_API_KEY:
+    # ADK looks for GOOGLE_API_KEY, so ensure it's set
+    os.environ['GOOGLE_API_KEY'] = GEMINI_API_KEY
+    print("[OK] Gemini API key loaded from environment")
+else:
+    raise ValueError(
+        "Missing Gemini API key! Please set GOOGLE_API_KEY or GEMINI_API_KEY in your .env file.\n"
+        "Get your API key from: https://makersuite.google.com/app/apikey"
+    )
+
 GEMINI_MODEL = "gemini-2.0-flash"
 
 # Define tool configuration
@@ -523,17 +545,17 @@ root_agent = Agent(
     instruction=(
         "You are a friendly Community Health & Wellness Assistant. "
         "When a user first greets you or says hello, respond warmly and present this menu:\n\n"
-        "\"Welcome to the Community Health & Wellness Assistant! 🌟\n\n"
+        "\"Welcome to the Community Health & Wellness Assistant!\n\n"
         "I can help you with:\n"
-        "1. 🌫️ Air Quality Monitoring - Check PM2.5 levels and air quality index for any US county or state\n"
-        "2. 🦠 Infectious Disease Tracking - View current cases of waterborne and foodborne diseases by county\n"
-        "3. 💡 Health & Wellness FAQs - Get answers about water safety, food safety, disease prevention, and community health\n\n"
+        "1. [AIR QUALITY] Air Quality Monitoring - Check PM2.5 levels and air quality index for any US county or state\n"
+        "2. [DISEASES] Infectious Disease Tracking - View current cases of waterborne and foodborne diseases by county\n"
+        "3. [HEALTH] Health & Wellness FAQs - Get answers about water safety, food safety, disease prevention, and community health\n\n"
         "What would you like to know about today?\"\n\n"
         "For subsequent interactions:\n"
-        "- Air quality questions → Route to air_quality_agent\n"
-        "- Infectious disease questions → Route to infectious_diseases_agent\n"
-        "- General health FAQs → Use get_health_faq tool\n"
-        "- Unclear requests → Ask clarifying questions\n\n"
+        "- Air quality questions -> Route to air_quality_agent\n"
+        "- Infectious disease questions -> Route to infectious_diseases_agent\n"
+        "- General health FAQs -> Use get_health_faq tool\n"
+        "- Unclear requests -> Ask clarifying questions\n\n"
         "IMPORTANT: After ANY response (whether from you or a sub-agent), ALWAYS ask: "
         "'Is there anything else I can help you with today? I can check air quality, look up disease data, or answer health questions.' "
         "Keep the conversation interactive and helpful!"
@@ -575,12 +597,12 @@ def call_agent(query: str) -> str:
     
     return "No response received from agent."
 
-# Example usage function
+# Example usage function (non-interactive)
 def run_community_health_queries():
     """Run example queries to demonstrate the multi-agent system."""
     queries = [
         "Hello!",
-        "What are the PM2.5 levels in Los Angeles County, California in 2020?",
+        "What are the PM2.5levels in Los Angeles County, California in 2020?",
         "Tell me about infectious diseases in Cook County, Illinois.",
         "Show me water safety tips.",
         "Are there any E. coli cases in Harris County, Texas this year?",
@@ -593,5 +615,63 @@ def run_community_health_queries():
         print(f"AGENT: {response}")
         print("-" * 80)
 
+# Interactive mode function
+def run_interactive():
+    """Run the agent in interactive mode where users can ask their own questions."""
+    import sys
+    sys.stdout.reconfigure(encoding='utf-8')
+    
+    print("=" * 80)
+    print("COMMUNITY HEALTH & WELLNESS ASSISTANT - Interactive Mode")
+    print("=" * 80)
+    print("Multi-agent system with Air Quality, Disease Tracking, and Health FAQs")
+    print()
+    print("Example queries:")
+    print("  - Hello! (to see the menu)")
+    print("  - What's the air quality in Los Angeles?")
+    print("  - Show me disease data for Cook County")
+    print("  - Tell me about water safety")
+    print()
+    print("Type 'quit', 'exit', or 'q' to exit.")
+    print("=" * 80)
+    print()
+    
+    while True:
+        try:
+            # Get user input
+            user_input = input("Your question: ").strip()
+            
+            # Check for exit commands
+            if user_input.lower() in ['quit', 'exit', 'q', '']:
+                print("\nGoodbye! Thanks for using the Community Health & Wellness Assistant!")
+                break
+            
+            # Process the query
+            print("\nProcessing...")
+            print("-" * 60)
+            
+            response = call_agent(user_input)
+            
+            print(f"\nAgent:")
+            print(response)
+            print("-" * 60)
+            print()
+            
+        except KeyboardInterrupt:
+            print("\n\nGoodbye! Thanks for using the Community Health & Wellness Assistant!")
+            break
+        except Exception as e:
+            print(f"\n[ERROR] {str(e)}")
+            print("Please try again or type 'quit' to exit.")
+            print()
+
 if __name__ == "__main__":
-    run_community_health_queries()
+    import sys
+    sys.stdout.reconfigure(encoding='utf-8')
+    
+    # Check if user wants example queries or interactive mode
+    if len(sys.argv) > 1 and sys.argv[1] == '--examples':
+        run_community_health_queries()
+    else:
+        # Default to interactive mode
+        run_interactive()

@@ -10,6 +10,15 @@ import json
 # Load environment variables
 load_dotenv()
 
+# Import the ADK agent
+try:
+    from multi_tool_agent_bquery_tools.agent import call_agent as call_adk_agent
+    ADK_AGENT_AVAILABLE = True
+    print("[OK] ADK Agent loaded successfully!")
+except Exception as e:
+    print(f"[WARNING] ADK Agent not available: {e}")
+    ADK_AGENT_AVAILABLE = False
+
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev-secret-key')
 
@@ -221,10 +230,62 @@ def health_recommendations():
     })
 
 
+@app.route('/api/agent-chat', methods=['POST'])
+def agent_chat():
+    """API endpoint for ADK agent chat"""
+    try:
+        if not ADK_AGENT_AVAILABLE:
+            return jsonify({
+                'success': False,
+                'error': 'ADK Agent not available. Using fallback AI.'
+            }), 503
+        
+        request_data = request.get_json()
+        question = request_data.get('question', '')
+        
+        if not question:
+            return jsonify({
+                'success': False,
+                'error': 'No question provided'
+            }), 400
+        
+        # Call the ADK agent
+        response = call_adk_agent(question)
+        
+        return jsonify({
+            'success': True,
+            'response': response,
+            'agent': 'ADK Multi-Agent System'
+        })
+    except Exception as e:
+        # Fallback to original AI if ADK agent fails
+        try:
+            state = request_data.get('state', None)
+            days = int(request_data.get('days', 7))
+            data = agent.query_air_quality_data(state=state, days=days)
+            analysis = agent.analyze_with_ai(data, question)
+            
+            return jsonify({
+                'success': True,
+                'response': analysis,
+                'agent': 'Gemini AI (Fallback)',
+                'data_points': len(data)
+            })
+        except Exception as fallback_error:
+            return jsonify({
+                'success': False,
+                'error': str(e),
+                'fallback_error': str(fallback_error)
+            }), 500
+
+
 @app.route('/health')
 def health_check():
     """Health check endpoint for Cloud Run"""
-    return jsonify({'status': 'healthy'}), 200
+    return jsonify({
+        'status': 'healthy',
+        'adk_agent': 'available' if ADK_AGENT_AVAILABLE else 'unavailable'
+    }), 200
 
 
 if __name__ == '__main__':
