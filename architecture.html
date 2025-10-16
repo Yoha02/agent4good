@@ -1,0 +1,343 @@
+<!--
+  Architecture Diagram for Community Health & Wellness Advisor
+  Open this file in a browser to view the interactive architecture diagram
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Architecture Diagram - Air Quality Advisor</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        }
+        
+        h1 {
+            text-align: center;
+            color: #4285f4;
+            margin-bottom: 10px;
+        }
+        
+        .subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 40px;
+        }
+        
+        .architecture {
+            display: flex;
+            flex-direction: column;
+            gap: 30px;
+        }
+        
+        .layer {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+        
+        .component {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 15px;
+            min-width: 200px;
+            text-align: center;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+            transition: transform 0.3s, box-shadow 0.3s;
+            cursor: pointer;
+        }
+        
+        .component:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+        }
+        
+        .component.frontend {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        }
+        
+        .component.backend {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+        }
+        
+        .component.database {
+            background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+        }
+        
+        .component.ai {
+            background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+        }
+        
+        .component h3 {
+            font-size: 1.3em;
+            margin-bottom: 10px;
+        }
+        
+        .component p {
+            font-size: 0.9em;
+            opacity: 0.95;
+        }
+        
+        .arrow {
+            font-size: 3em;
+            color: #4285f4;
+            text-align: center;
+        }
+        
+        .flow-container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 20px;
+            margin: 20px 0;
+        }
+        
+        .flow-arrow {
+            font-size: 2em;
+            color: #4285f4;
+        }
+        
+        .legend {
+            margin-top: 40px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 10px;
+        }
+        
+        .legend h3 {
+            color: #333;
+            margin-bottom: 15px;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: 10px 0;
+        }
+        
+        .legend-color {
+            width: 30px;
+            height: 30px;
+            border-radius: 5px;
+        }
+        
+        .features {
+            margin-top: 40px;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+        }
+        
+        .feature-card {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            border-left: 4px solid #4285f4;
+        }
+        
+        .feature-card h4 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        
+        .feature-card ul {
+            list-style: none;
+            padding-left: 0;
+        }
+        
+        .feature-card li {
+            padding: 5px 0;
+            color: #666;
+        }
+        
+        .feature-card li:before {
+            content: "✓ ";
+            color: #4285f4;
+            font-weight: bold;
+            margin-right: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🌍 Community Health & Wellness Advisor</h1>
+        <p class="subtitle">Architecture & Data Flow Diagram</p>
+        
+        <div class="architecture">
+            <!-- Layer 1: User Interface -->
+            <div class="layer">
+                <div class="component frontend">
+                    <h3>👤 User Interface</h3>
+                    <p>HTML5, CSS3, JavaScript</p>
+                    <p>Chart.js Visualizations</p>
+                </div>
+            </div>
+            
+            <div class="arrow">↓</div>
+            
+            <!-- Layer 2: Application Layer -->
+            <div class="layer">
+                <div class="component backend">
+                    <h3>⚙️ Flask Application</h3>
+                    <p>Python 3.11</p>
+                    <p>RESTful API Endpoints</p>
+                    <p>AirQualityAgent SDK</p>
+                </div>
+            </div>
+            
+            <div class="arrow">↓</div>
+            
+            <!-- Layer 3: Services -->
+            <div class="layer">
+                <div class="component database">
+                    <h3>💾 Google BigQuery</h3>
+                    <p>Air Quality Dataset</p>
+                    <p>Fast SQL Queries</p>
+                    <p>Petabyte Scale</p>
+                </div>
+                
+                <div class="component ai">
+                    <h3>🤖 Gemini AI</h3>
+                    <p>Health Analysis</p>
+                    <p>Natural Language</p>
+                    <p>Smart Recommendations</p>
+                </div>
+            </div>
+            
+            <div class="arrow">↓</div>
+            
+            <!-- Layer 4: Deployment -->
+            <div class="layer">
+                <div class="component">
+                    <h3>☁️ Google Cloud Run</h3>
+                    <p>Auto-scaling</p>
+                    <p>Serverless</p>
+                    <p>HTTPS Enabled</p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Data Flow -->
+        <div style="margin-top: 50px; padding: 30px; background: #f8f9fa; border-radius: 10px;">
+            <h2 style="color: #333; text-align: center; margin-bottom: 20px;">📊 Data Flow</h2>
+            <div class="flow-container">
+                <div style="text-align: center;">
+                    <div style="font-size: 2em; margin-bottom: 10px;">🌐</div>
+                    <strong>User Request</strong>
+                </div>
+                <div class="flow-arrow">→</div>
+                <div style="text-align: center;">
+                    <div style="font-size: 2em; margin-bottom: 10px;">💻</div>
+                    <strong>Frontend</strong>
+                </div>
+                <div class="flow-arrow">→</div>
+                <div style="text-align: center;">
+                    <div style="font-size: 2em; margin-bottom: 10px;">🔧</div>
+                    <strong>API</strong>
+                </div>
+                <div class="flow-arrow">→</div>
+                <div style="text-align: center;">
+                    <div style="font-size: 2em; margin-bottom: 10px;">🤖</div>
+                    <strong>Agent</strong>
+                </div>
+                <div class="flow-arrow">→</div>
+                <div style="text-align: center;">
+                    <div style="font-size: 2em; margin-bottom: 10px;">📈</div>
+                    <strong>Response</strong>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Features -->
+        <div class="features">
+            <div class="feature-card">
+                <h4>🎨 Frontend Features</h4>
+                <ul>
+                    <li>Responsive Design</li>
+                    <li>Interactive Charts</li>
+                    <li>Real-time Updates</li>
+                    <li>AI Chat Interface</li>
+                </ul>
+            </div>
+            
+            <div class="feature-card">
+                <h4>⚙️ Backend Features</h4>
+                <ul>
+                    <li>RESTful APIs</li>
+                    <li>SDK Agent Integration</li>
+                    <li>Data Processing</li>
+                    <li>Error Handling</li>
+                </ul>
+            </div>
+            
+            <div class="feature-card">
+                <h4>💾 Data Features</h4>
+                <ul>
+                    <li>BigQuery Integration</li>
+                    <li>Fast Queries</li>
+                    <li>Historical Data</li>
+                    <li>Aggregations</li>
+                </ul>
+            </div>
+            
+            <div class="feature-card">
+                <h4>🤖 AI Features</h4>
+                <ul>
+                    <li>Health Analysis</li>
+                    <li>Natural Language</li>
+                    <li>Smart Insights</li>
+                    <li>Recommendations</li>
+                </ul>
+            </div>
+        </div>
+        
+        <!-- Legend -->
+        <div class="legend">
+            <h3>🎨 Component Types</h3>
+            <div class="legend-item">
+                <div class="legend-color" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);"></div>
+                <span><strong>Frontend</strong> - User interface components</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);"></div>
+                <span><strong>Backend</strong> - Application logic and APIs</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);"></div>
+                <span><strong>Database</strong> - Data storage and queries</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);"></div>
+                <span><strong>AI/ML</strong> - Artificial intelligence services</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);"></div>
+                <span><strong>Cloud</strong> - Deployment and infrastructure</span>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

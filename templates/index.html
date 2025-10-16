@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Community Health & Wellness Platform</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        navy: {
+                            50: '#e6eef5',
+                            100: '#ccdde9',
+                            200: '#99bbd3',
+                            300: '#6699bd',
+                            400: '#3377a7',
+                            500: '#1a3a52',
+                            600: '#152e41',
+                            700: '#102331',
+                            800: '#0a1720',
+                            900: '#050c10',
+                        },
+                        emerald: {
+                            400: '#34d399',
+                            500: '#10b981',
+                            600: '#059669',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <!-- Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- D3.js -->
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    
+    <!-- Three.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    
+    <!-- Anime.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.1/anime.min.js"></script>
+    
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .font-display {
+            font-family: 'Space Grotesk', sans-serif;
+        }
+        #threejs-bg {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+        }
+        .glass-morphism {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        .glass-dark {
+            background: rgba(26, 58, 82, 0.8);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-900"
+
+    <!-- Three.js Background -->
+    <canvas id="threejs-bg"></canvas>
+
+    <!-- Navigation -->
+    <nav class="fixed top-0 w-full z-50 glass-dark">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center h-20">
+                <!-- Logo -->
+                <div class="flex items-center space-x-3">
+                    <div class="w-12 h-12 bg-gradient-to-br from-emerald-400 to-emerald-600 rounded-xl flex items-center justify-center animate-pulse">
+                        <i class="fas fa-heartbeat text-white text-xl"></i>
+                    </div>
+                    <div>
+                        <h1 class="text-white font-display font-bold text-xl">Health & Wellness</h1>
+                        <p class="text-gray-300 text-xs">Community Platform</p>
+                    </div>
+                </div>
+                
+                <!-- Navigation Links -->
+                <div class="hidden md:flex space-x-8">
+                    <a href="#dashboard" class="nav-link text-white hover:text-emerald-400 transition-colors duration-300 font-medium">
+                        <i class="fas fa-chart-line mr-2"></i>Dashboard
+                    </a>
+                    <a href="#air-quality" class="nav-link text-gray-300 hover:text-emerald-400 transition-colors duration-300 font-medium">
+                        <i class="fas fa-wind mr-2"></i>Air Quality
+                    </a>
+                    <a href="#infectious" class="nav-link text-gray-300 hover:text-emerald-400 transition-colors duration-300 font-medium">
+                        <i class="fas fa-virus mr-2"></i>Infectious Diseases
+                    </a>
+                    <a href="#insights" class="nav-link text-gray-300 hover:text-emerald-400 transition-colors duration-300 font-medium">
+                        <i class="fas fa-robot mr-2"></i>AI Insights
+                    </a>
+                </div>
+                
+                <!-- CTA Button -->
+                <button class="hidden md:block bg-emerald-500 hover:bg-emerald-600 text-white px-6 py-2 rounded-lg font-semibold transition-all duration-300 transform hover:scale-105">
+                    Get Alerts
+                </button>
+                
+                <!-- Mobile Menu Button -->
+                <button class="md:hidden text-white" onclick="toggleMobileMenu()">
+                    <i class="fas fa-bars text-2xl"></i>
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="relative pt-32 pb-20 overflow-hidden">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="text-center mb-16 animate-fade-in">
+                <h2 class="font-display text-5xl md:text-7xl font-bold text-navy-700 mb-6">
+                    Community Health
+                    <span class="text-transparent bg-clip-text bg-gradient-to-r from-emerald-500 to-emerald-600">
+                        Monitoring
+                    </span>
+                </h2>
+                <p class="text-xl md:text-2xl text-gray-600 max-w-3xl mx-auto">
+                    Real-time insights on air quality and infectious diseases powered by AI
+                </p>
+            </div>
+            
+            <!-- Stats Cards -->
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-12">
+                <!-- Data Points -->
+                <div class="stat-card bg-white rounded-2xl shadow-xl p-6 border-l-4 border-emerald-500 transform hover:scale-105 transition-all duration-300">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-gray-500 text-sm font-semibold uppercase tracking-wide">Data Points</p>
+                            <h3 id="totalRecords" class="text-4xl font-bold text-navy-700 mt-2">-</h3>
+                        </div>
+                        <div class="w-14 h-14 bg-emerald-100 rounded-xl flex items-center justify-center">
+                            <i class="fas fa-database text-emerald-600 text-2xl"></i>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Locations -->
+                <div class="stat-card bg-white rounded-2xl shadow-xl p-6 border-l-4 border-blue-500 transform hover:scale-105 transition-all duration-300">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-gray-500 text-sm font-semibold uppercase tracking-wide">Locations</p>
+                            <h3 id="uniqueLocations" class="text-4xl font-bold text-navy-700 mt-2">-</h3>
+                        </div>
+                        <div class="w-14 h-14 bg-blue-100 rounded-xl flex items-center justify-center">
+                            <i class="fas fa-map-marked-alt text-blue-600 text-2xl"></i>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Avg AQI -->
+                <div class="stat-card bg-white rounded-2xl shadow-xl p-6 border-l-4 border-amber-500 transform hover:scale-105 transition-all duration-300">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-gray-500 text-sm font-semibold uppercase tracking-wide">Avg AQI</p>
+                            <h3 id="avgAqi" class="text-4xl font-bold text-navy-700 mt-2">-</h3>
+                        </div>
+                        <div class="w-14 h-14 bg-amber-100 rounded-xl flex items-center justify-center">
+                            <i class="fas fa-wind text-amber-600 text-2xl"></i>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Health Status -->
+                <div class="stat-card bg-white rounded-2xl shadow-xl p-6 border-l-4 border-rose-500 transform hover:scale-105 transition-all duration-300">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-gray-500 text-sm font-semibold uppercase tracking-wide">Health Status</p>
+                            <h3 class="text-2xl font-bold text-emerald-600 mt-2">Good</h3>
+                        </div>
+                        <div class="w-14 h-14 bg-rose-100 rounded-xl flex items-center justify-center">
+                            <i class="fas fa-heartbeat text-rose-600 text-2xl"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Air Quality Section -->
+    <section id="air-quality" class="py-20 bg-white">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="text-center mb-12">
+                <h2 class="font-display text-4xl md:text-5xl font-bold text-navy-700 mb-4">
+                    <i class="fas fa-wind text-emerald-500 mr-4"></i>
+                    Air Quality Monitoring
+                </h2>
+                <p class="text-xl text-gray-600">Real-time air quality data and health recommendations</p>
+            </div>
+            
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <!-- AQI Display Card -->
+                <div class="bg-gradient-to-br from-navy-600 to-navy-800 rounded-3xl shadow-2xl p-8 text-white">
+                    <div class="flex justify-between items-start mb-8">
+                        <h3 class="text-2xl font-bold">Current Air Quality</h3>
+                        <select id="stateSelect" class="bg-white/20 text-white rounded-lg px-4 py-2 border border-white/30 focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                            <option value="">All States</option>
+                            <option value="California">California</option>
+                            <option value="Texas">Texas</option>
+                            <option value="New York">New York</option>
+                            <option value="Florida">Florida</option>
+                            <option value="Illinois">Illinois</option>
+                        </select>
+                    </div>
+                    
+                    <div class="text-center py-12">
+                        <div id="currentAqi" class="text-8xl font-bold mb-4">--</div>
+                        <div id="aqiLevel" class="text-2xl font-semibold mb-8 opacity-90">Loading...</div>
+                        
+                        <div class="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20">
+                            <div class="flex items-start space-x-4">
+                                <i class="fas fa-info-circle text-3xl text-emerald-400 flex-shrink-0 mt-1"></i>
+                                <p id="recommendation" class="text-left text-lg">Fetching recommendations...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Interactive Chart -->
+                <div class="bg-white rounded-3xl shadow-2xl p-8 border border-gray-200">
+                    <div class="flex justify-between items-center mb-6">
+                        <h3 class="text-2xl font-bold text-navy-700">Trend Analysis</h3>
+                        <div class="flex space-x-2">
+                            <button onclick="changeDays(7)" class="px-4 py-2 bg-navy-600 text-white rounded-lg hover:bg-navy-700 transition-colors font-medium">7D</button>
+                            <button onclick="changeDays(14)" class="px-4 py-2 bg-gray-200 text-navy-700 rounded-lg hover:bg-gray-300 transition-colors font-medium">14D</button>
+                            <button onclick="changeDays(30)" class="px-4 py-2 bg-gray-200 text-navy-700 rounded-lg hover:bg-gray-300 transition-colors font-medium">30D</button>
+                        </div>
+                    </div>
+                    <canvas id="aqiChart" class="w-full"></canvas>
+                </div>
+            </div>
+            
+            <!-- D3.js Visualization -->
+            <div class="mt-8 bg-white rounded-3xl shadow-2xl p-8 border border-gray-200">
+                <h3 class="text-2xl font-bold text-navy-700 mb-6">Geographic Distribution</h3>
+                <div id="d3-map" class="w-full h-96 bg-gray-50 rounded-xl"></div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Infectious Diseases Section -->
+    <section id="infectious" class="py-20 bg-gray-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="text-center mb-12">
+                <h2 class="font-display text-4xl md:text-5xl font-bold text-navy-700 mb-4">
+                    <i class="fas fa-virus text-rose-500 mr-4"></i>
+                    Infectious Disease Tracking
+                </h2>
+                <p class="text-xl text-gray-600">Monitor and track infectious disease outbreaks in your community</p>
+            </div>
+            
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
+                <!-- Disease Cards -->
+                <div class="disease-card bg-white rounded-2xl shadow-xl p-6 border-t-4 border-rose-500 hover:shadow-2xl transition-all duration-300">
+                    <div class="flex items-center justify-between mb-4">
+                        <h4 class="text-xl font-bold text-navy-700">COVID-19</h4>
+                        <span class="px-3 py-1 bg-emerald-100 text-emerald-700 rounded-full text-sm font-semibold">Low Risk</span>
+                    </div>
+                    <div class="space-y-3">
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-600">Cases (7d avg)</span>
+                            <span class="font-bold text-navy-700">127</span>
+                        </div>
+                        <div class="w-full bg-gray-200 rounded-full h-2">
+                            <div class="bg-emerald-500 h-2 rounded-full" style="width: 25%"></div>
+                        </div>
+                        <p class="text-sm text-gray-600">↓ 15% from last week</p>
+                    </div>
+                </div>
+                
+                <div class="disease-card bg-white rounded-2xl shadow-xl p-6 border-t-4 border-amber-500 hover:shadow-2xl transition-all duration-300">
+                    <div class="flex items-center justify-between mb-4">
+                        <h4 class="text-xl font-bold text-navy-700">Influenza</h4>
+                        <span class="px-3 py-1 bg-amber-100 text-amber-700 rounded-full text-sm font-semibold">Moderate</span>
+                    </div>
+                    <div class="space-y-3">
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-600">Cases (7d avg)</span>
+                            <span class="font-bold text-navy-700">453</span>
+                        </div>
+                        <div class="w-full bg-gray-200 rounded-full h-2">
+                            <div class="bg-amber-500 h-2 rounded-full" style="width: 55%"></div>
+                        </div>
+                        <p class="text-sm text-gray-600">↑ 8% from last week</p>
+                    </div>
+                </div>
+                
+                <div class="disease-card bg-white rounded-2xl shadow-xl p-6 border-t-4 border-blue-500 hover:shadow-2xl transition-all duration-300">
+                    <div class="flex items-center justify-between mb-4">
+                        <h4 class="text-xl font-bold text-navy-700">Respiratory</h4>
+                        <span class="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-semibold">Monitor</span>
+                    </div>
+                    <div class="space-y-3">
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-600">Cases (7d avg)</span>
+                            <span class="font-bold text-navy-700">892</span>
+                        </div>
+                        <div class="w-full bg-gray-200 rounded-full h-2">
+                            <div class="bg-blue-500 h-2 rounded-full" style="width: 35%"></div>
+                        </div>
+                        <p class="text-sm text-gray-600">→ Stable</p>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Disease Heatmap -->
+            <div class="bg-white rounded-3xl shadow-2xl p-8 border border-gray-200">
+                <h3 class="text-2xl font-bold text-navy-700 mb-6">Disease Activity Heatmap</h3>
+                <div id="disease-heatmap" class="w-full h-96 bg-gray-50 rounded-xl"></div>
+            </div>
+        </div>
+    </section>
+
+    <!-- AI Insights Section -->
+    <section id="insights" class="py-20 bg-navy-700">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="text-center mb-12">
+                <h2 class="font-display text-4xl md:text-5xl font-bold text-white mb-4">
+                    <i class="fas fa-robot text-emerald-400 mr-4"></i>
+                    AI-Powered Health Advisor
+                </h2>
+                <p class="text-xl text-gray-300">Ask anything about health risks and get instant insights</p>
+            </div>
+            
+            <div class="max-w-4xl mx-auto bg-white rounded-3xl shadow-2xl overflow-hidden">
+                <!-- Chat Header -->
+                <div class="bg-gradient-to-r from-emerald-500 to-emerald-600 p-6">
+                    <div class="flex items-center space-x-4">
+                        <div class="w-16 h-16 bg-white rounded-full flex items-center justify-center">
+                            <i class="fas fa-robot text-emerald-600 text-2xl"></i>
+                        </div>
+                        <div>
+                            <h3 class="text-white text-2xl font-bold">Health AI Assistant</h3>
+                            <p class="text-emerald-100">Powered by Gemini AI</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Chat Messages -->
+                <div id="chatMessages" class="h-96 overflow-y-auto p-6 bg-gray-50 space-y-4">
+                    <div class="flex items-start space-x-3">
+                        <div class="w-10 h-10 bg-emerald-500 rounded-full flex items-center justify-center flex-shrink-0">
+                            <i class="fas fa-robot text-white"></i>
+                        </div>
+                        <div class="bg-white rounded-2xl rounded-tl-none p-4 shadow-md max-w-lg">
+                            <p class="text-gray-700">Hello! I'm your AI health advisor. Ask me anything about air quality, disease risks, or health recommendations for your community.</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Chat Input -->
+                <div class="p-6 bg-white border-t border-gray-200">
+                    <div class="flex space-x-4">
+                        <input 
+                            type="text" 
+                            id="questionInput" 
+                            placeholder="Ask about health risks, symptoms, or recommendations..." 
+                            class="flex-1 px-6 py-4 border-2 border-gray-300 rounded-xl focus:outline-none focus:border-emerald-500 transition-colors text-lg"
+                        />
+                        <button 
+                            onclick="askAI()" 
+                            class="bg-emerald-500 hover:bg-emerald-600 text-white px-8 py-4 rounded-xl font-semibold transition-all duration-300 transform hover:scale-105 flex items-center space-x-2"
+                        >
+                            <span>Send</span>
+                            <i class="fas fa-paper-plane"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Data Explorer Section -->
+    <section id="data" class="py-20 bg-white">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="text-center mb-12">
+                <h2 class="font-display text-4xl md:text-5xl font-bold text-navy-700 mb-4">
+                    <i class="fas fa-table text-blue-500 mr-4"></i>
+                    Data Explorer
+                </h2>
+                <p class="text-xl text-gray-600">Browse detailed health monitoring records</p>
+            </div>
+            
+            <div class="bg-white rounded-3xl shadow-2xl overflow-hidden border border-gray-200">
+                <div class="overflow-x-auto">
+                    <table class="w-full">
+                        <thead class="bg-navy-700 text-white">
+                            <tr>
+                                <th class="px-6 py-4 text-left font-semibold">Date</th>
+                                <th class="px-6 py-4 text-left font-semibold">State</th>
+                                <th class="px-6 py-4 text-left font-semibold">County</th>
+                                <th class="px-6 py-4 text-left font-semibold">AQI</th>
+                                <th class="px-6 py-4 text-left font-semibold">Parameter</th>
+                                <th class="px-6 py-4 text-left font-semibold">Site</th>
+                            </tr>
+                        </thead>
+                        <tbody id="dataTableBody" class="divide-y divide-gray-200">
+                            <tr>
+                                <td colspan="6" class="px-6 py-8 text-center text-gray-500">
+                                    <i class="fas fa-spinner fa-spin text-3xl mb-2"></i>
+                                    <p>Loading data...</p>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="bg-navy-900 text-white py-12">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-8 mb-8">
+                <div>
+                    <h3 class="font-bold text-xl mb-4">Health & Wellness Platform</h3>
+                    <p class="text-gray-400">Empowering communities with real-time health data and AI insights.</p>
+                </div>
+                <div>
+                    <h4 class="font-semibold mb-4">Features</h4>
+                    <ul class="space-y-2 text-gray-400">
+                        <li><a href="#air-quality" class="hover:text-emerald-400 transition-colors">Air Quality</a></li>
+                        <li><a href="#infectious" class="hover:text-emerald-400 transition-colors">Disease Tracking</a></li>
+                        <li><a href="#insights" class="hover:text-emerald-400 transition-colors">AI Insights</a></li>
+                    </ul>
+                </div>
+                <div>
+                    <h4 class="font-semibold mb-4">Resources</h4>
+                    <ul class="space-y-2 text-gray-400">
+                        <li><a href="#" class="hover:text-emerald-400 transition-colors">Documentation</a></li>
+                        <li><a href="#" class="hover:text-emerald-400 transition-colors">API</a></li>
+                        <li><a href="#" class="hover:text-emerald-400 transition-colors">Community</a></li>
+                    </ul>
+                </div>
+                <div>
+                    <h4 class="font-semibold mb-4">Connect</h4>
+                    <div class="flex space-x-4">
+                        <a href="#" class="w-10 h-10 bg-gray-800 rounded-full flex items-center justify-center hover:bg-emerald-500 transition-colors">
+                            <i class="fab fa-twitter"></i>
+                        </a>
+                        <a href="#" class="w-10 h-10 bg-gray-800 rounded-full flex items-center justify-center hover:bg-emerald-500 transition-colors">
+                            <i class="fab fa-github"></i>
+                        </a>
+                        <a href="#" class="w-10 h-10 bg-gray-800 rounded-full flex items-center justify-center hover:bg-emerald-500 transition-colors">
+                            <i class="fab fa-linkedin"></i>
+                        </a>
+                    </div>
+                </div>
+            </div>
+            <div class="border-t border-gray-800 pt-8 text-center text-gray-400">
+                <p>&copy; 2025 Agents for Impact - Community Health & Wellness Platform</p>
+                <p class="mt-2">Powered by Google Cloud, BigQuery, and Gemini AI</p>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="fixed inset-0 bg-navy-900/90 hidden items-center justify-center z-50">
+        <div class="text-center">
+            <div class="inline-block animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-emerald-500 mb-4"></div>
+            <p class="text-white text-xl font-semibold">Loading...</p>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/three-bg.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/d3-viz.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/animations.js') }}"></script>
+</body>
+</html>
