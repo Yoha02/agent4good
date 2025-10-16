@@ -1,0 +1,8 @@
+# Google ADK and BigQuery dependencies
+google-adk>=0.1.0
+google-cloud-bigquery>=3.0.0
+google-auth>=2.0.0
+google-genai>=0.1.0
+
+# Additional dependencies
+# Note: asyncio and zoneinfo are built-in Python modules
