@@ -332,15 +332,15 @@ def get_air_quality(county: Optional[str] = None, state: Optional[str] = None, c
             avg_concentration = round(avg_pm25, 2)
             num_sites = random.randint(3, 5)
             data_points = []
-        for i in range(num_sites):
+            for i in range(num_sites):
                 site_pm25 = round(avg_pm25 * random.uniform(0.9, 1.1), 2)
-            data_points.append({
+                data_points.append({
                     "date": f"{year}-{month or 6:02d}-{day or 15:02d}",
-                "pm25_concentration": site_pm25,
+                    "pm25_concentration": site_pm25,
                     "city": city or f"{state} City",
-                "site_num": f"00{i+1}",
+                    "site_num": f"00{i+1}",
                     "aqi": int(site_pm25 * 4.17)
-            })
+                })
         
         # Determine air quality category
         if avg_concentration <= 12.0:
@@ -841,7 +841,7 @@ if __name__ == "__main__":
     
     # Check if user wants example queries or interactive mode
     if len(sys.argv) > 1 and sys.argv[1] == '--examples':
-    run_community_health_queries()
+        run_community_health_queries()
     else:
         # Default to interactive mode
         run_interactive()
