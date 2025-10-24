@@ -125,15 +125,18 @@ def get_table_schema() -> dict:
             bigquery_tool_config=tool_config
         )
         
-        query = """
+        project_id = os.getenv("GOOGLE_CLOUD_PROJECT", "qwiklabs-gcp-00-4a7d408c735c")
+        dataset_id = os.getenv("BIGQUERY_DATASET", "BQ_EPA_Air_Data")
+        
+        query = f"""
         SELECT column_name, data_type, is_nullable
-        FROM `qwiklabs-gcp-00-86088b6278cb.BQ_EPA_Air_Data.INFORMATION_SCHEMA.COLUMNS`
+        FROM `{project_id}.{dataset_id}.INFORMATION_SCHEMA.COLUMNS`
         WHERE table_name = 'pm25_frm_daily_summary'
         ORDER BY ordinal_position
         """
         
         result = bigquery_toolset.execute_sql(
-            project_id=os.getenv("GOOGLE_CLOUD_PROJECT", "your-project-id"),
+            project_id=project_id,
             query=query
         )
         
@@ -176,14 +179,17 @@ def test_table_columns() -> dict:
             bigquery_tool_config=tool_config
         )
         
-        query = """
+        project_id = os.getenv("GOOGLE_CLOUD_PROJECT", "qwiklabs-gcp-00-4a7d408c735c")
+        dataset_id = os.getenv("BIGQUERY_DATASET", "BQ_EPA_Air_Data")
+        
+        query = f"""
         SELECT *
-        FROM `qwiklabs-gcp-00-86088b6278cb.BQ_EPA_Air_Data.pm25_frm_daily_summary`
+        FROM `{project_id}.{dataset_id}.pm25_frm_daily_summary`
         LIMIT 1
         """
         
         result = bigquery_toolset.execute_sql(
-            project_id=os.getenv("GOOGLE_CLOUD_PROJECT", "your-project-id"),
+            project_id=project_id,
             query=query
         )
         
