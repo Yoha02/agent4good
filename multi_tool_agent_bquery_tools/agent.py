@@ -738,6 +738,56 @@ root_agent = Agent(
     sub_agents=[air_quality_agent, infectious_diseases_agent],
 )
 
+# ============================================================================
+# PSA VIDEO FEATURE INTEGRATION (Optional - can be disabled)
+# ============================================================================
+try:
+    from .psa_video_integration import (
+        integrate_psa_video_feature,
+        get_psa_video_instructions,
+        PSA_VIDEO_FEATURE_ENABLED
+    )
+    
+    if PSA_VIDEO_FEATURE_ENABLED:
+        # Integrate PSA video agents
+        current_agents = root_agent.sub_agents or []
+        current_tools = root_agent.tools or []
+        
+        updated_agents, additional_tools, success = integrate_psa_video_feature(
+            existing_sub_agents=current_agents,
+            model=GEMINI_MODEL
+        )
+        
+        if success:
+            # Update root agent with PSA video capabilities
+            psa_instructions = get_psa_video_instructions()
+            
+            # Recreate root agent with additional capabilities
+            root_agent = Agent(
+                name="community_health_assistant",
+                model=GEMINI_MODEL,
+                description="Main community health assistant with PSA video generation",
+                instruction=root_agent.instruction + psa_instructions,
+                tools=list(current_tools) + additional_tools,
+                sub_agents=updated_agents,
+            )
+            print("[INTEGRATION] PSA Video feature enabled successfully")
+        else:
+            print("[INTEGRATION] PSA Video feature failed to load, continuing without it")
+    else:
+        print("[INTEGRATION] PSA Video feature disabled by flag")
+        
+except ImportError as e:
+    print(f"[INTEGRATION] PSA Video feature not available: {e}")
+    print("[INTEGRATION] Continuing with core features only")
+except Exception as e:
+    print(f"[INTEGRATION] Unexpected error loading PSA Video feature: {e}")
+    print("[INTEGRATION] Continuing with core features only")
+
+# ============================================================================
+# END PSA VIDEO INTEGRATION
+# ============================================================================
+
 # Global variables for session and runner
 _session_service = None
 _session = None
