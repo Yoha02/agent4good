@@ -301,7 +301,7 @@ def get_air_quality(county: Optional[str] = None, state: Optional[str] = None, c
             )
             
             if result.status == "success" and result.data:
-        data_points = []
+                data_points = []
                 total_pm25 = 0
                 
                 for row in result.data[:100]:
