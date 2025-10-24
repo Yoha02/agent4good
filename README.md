@@ -1,325 +1,390 @@
-# Community Health & Wellness Advisor - Air Quality Monitoring Platform
+# Community Health & Wellness Agent
 
-An impactful, interactive web application that combines Google Cloud SDK agents, BigQuery database, and Gemini AI to provide real-time air quality monitoring and health recommendations.
+A full-stack web application combining beautiful UI dashboards with Google's Agent Development Kit (ADK) multi-agent system for real-time community health monitoring.
+
+**Live Demo**: https://community-health-agent-776464277441.us-central1.run.app
 
 ![Platform Overview](https://img.shields.io/badge/Platform-Google_Cloud-4285F4?style=for-the-badge&logo=google-cloud)
 ![Python](https://img.shields.io/badge/Python-3.11-3776AB?style=for-the-badge&logo=python)
 ![Flask](https://img.shields.io/badge/Flask-3.0-000000?style=for-the-badge&logo=flask)
-![BigQuery](https://img.shields.io/badge/BigQuery-Enabled-669DF6?style=for-the-badge&logo=google-cloud)
+
+---
 
 ## 🌟 Features
 
-- **Real-time Air Quality Monitoring**: Track AQI (Air Quality Index) across multiple locations
-- **AI-Powered Health Insights**: Get personalized health recommendations using Gemini AI
-- **Interactive Data Visualization**: Beautiful charts and graphs powered by Chart.js
-- **BigQuery Integration**: Fast, scalable data queries from Google BigQuery
-- **Google SDK Agents**: Intelligent agents for data analysis and health advisory
-- **Responsive UI/UX**: Modern, mobile-friendly interface with smooth animations
-- **Cloud Run Ready**: Optimized for deployment on Google Cloud Run
+### **Multi-Agent AI System**
+- **Air Quality Agent**: Queries EPA BigQuery data for PM2.5 and AQI information across US counties
+- **Disease Tracking Agent**: Monitors infectious diseases from CDC BEAM dashboard data
+- **Health FAQ System**: Provides wellness information on water safety, food safety, and prevention
 
-## 🏗️ Architecture
+### **Interactive Web Dashboard**
+- Real-time air quality statistics with auto-updating metrics
+- Interactive data visualizations (D3.js, Chart.js, Three.js backgrounds)
+- AI-powered chat interface with natural language understanding
+- State-based filtering for localized insights
+- 7-day, 14-day, and 30-day trend analysis
 
-```
-┌─────────────────┐
-│   Frontend      │
-│  (HTML/CSS/JS)  │
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│   Flask App     │
-│  (Python 3.11)  │
-└────────┬────────┘
-         │
-         ├──────────────┐
-         ▼              ▼
-┌─────────────┐  ┌──────────────┐
-│  BigQuery   │  │  Gemini AI   │
-│  Database   │  │   (SDK)      │
-└─────────────┘  └──────────────┘
-```
+### **Real Data Sources**
+- **EPA Air Quality**: Public BigQuery dataset `bigquery-public-data.epa_historical_air_quality` (2010-2021)
+- **Infectious Diseases**: CDC BEAM Dashboard via your project's BigQuery dataset
+- **AI Processing**: Google Gemini AI via Agent Development Kit
 
-## 📋 Prerequisites
-
-- Python 3.11+
-- Google Cloud Platform account
-- Google Cloud Project with:
-  - BigQuery API enabled
-  - Cloud Run API enabled
-  - Gemini API access
-- Service account key with appropriate permissions
+---
 
 ## 🚀 Quick Start
 
-### 1. Clone the Repository
+### **Prerequisites**
+- Google Cloud Project with billing enabled
+- Gemini API Key from https://aistudio.google.com/apikey (free tier available)
+- Google Cloud SDK installed and configured
 
+### **Local Development**
+
+1. **Clone and setup**:
 ```bash
-git clone https://github.com/Yoha02/agent4good.git
+git clone https://github.com/Yoha02/agent4good
 cd agent4good
+git checkout combined_UI_and_agent
 ```
 
-### 2. Set Up Environment Variables
-
-Copy the example environment file and configure it:
-
-```bash
-cp .env.example .env
-```
-
-Edit `.env` with your credentials:
-
+2. **Create `.env` file** in root directory:
 ```env
-GOOGLE_CLOUD_PROJECT=your-project-id
-GOOGLE_APPLICATION_CREDENTIALS=service-account-key.json
-BIGQUERY_DATASET=air_quality_dataset
-BIGQUERY_TABLE=air_quality_data
+GOOGLE_CLOUD_PROJECT=your-gcp-project-id
+GOOGLE_API_KEY=your-gemini-api-key
 GEMINI_API_KEY=your-gemini-api-key
-SECRET_KEY=your-secret-key-here
+GOOGLE_GENAI_USE_VERTEXAI=FALSE
+SECRET_KEY=your-random-secret-key
 ```
 
-### 3. Install Dependencies
-
+3. **Install dependencies**:
 ```bash
-# Create virtual environment
-python -m venv venv
-
-# Activate virtual environment
-# On Windows:
-venv\Scripts\activate
-# On macOS/Linux:
-source venv/bin/activate
-
-# Install dependencies
 pip install -r requirements.txt
 ```
 
-### 4. Run Locally
+4. **Authenticate with Google Cloud**:
+```bash
+gcloud auth application-default login
+gcloud config set project your-gcp-project-id
+```
 
+5. **Run the application**:
 ```bash
 python app.py
 ```
 
-Visit `http://localhost:8080` in your browser.
+6. **Open browser**: http://localhost:8080
+
+---
 
 ## ☁️ Deploy to Google Cloud Run
 
-### Method 1: Using gcloud CLI
-
-1. **Build and push the container:**
+### **One-Command Deployment**:
 
 ```bash
-# Set your project ID
-gcloud config set project YOUR_PROJECT_ID
-
-# Build the container image
-gcloud builds submit --tag gcr.io/YOUR_PROJECT_ID/air-quality-advisor
-
-# Deploy to Cloud Run
-gcloud run deploy air-quality-advisor \
-  --image gcr.io/YOUR_PROJECT_ID/air-quality-advisor \
-  --platform managed \
+gcloud run deploy community-health-agent \
+  --source . \
   --region us-central1 \
   --allow-unauthenticated \
-  --set-env-vars "GOOGLE_CLOUD_PROJECT=YOUR_PROJECT_ID,BIGQUERY_DATASET=air_quality_dataset,BIGQUERY_TABLE=air_quality_data,GEMINI_API_KEY=YOUR_GEMINI_API_KEY"
+  --set-env-vars "GOOGLE_CLOUD_PROJECT=your-project-id,GOOGLE_API_KEY=your-api-key,GEMINI_API_KEY=your-api-key,GOOGLE_GENAI_USE_VERTEXAI=FALSE" \
+  --memory 2Gi \
+  --timeout 300
 ```
 
-2. **Access your deployed app:**
+### **Step-by-Step Deployment**:
 
-The deployment will provide a URL like: `https://air-quality-advisor-xxxxx.run.app`
-
-### Method 2: Using Cloud Console
-
-1. Go to [Google Cloud Run Console](https://console.cloud.google.com/run)
-2. Click "CREATE SERVICE"
-3. Select "Deploy one revision from an existing container image"
-4. Build the container using Cloud Build:
-   ```bash
-   gcloud builds submit --tag gcr.io/YOUR_PROJECT_ID/air-quality-advisor
-   ```
-5. Configure:
-   - Service name: `air-quality-advisor`
-   - Region: `us-central1`
-   - Authentication: Allow unauthenticated invocations
-   - Container port: `8080`
-6. Add environment variables in "Variables & Secrets"
-7. Click "CREATE"
-
-## 📊 Setting Up BigQuery
-
-### 1. Create Dataset and Table
-
-```sql
--- Create dataset
-CREATE SCHEMA IF NOT EXISTS air_quality_dataset;
-
--- Create table
-CREATE TABLE IF NOT EXISTS air_quality_dataset.air_quality_data (
-  date DATE,
-  state_name STRING,
-  county_name STRING,
-  aqi INT64,
-  parameter_name STRING,
-  site_name STRING
-);
-```
-
-### 2. Load CSV Data
-
+1. **Set your project**:
 ```bash
-# Upload your CSV file to BigQuery
-bq load \
-  --source_format=CSV \
-  --skip_leading_rows=1 \
-  air_quality_dataset.air_quality_data \
-  daily_88101_2025.csv \
-  date:DATE,state_name:STRING,county_name:STRING,aqi:INTEGER,parameter_name:STRING,site_name:STRING
+gcloud config set project your-project-id
 ```
 
-Or use the BigQuery Console:
-1. Go to BigQuery in Cloud Console
-2. Select your dataset
-3. Click "CREATE TABLE"
-4. Upload the CSV file
-5. Define schema matching the table structure above
-
-## 🔑 Setting Up Service Account
-
-1. **Create Service Account:**
-   ```bash
-   gcloud iam service-accounts create air-quality-sa \
-     --display-name "Air Quality Service Account"
-   ```
-
-2. **Grant Permissions:**
-   ```bash
-   # BigQuery permissions
-   gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
-     --member="serviceAccount:air-quality-sa@YOUR_PROJECT_ID.iam.gserviceaccount.com" \
-     --role="roles/bigquery.dataViewer"
-   
-   gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
-     --member="serviceAccount:air-quality-sa@YOUR_PROJECT_ID.iam.gserviceaccount.com" \
-     --role="roles/bigquery.jobUser"
-   ```
-
-3. **Download Key:**
-   ```bash
-   gcloud iam service-accounts keys create service-account-key.json \
-     --iam-account=air-quality-sa@YOUR_PROJECT_ID.iam.gserviceaccount.com
-   ```
-
-## 🧪 Testing the Application
-
-### Test Health Endpoint
-
+2. **Enable required APIs**:
 ```bash
-curl https://your-app-url.run.app/health
+gcloud services enable cloudbuild.googleapis.com run.googleapis.com bigquery.googleapis.com
 ```
 
-### Test Air Quality API
-
+3. **Authenticate**:
 ```bash
-curl "https://your-app-url.run.app/api/air-quality?days=7"
+gcloud auth application-default login
+gcloud auth application-default set-quota-project your-project-id
 ```
 
-### Test AI Analysis
-
+4. **Deploy** (takes ~6-8 minutes):
 ```bash
-curl -X POST https://your-app-url.run.app/api/analyze \
-  -H "Content-Type: application/json" \
-  -d '{"question": "What are the health risks of high AQI?", "days": 7}'
+gcloud run deploy community-health-agent \
+  --source . \
+  --region us-central1 \
+  --allow-unauthenticated \
+  --set-env-vars "GOOGLE_CLOUD_PROJECT=your-project-id,GOOGLE_API_KEY=your-api-key,GEMINI_API_KEY=your-api-key,GOOGLE_GENAI_USE_VERTEXAI=FALSE" \
+  --memory 2Gi \
+  --timeout 300
 ```
+
+5. **Get your live URL**:
+```bash
+gcloud run services describe community-health-agent --region us-central1 --format='value(status.url)'
+```
+
+---
 
 ## 📁 Project Structure
 
 ```
 agent4good/
-├── app.py                  # Main Flask application
-├── requirements.txt        # Python dependencies
-├── Dockerfile             # Container configuration
-├── .dockerignore          # Docker ignore rules
-├── .env.example           # Environment variables template
-├── .gitignore            # Git ignore rules
-├── README.md             # This file
-├── static/
-│   ├── css/
-│   │   └── style.css     # Stylesheet
-│   └── js/
-│       └── app.js        # Frontend JavaScript
-└── templates/
-    └── index.html        # Main HTML template
+├── app.py                          # Main Flask application
+├── requirements.txt                # Python dependencies
+├── Dockerfile                      # Container configuration
+├── .dockerignore                   # Build optimization
+├── deploy_new.ps1                  # Windows deployment script
+│
+├── multi_tool_agent_bquery_tools/  # ADK Multi-Agent System
+│   ├── agent.py                    # Multi-agent implementation
+│   └── __init__.py
+│
+├── templates/                      # HTML templates
+│   └── index.html                  # Main dashboard
+│
+└── static/                         # Frontend assets
+    ├── css/style.css              # Styles
+    └── js/
+        ├── app.js                 # Main application logic
+        ├── animations.js          # UI animations
+        ├── d3-viz.js             # D3 visualizations
+        └── three-bg.js           # 3D background
 ```
 
-## 🎨 UI/UX Features
+---
 
-- **Gradient Backgrounds**: Eye-catching color schemes
-- **Glass Morphism**: Modern translucent card designs
-- **Smooth Animations**: Engaging transitions and effects
-- **Responsive Design**: Works perfectly on all devices
-- **Interactive Charts**: Real-time data visualization
-- **AI Chat Interface**: Natural conversation with health advisor
-- **Accessibility**: WCAG compliant design
+## 🎯 Architecture
 
-## 🔧 Configuration Options
+```
+┌─────────────────────────────────────┐
+│   Web Browser                       │
+│   - Dashboard UI                    │
+│   - Interactive Charts              │
+│   - AI Chat Interface               │
+└──────────────┬──────────────────────┘
+               │
+               ▼
+┌─────────────────────────────────────┐
+│   Flask Backend (app.py)            │
+│   - /api/air-quality                │
+│   - /api/health-recommendations     │
+│   - /api/agent-chat                 │
+└──────────────┬──────────────────────┘
+               │
+               ├──────────────┬─────────────┐
+               ▼              ▼             ▼
+    ┌──────────────┐  ┌──────────────┐  ┌──────────────┐
+    │  BigQuery    │  │  Gemini AI   │  │  ADK Agent   │
+    │  EPA Data    │  │  (Fallback)  │  │  System      │
+    └──────────────┘  └──────────────┘  └──────┬───────┘
+                                               │
+                                    ┌──────────┴──────────┐
+                                    ▼                     ▼
+                            ┌──────────────┐      ┌──────────────┐
+                            │ Air Quality  │      │   Disease    │
+                            │    Agent     │      │    Agent     │
+                            └──────────────┘      └──────────────┘
+```
 
-### Environment Variables
+---
 
-| Variable | Description | Required |
-|----------|-------------|----------|
-| `GOOGLE_CLOUD_PROJECT` | GCP project ID | Yes |
-| `GOOGLE_APPLICATION_CREDENTIALS` | Path to service account key | Yes |
-| `BIGQUERY_DATASET` | BigQuery dataset name | Yes |
-| `BIGQUERY_TABLE` | BigQuery table name | Yes |
-| `GEMINI_API_KEY` | Gemini AI API key | Yes |
-| `SECRET_KEY` | Flask secret key | Yes |
-| `PORT` | Application port (default: 8080) | No |
-| `FLASK_ENV` | Environment (production/development) | No |
+## 🔧 Configuration Details
+
+### **Required Environment Variables**:
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `GOOGLE_CLOUD_PROJECT` | Your GCP project ID | `my-project-123` |
+| `GOOGLE_API_KEY` | Gemini API key | `AIzaSy...` |
+| `GEMINI_API_KEY` | Same as GOOGLE_API_KEY | `AIzaSy...` |
+| `GOOGLE_GENAI_USE_VERTEXAI` | Use Google AI Studio | `FALSE` |
+
+### **Optional Variables**:
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `SECRET_KEY` | Flask secret key | Auto-generated |
+| `PORT` | Server port | `8080` |
+
+---
+
+## 🤖 Multi-Agent System
+
+### **How It Works**:
+
+1. **User asks a question** in the chat interface
+2. **Root Agent** analyzes the question and routes to appropriate sub-agent
+3. **Specialized Agent** queries relevant data source (BigQuery or knowledge base)
+4. **Response** is formatted and returned to user
+
+### **Example Interactions**:
+
+**Air Quality**:
+```
+User: "What's the air quality in Los Angeles?"
+Agent: Queries EPA BigQuery → Returns PM2.5 levels, AQI, health impacts
+```
+
+**Disease Tracking**:
+```
+User: "Show me E. coli cases in Texas"
+Agent: Queries CDC BEAM data → Returns case counts, trends, sources
+```
+
+**Health FAQs**:
+```
+User: "How can I stay safe during high pollution?"
+Agent: Retrieves FAQ → Returns practical health advice
+```
+
+---
+
+## 📊 Data Sources
+
+### **1. EPA Air Quality Data**
+- **BigQuery Dataset**: `bigquery-public-data.epa_historical_air_quality.pm25_frm_daily_summary`
+- **Coverage**: 2010-2021, all US states
+- **Metrics**: PM2.5 concentrations, AQI values, monitoring site locations
+- **Access**: Public dataset (no setup required)
+
+### **2. CDC Infectious Disease Data**
+- **BigQuery Dataset**: `your-project.beam_report_data_folder.beam_report_data`
+- **Source**: CDC BEAM Dashboard Report
+- **Metrics**: Laboratory-confirmed isolates, pathogens, sources
+- **Coverage**: State-level disease surveillance
+
+---
+
+## 📝 API Endpoints
+
+### **Web Interface**:
+- `GET /` - Main dashboard with visualizations
+
+### **Data APIs**:
+- `GET /api/air-quality?days=7&state=California` - Get air quality data
+- `GET /api/health-recommendations?state=Texas` - Get health advice based on AQI
+
+### **AI Agent**:
+- `POST /api/agent-chat` - Chat with multi-agent system
+  ```json
+  {
+    "question": "What's the air quality in Los Angeles?"
+  }
+  ```
+
+### **System**:
+- `GET /health` - Health check endpoint
+
+---
 
 ## 🐛 Troubleshooting
 
-### BigQuery Connection Issues
+### **Problem: Chat not responding**
+**Check**: Environment variables are set
+```bash
+gcloud run services describe community-health-agent --region us-central1 --format="get(spec.template.spec.containers[0].env)"
+```
+**Solution**: Redeploy with correct env vars
 
-- Verify service account has proper permissions
-- Check that BigQuery API is enabled
-- Ensure dataset and table exist
+### **Problem: No dashboard data**
+**Check**: BigQuery permissions
+```bash
+gcloud projects get-iam-policy your-project-id
+```
+**Solution**: App falls back to demo data if BigQuery unavailable
 
-### Gemini AI Issues
+### **Problem: Deployment fails**
+**Check**: Build logs
+```bash
+gcloud builds list --limit 5
+```
+**Common issues**: 
+- Dependency conflicts in requirements.txt
+- Missing API enablement
+- Billing not enabled
 
-- Verify API key is correct
-- Check API quota limits
-- Ensure Gemini API is enabled in your project
+### **View Logs**:
+```bash
+gcloud run services logs read community-health-agent --region us-central1 --limit 50
+```
 
-### Cloud Run Deployment Issues
+---
 
-- Check container logs: `gcloud run services logs read air-quality-advisor`
-- Verify environment variables are set correctly
-- Ensure port 8080 is exposed in Dockerfile
+## 🎨 Technology Stack
+
+**Backend**:
+- Python 3.11
+- Flask 3.0
+- Google Cloud BigQuery
+- Google ADK (Agent Development Kit)
+- Google Gemini AI
+
+**Frontend**:
+- HTML5 / CSS3 / JavaScript
+- Tailwind CSS
+- Chart.js (trend charts)
+- D3.js (geographic visualizations)
+- Three.js (3D backgrounds)
+- Anime.js (animations)
+
+**Infrastructure**:
+- Docker
+- Google Cloud Run
+- Container Registry
+- Cloud Build
+
+---
+
+## 💰 Cost Estimate
+
+**Free Tier Includes**:
+- Cloud Run: 2 million requests/month
+- BigQuery: 1 TB queries/month
+- Container Registry: 500 MB storage
+
+**Expected Cost**: $0-5/month for typical usage
+
+---
 
 ## 🤝 Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Contributions are welcome! The codebase is clean and well-organized:
+
+1. **Fork the repository**
+2. **Create a feature branch**: `git checkout -b feature/amazing-feature`
+3. **Make your changes**
+4. **Test locally**: `python app.py`
+5. **Commit**: `git commit -m 'Add amazing feature'`
+6. **Push**: `git push origin feature/amazing-feature`
+7. **Open a Pull Request**
+
+---
 
 ## 📄 License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
 
-## 👥 Team
-
-Agents for Impact - Community Health & Wellness Initiative
+---
 
 ## 🙏 Acknowledgments
 
-- Google Cloud Platform for infrastructure
-- Gemini AI for intelligent insights
-- Chart.js for beautiful visualizations
-- Flask community for excellent documentation
+- **Google Cloud Platform** for infrastructure and AI services
+- **Gemini AI** for natural language understanding
+- **EPA** for historical air quality data
+- **CDC** for disease surveillance data
+- **Agents for Impact** hackathon organizers and community
+
+---
 
 ## 📞 Support
 
-For questions or support, please open an issue in the GitHub repository.
+For issues or questions:
+- **GitHub Issues**: https://github.com/Yoha02/agent4good/issues
+- **Documentation**: This README
+- **Deployment Help**: See deploy_new.ps1 script
 
 ---
 
 **Built with ❤️ for Community Health & Wellness**
 
-*Powered by Google Cloud, BigQuery, and Gemini AI*
+*Agents for Impact Hackathon - October 2025*
