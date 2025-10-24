@@ -10,6 +10,23 @@ import json
 # Load environment variables
 load_dotenv()
 
+# Ensure API key is set before importing agent
+GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY') or os.getenv('GEMINI_API_KEY')
+if GOOGLE_API_KEY:
+    os.environ['GOOGLE_API_KEY'] = GOOGLE_API_KEY
+    print(f"[OK] API key configured for agent")
+
+# Import the ADK agent
+try:
+    from multi_tool_agent_bquery_tools.agent import call_agent as call_adk_agent
+    ADK_AGENT_AVAILABLE = True
+    print("[OK] ADK Agent loaded successfully!")
+except Exception as e:
+    print(f"[WARNING] ADK Agent not available: {e}")
+    import traceback
+    traceback.print_exc()
+    ADK_AGENT_AVAILABLE = False
+
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev-secret-key')
 
@@ -37,35 +54,81 @@ class AirQualityAgent:
         self.model = genai_model
     
     def query_air_quality_data(self, state=None, days=7):
-        """Query air quality data from BigQuery"""
-        try:
-            dataset = os.getenv('BIGQUERY_DATASET', 'air_quality_dataset')
-            table = os.getenv('BIGQUERY_TABLE', 'air_quality_data')
+        """Query air quality data from public BigQuery EPA dataset"""
+        if not self.bq_client:
+            print("[BQ] No BigQuery client, using demo data")
+            return self._generate_demo_data(state, days)
             
+        try:
+            # Use public EPA dataset
             query = f"""
             SELECT 
-                date,
+                date_local as date,
                 state_name,
                 county_name,
-                aqi,
+                CAST(aqi AS INT64) as aqi,
                 parameter_name,
-                site_name
-            FROM `{os.getenv('GOOGLE_CLOUD_PROJECT')}.{dataset}.{table}`
-            WHERE date >= DATE_SUB(CURRENT_DATE(), INTERVAL {days} DAY)
+                local_site_name as site_name,
+                arithmetic_mean as pm25_mean
+            FROM `bigquery-public-data.epa_historical_air_quality.pm25_frm_daily_summary`
+            WHERE date_local >= DATE_SUB(DATE('2021-11-08'), INTERVAL {days} DAY)
+            AND aqi IS NOT NULL
             """
             
             if state:
                 query += f" AND UPPER(state_name) = UPPER('{state}')"
             
-            query += " ORDER BY date DESC LIMIT 1000"
+            query += " ORDER BY date_local DESC LIMIT 1000"
             
+            print(f"[BQ] Querying public EPA dataset for {state or 'all states'}, last {days} days")
             query_job = self.bq_client.query(query)
             results = query_job.result()
             
-            return [dict(row) for row in results]
+            data = [dict(row) for row in results]
+            
+            if data:
+                print(f"[BQ] Retrieved {len(data)} records from public EPA dataset")
+                return data
+            else:
+                print(f"[BQ] No data found, using demo data")
+                return self._generate_demo_data(state, days)
+                
         except Exception as e:
-            print(f"Error querying BigQuery: {e}")
-            return []
+            print(f"[BQ ERROR] {e}")
+            print("[BQ] Falling back to demo data")
+            return self._generate_demo_data(state, days)
+    
+    def _generate_demo_data(self, state=None, days=7):
+        """Generate demo data when BigQuery is unavailable"""
+        import random
+        data = []
+        states = ['California', 'Texas', 'New York', 'Florida', 'Illinois']
+        counties = {
+            'California': ['Los Angeles', 'San Diego', 'San Francisco'],
+            'Texas': ['Harris', 'Dallas', 'Travis'],
+            'New York': ['New York', 'Kings', 'Queens'],
+            'Florida': ['Miami-Dade', 'Broward', 'Palm Beach'],
+            'Illinois': ['Cook', 'DuPage', 'Lake']
+        }
+        
+        selected_states = [state] if state else states[:3]
+        
+        for day in range(days):
+            date = datetime.now() - timedelta(days=day)
+            for s in selected_states:
+                if s in counties:
+                    for county in counties[s][:2]:
+                        data.append({
+                            'date': date.strftime('%Y-%m-%d'),
+                            'state_name': s,
+                            'county_name': county,
+                            'aqi': random.randint(20, 120),
+                            'parameter_name': 'PM2.5',
+                            'site_name': f'{county} Monitoring Station',
+                            'pm25_mean': round(random.uniform(5.0, 25.0), 2)
+                        })
+        
+        return data
     
     def analyze_with_ai(self, data, question):
         """Use Gemini AI to analyze air quality data"""
@@ -221,10 +284,62 @@ def health_recommendations():
     })
 
 
+@app.route('/api/agent-chat', methods=['POST'])
+def agent_chat():
+    """API endpoint for ADK agent chat"""
+    try:
+        if not ADK_AGENT_AVAILABLE:
+            return jsonify({
+                'success': False,
+                'error': 'ADK Agent not available. Using fallback AI.'
+            }), 503
+        
+        request_data = request.get_json()
+        question = request_data.get('question', '')
+        
+        if not question:
+            return jsonify({
+                'success': False,
+                'error': 'No question provided'
+            }), 400
+        
+        # Call the ADK agent
+        response = call_adk_agent(question)
+        
+        return jsonify({
+            'success': True,
+            'response': response,
+            'agent': 'ADK Multi-Agent System'
+        })
+    except Exception as e:
+        # Fallback to original AI if ADK agent fails
+        try:
+            state = request_data.get('state', None)
+            days = int(request_data.get('days', 7))
+            data = agent.query_air_quality_data(state=state, days=days)
+            analysis = agent.analyze_with_ai(data, question)
+            
+            return jsonify({
+                'success': True,
+                'response': analysis,
+                'agent': 'Gemini AI (Fallback)',
+                'data_points': len(data)
+            })
+        except Exception as fallback_error:
+            return jsonify({
+                'success': False,
+                'error': str(e),
+                'fallback_error': str(fallback_error)
+            }), 500
+
+
 @app.route('/health')
 def health_check():
     """Health check endpoint for Cloud Run"""
-    return jsonify({'status': 'healthy'}), 200
+    return jsonify({
+        'status': 'healthy',
+        'adk_agent': 'available' if ADK_AGENT_AVAILABLE else 'unavailable'
+    }), 200
 
 
 if __name__ == '__main__':

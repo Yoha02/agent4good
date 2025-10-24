@@ -324,10 +324,11 @@ async function askAI() {
     questionInput.value = '';
 
     // Show loading
-    const loadingMsg = addMessage('Analyzing data...', 'bot');
+    const loadingMsg = addMessage('Thinking...', 'bot');
     
     try {
-        const response = await fetch('/api/analyze', {
+        // Try ADK agent first
+        const response = await fetch('/api/agent-chat', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -345,7 +346,9 @@ async function askAI() {
         loadingMsg.remove();
 
         if (data.success) {
-            addMessage(data.analysis, 'bot');
+            // Add agent badge if available
+            const agentBadge = data.agent ? `<div class="text-xs text-gray-500 mt-1">via ${data.agent}</div>` : '';
+            addMessage(data.response + agentBadge, 'bot');
         } else {
             addMessage('Sorry, I encountered an error. Please try again.', 'bot');
         }
