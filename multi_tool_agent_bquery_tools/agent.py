@@ -750,11 +750,12 @@ try:
     
     if PSA_VIDEO_FEATURE_ENABLED:
         # Integrate PSA video agents
-        current_agents = root_agent.sub_agents or []
-        current_tools = root_agent.tools or []
+        # Note: We add new agents to the ORIGINAL list, not from root_agent.sub_agents
+        # to avoid "agent already has parent" error
+        base_agents = [air_quality_agent, infectious_diseases_agent]
         
         updated_agents, additional_tools, success = integrate_psa_video_feature(
-            existing_sub_agents=current_agents,
+            existing_sub_agents=base_agents,
             model=GEMINI_MODEL
         )
         
@@ -768,7 +769,7 @@ try:
                 model=GEMINI_MODEL,
                 description="Main community health assistant with PSA video generation",
                 instruction=root_agent.instruction + psa_instructions,
-                tools=list(current_tools) + additional_tools,
+                tools=[get_health_faq] + additional_tools,
                 sub_agents=updated_agents,
             )
             print("[INTEGRATION] PSA Video feature enabled successfully")

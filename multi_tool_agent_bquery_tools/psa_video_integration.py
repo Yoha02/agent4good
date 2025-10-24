@@ -40,7 +40,7 @@ def integrate_psa_video_feature(existing_sub_agents: List[Agent], model: str) ->
             format_health_tweet
         ]
         
-        print("[PSA_VIDEO] ✓ PSA Video feature loaded successfully")
+        print("[PSA_VIDEO] [OK] PSA Video feature loaded successfully")
         print(f"[PSA_VIDEO] Added {len(psa_agents)} agents: ActionLine, VeoPrompt, Twitter")
         
         return (updated_agents, additional_tools, True)
