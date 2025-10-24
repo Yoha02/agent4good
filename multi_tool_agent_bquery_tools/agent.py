@@ -219,7 +219,7 @@ def get_metadata() -> dict:
 def get_air_quality(county: Optional[str] = None, state: Optional[str] = None, city: Optional[str] = None, 
                    year: Optional[int] = None, month: Optional[int] = None, day: Optional[int] = None,
                    days_back: Optional[int] = None) -> dict:
-    """Retrieves air quality data from EPA Historical Air Quality dataset (simulated)."""
+    """Retrieves air quality data from EPA Historical Air Quality BigQuery dataset."""
     try:
         # Handle state inference from county
         if county and not state:
@@ -248,42 +248,98 @@ def get_air_quality(county: Optional[str] = None, state: Optional[str] = None, c
         if year is None:
             year = 2020
         
-        # Generate believable PM2.5 data (simulated from EPA Historical Air Quality dataset)
-        location_desc = f"{county}, {state}" if county and state else state if state else county
+        # Query real EPA data from public BigQuery dataset
+        where_conditions = []
+        if state:
+            where_conditions.append(f"state_name = '{state}'")
+        if county:
+            where_conditions.append(f"county_name = '{county}'")
+        if city:
+            where_conditions.append(f"city_name = '{city}'")
+        if year and month and day:
+            where_conditions.append(f"date_local = DATE({year}, {month}, {day})")
+        elif year and month:
+            where_conditions.append(f"EXTRACT(YEAR FROM date_local) = {year}")
+            where_conditions.append(f"EXTRACT(MONTH FROM date_local) = {month}")
+        elif year:
+            where_conditions.append(f"EXTRACT(YEAR FROM date_local) = {year}")
         
-        # Base PM2.5 values by region (realistic averages)
-        base_pm25 = {
-            "California": random.uniform(8.5, 15.2),
-            "Texas": random.uniform(7.8, 12.5),
-            "Florida": random.uniform(6.5, 10.8),
-            "New York": random.uniform(7.2, 11.5),
-            "Illinois": random.uniform(9.5, 14.2),
-            "Arizona": random.uniform(6.8, 11.3),
-        }
+        where_clause = " AND ".join(where_conditions) if where_conditions else f"EXTRACT(YEAR FROM date_local) = {year}"
         
-        avg_pm25 = base_pm25.get(state, random.uniform(7.0, 12.0))
+        query = f"""
+        SELECT 
+            date_local,
+            state_name,
+            county_name,
+            city_name,
+            arithmetic_mean as pm25_concentration,
+            aqi,
+            local_site_name,
+            site_num
+        FROM `bigquery-public-data.epa_historical_air_quality.pm25_frm_daily_summary`
+        WHERE {where_clause}
+        AND arithmetic_mean IS NOT NULL
+        ORDER BY date_local DESC
+        LIMIT 100
+        """
         
-        # Add seasonal variation
-        if month:
-            if month in [6, 7, 8]:  # Summer - typically worse
-                avg_pm25 *= random.uniform(1.1, 1.3)
-            elif month in [12, 1, 2]:  # Winter - varies
-                avg_pm25 *= random.uniform(0.9, 1.2)
-        
-        avg_concentration = round(avg_pm25, 2)
-        
-        # Generate sample readings
+        try:
+            application_default_credentials, _ = google.auth.default()
+            credentials_config = BigQueryCredentialsConfig(
+                credentials=application_default_credentials
+            )
+            tool_config = BigQueryToolConfig(write_mode=WriteMode.BLOCKED)
+            
+            bigquery_toolset = BigQueryToolset(
+                credentials_config=credentials_config,
+                bigquery_tool_config=tool_config
+            )
+            
+            result = bigquery_toolset.execute_sql(
+                project_id=os.getenv("GOOGLE_CLOUD_PROJECT", "qwiklabs-gcp-00-4a7d408c735c"),
+                query=query
+            )
+            
+            if result.status == "success" and result.data:
         data_points = []
-        num_sites = random.randint(3, 7)
-        
+                total_pm25 = 0
+                
+                for row in result.data[:100]:
+                    pm25 = float(row.get('pm25_concentration', 0))
+                    data_points.append({
+                        "date": str(row.get('date_local', '')),
+                        "pm25_concentration": round(pm25, 2),
+                        "city": row.get('city_name', ''),
+                        "site_num": row.get('site_num', ''),
+                        "aqi": row.get('aqi', 0),
+                        "site_name": row.get('local_site_name', '')
+                    })
+                    total_pm25 += pm25
+                
+                avg_concentration = round(total_pm25 / len(data_points), 2) if data_points else 0
+                location_desc = f"{county}, {state}" if county and state else state if state else county
+            else:
+                raise Exception("No data from BigQuery, using demo")
+                
+        except Exception as bq_error:
+            print(f"[AIR QUALITY] BigQuery error: {bq_error}, using simulated data")
+            # Fallback to simulated data
+            location_desc = f"{county}, {state}" if county and state else state if state else county
+            base_pm25 = {"California": 11.0, "Texas": 9.5, "Florida": 8.2, "New York": 9.0, "Illinois": 11.5, "Arizona": 9.0}
+            avg_pm25 = base_pm25.get(state, 10.0)
+            if month and month in [6, 7, 8]:
+                avg_pm25 *= 1.2
+            avg_concentration = round(avg_pm25, 2)
+            num_sites = random.randint(3, 5)
+            data_points = []
         for i in range(num_sites):
-            site_pm25 = round(avg_pm25 * random.uniform(0.85, 1.15), 2)
+                site_pm25 = round(avg_pm25 * random.uniform(0.9, 1.1), 2)
             data_points.append({
-                "date": f"{year}-{month or random.randint(1, 12):02d}-{day or random.randint(1, 28):02d}",
+                    "date": f"{year}-{month or 6:02d}-{day or 15:02d}",
                 "pm25_concentration": site_pm25,
-                "city": city or f"{county} City" if county else f"{state} City",
+                    "city": city or f"{state} City",
                 "site_num": f"00{i+1}",
-                "aqi": int(site_pm25 * 4.17)  # Rough AQI conversion
+                    "aqi": int(site_pm25 * 4.17)
             })
         
         # Determine air quality category
@@ -350,9 +406,9 @@ These particles can penetrate deep into the lungs and bloodstream, affecting res
 
 def get_infectious_disease_data(county: Optional[str] = None, state: Optional[str] = None, 
                                 disease: Optional[str] = None, year: Optional[int] = None) -> dict:
-    """Retrieves infectious disease data (mock data from BigQuery simulation)."""
+    """Retrieves infectious disease data from CDC BEAM BigQuery dataset."""
     try:
-        # Simulate BigQuery attempt (always returns mock data for demo)
+        # Handle state inference from county
         if county and not state:
             inferred_state, is_ambiguous = infer_state_from_county(county)
             if is_ambiguous:
@@ -367,35 +423,149 @@ def get_infectious_disease_data(county: Optional[str] = None, state: Optional[st
             elif inferred_state:
                 state = inferred_state
         
-        if not state and not county:
-            state = "California"
-            county = "Los Angeles"
+        # Get state abbreviation for query
+        state_abbrev = None
+        if state:
+            # Map full state name to abbreviation (CDC data uses 2-letter codes)
+            state_map = {
+                'Alabama': 'AL', 'Alaska': 'AK', 'Arizona': 'AZ', 'Arkansas': 'AR',
+                'California': 'CA', 'Colorado': 'CO', 'Connecticut': 'CT', 'Delaware': 'DE',
+                'Florida': 'FL', 'Georgia': 'GA', 'Hawaii': 'HI', 'Idaho': 'ID',
+                'Illinois': 'IL', 'Indiana': 'IN', 'Iowa': 'IA', 'Kansas': 'KS',
+                'Kentucky': 'KY', 'Louisiana': 'LA', 'Maine': 'ME', 'Maryland': 'MD',
+                'Massachusetts': 'MA', 'Michigan': 'MI', 'Minnesota': 'MN', 'Mississippi': 'MS',
+                'Missouri': 'MO', 'Montana': 'MT', 'Nebraska': 'NE', 'Nevada': 'NV',
+                'New Hampshire': 'NH', 'New Jersey': 'NJ', 'New Mexico': 'NM', 'New York': 'NY',
+                'North Carolina': 'NC', 'North Dakota': 'ND', 'Ohio': 'OH', 'Oklahoma': 'OK',
+                'Oregon': 'OR', 'Pennsylvania': 'PA', 'Rhode Island': 'RI', 'South Carolina': 'SC',
+                'South Dakota': 'SD', 'Tennessee': 'TN', 'Texas': 'TX', 'Utah': 'UT',
+                'Vermont': 'VT', 'Virginia': 'VA', 'Washington': 'WA', 'West Virginia': 'WV',
+                'Wisconsin': 'WI', 'Wyoming': 'WY'
+            }
+            state_abbrev = state_map.get(state, state[:2].upper() if len(state) > 2 else state.upper())
         
-        location_desc = f"{county}, {state}" if county and state else state if state else county
+        # Query CDC BEAM dataset
+        project_id = os.getenv("GOOGLE_CLOUD_PROJECT", "qwiklabs-gcp-00-4a7d408c735c")
         
-        # Generate believable mock data
-        diseases_to_report = [disease] if disease else random.sample(INFECTIOUS_DISEASES, 3)
+        # Build query
+        where_conditions = []
+        if state_abbrev:
+            where_conditions.append(f"State = '{state_abbrev}'")
+        if disease:
+            where_conditions.append(f"LOWER(Pathogen) LIKE LOWER('%{disease}%')")
+        if year:
+            where_conditions.append(f"Year = {year}")
+        else:
+            where_conditions.append("Year = 2025")  # Default to recent data
+        
+        where_clause = " AND ".join(where_conditions) if where_conditions else "Year = 2025"
+        
+        query = f"""
+        SELECT 
+            Year,
+            Month,
+            State,
+            Source_Type,
+            Pathogen,
+            Serotype_or_Species,
+            SUM(Number_of_isolates) as total_cases
+        FROM `{project_id}.beam_report_data_folder.beam_report_data`
+        WHERE {where_clause}
+        GROUP BY Year, Month, State, Source_Type, Pathogen, Serotype_or_Species
+        ORDER BY total_cases DESC
+        LIMIT 50
+        """
+        
+        # Execute query
+        try:
+            application_default_credentials, _ = google.auth.default()
+            credentials_config = BigQueryCredentialsConfig(
+                credentials=application_default_credentials
+            )
+            tool_config = BigQueryToolConfig(write_mode=WriteMode.BLOCKED)
+            
+            bigquery_toolset = BigQueryToolset(
+                credentials_config=credentials_config, 
+                bigquery_tool_config=tool_config
+            )
+            
+            result = bigquery_toolset.execute_sql(
+                project_id=project_id,
+                query=query
+            )
+            
+            if result.status == "success" and result.data:
+                # Process real data
+                report_data = []
+                total_cases = 0
+                
+                for row in result.data[:10]:  # Top 10 pathogens
+                    cases = int(row.get('total_cases', 0))
+                    pathogen = row.get('Pathogen', 'Unknown')
+                    source = row.get('Source_Type', 'Unknown')
+                    
+                    report_data.append({
+                        "disease": pathogen,
+                        "cases": cases,
+                        "source": source,
+                        "serotype": row.get('Serotype_or_Species', 'N/A')
+                    })
+                    total_cases += cases
+                
+                location_desc = f"{state}" if state else "All States"
+                year_text = f" in {year}" if year else " in 2025"
+                
+                report = f"""Infectious Disease Report for {location_desc}{year_text}:
+(Data from CDC BEAM Dashboard via BigQuery)
+
+Total Cases Reported: {total_cases}
+
+Disease Breakdown:"""
+                
+                for data in report_data:
+                    report += f"""
+- {data['disease']}: {data['cases']} isolates (Source: {data['source']})"""
+                
+                report += f"""
+
+Data Source: CDC BEAM Dashboard Report
+Note: Data represents laboratory-confirmed isolates reported to surveillance systems."""
+                
+                return {
+                    "status": "success",
+                    "report": report,
+                    "data": {
+                        "location": location_desc,
+                        "total_cases": total_cases,
+                        "diseases": report_data
+                    }
+                }
+            else:
+                # Fallback to mock data if query fails
+                raise Exception("No data returned from BigQuery")
+                
+        except Exception as query_error:
+            print(f"[DISEASE] BigQuery error: {query_error}, using mock data")
+            # Generate mock data as fallback
+            location_desc = f"{county}, {state}" if county and state else state if state else "Demo Location"
+            diseases_to_report = [disease] if disease else random.sample(INFECTIOUS_DISEASES, 3)
         
         report_data = []
         total_cases = 0
         
         for disease_name in diseases_to_report:
             cases = random.randint(15, 250)
-            hospitalizations = int(cases * random.uniform(0.05, 0.15))
-            trend = random.choice(["increasing", "decreasing", "stable"])
-            
             report_data.append({
                 "disease": disease_name,
                 "cases": cases,
-                "hospitalizations": hospitalizations,
-                "trend": trend,
-                "last_updated": "2021-11-08"
+                    "source": "Mock Data"
             })
             total_cases += cases
         
-        year_text = f" in {year}" if year else " (recent data as of Nov 2021)"
+            year_text = f" in {year}" if year else " (demo data)"
         
         report = f"""Infectious Disease Report for {location_desc}{year_text}:
+(Demo Mode - Real data requires BigQuery access)
 
 Total Cases Reported: {total_cases}
 
@@ -403,13 +573,7 @@ Disease Breakdown:"""
         
         for data in report_data:
             report += f"""
-- {data['disease']}: {data['cases']} cases, {data['hospitalizations']} hospitalizations (trend: {data['trend']})"""
-        
-        report += f"""
-
-Data Source: County Health Department via BigQuery
-Last Updated: 2021-11-08
-Note: Data represents reported cases and may not reflect total community spread."""
+- {data['disease']}: {data['cases']} cases"""
         
         return {
             "status": "success",
@@ -677,7 +841,7 @@ if __name__ == "__main__":
     
     # Check if user wants example queries or interactive mode
     if len(sys.argv) > 1 and sys.argv[1] == '--examples':
-        run_community_health_queries()
+    run_community_health_queries()
     else:
         # Default to interactive mode
         run_interactive()
