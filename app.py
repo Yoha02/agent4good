@@ -10,6 +10,12 @@ import json
 # Load environment variables
 load_dotenv()
 
+# Ensure API key is set before importing agent
+GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY') or os.getenv('GEMINI_API_KEY')
+if GOOGLE_API_KEY:
+    os.environ['GOOGLE_API_KEY'] = GOOGLE_API_KEY
+    print(f"[OK] API key configured for agent")
+
 # Import the ADK agent
 try:
     from multi_tool_agent_bquery_tools.agent import call_agent as call_adk_agent
@@ -17,6 +23,8 @@ try:
     print("[OK] ADK Agent loaded successfully!")
 except Exception as e:
     print(f"[WARNING] ADK Agent not available: {e}")
+    import traceback
+    traceback.print_exc()
     ADK_AGENT_AVAILABLE = False
 
 app = Flask(__name__)
