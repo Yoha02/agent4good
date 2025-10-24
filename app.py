@@ -333,12 +333,88 @@ def agent_chat():
             }), 500
 
 
+@app.route('/api/generate-psa-video', methods=['POST'])
+def generate_psa_video_endpoint():
+    """Generate PSA video from current health data"""
+    try:
+        request_data = request.get_json()
+        location = request_data.get('location', 'California')
+        data_type = request_data.get('data_type', 'air_quality')  # or 'disease'
+        
+        # Get current health data
+        if data_type == 'air_quality':
+            health_data = agent.query_air_quality_data(state=location, days=1)
+            if health_data:
+                df = pd.DataFrame(health_data)
+                avg_aqi = df['aqi'].mean() if 'aqi' in df else 50
+                severity = "good" if avg_aqi <= 50 else "moderate" if avg_aqi <= 100 else "unhealthy"
+            else:
+                avg_aqi = 50
+                severity = "good"
+        else:
+            # Disease data
+            avg_aqi = 0
+            severity = "moderate"
+        
+        # Call agent to generate action line and video
+        prompt = f"Create a PSA video for {location} about {data_type}. Current severity: {severity}, AQI: {avg_aqi}"
+        
+        if ADK_AGENT_AVAILABLE:
+            response = call_adk_agent(prompt)
+            
+            return jsonify({
+                'success': True,
+                'action_line': 'Generated action line here',  # Extract from response
+                'status': 'processing',
+                'message': response,
+                'note': 'PSA video generation initiated'
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'PSA video generation requires ADK agent'
+            }), 503
+            
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/approve-and-post', methods=['POST'])
+def approve_and_post_video():
+    """Post approved video to Twitter"""
+    try:
+        request_data = request.get_json()
+        video_uri = request_data.get('video_uri')
+        message = request_data.get('message')
+        hashtags = request_data.get('hashtags', [])
+        
+        # TODO: Implement actual Twitter posting
+        # For now, simulate success
+        
+        return jsonify({
+            'success': True,
+            'tweet_url': 'https://twitter.com/CommunityHealth/status/123456',
+            'message': 'Video posted successfully (simulation mode)',
+            'note': 'Add Twitter API credentials to enable real posting'
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
 @app.route('/health')
 def health_check():
     """Health check endpoint for Cloud Run"""
     return jsonify({
         'status': 'healthy',
-        'adk_agent': 'available' if ADK_AGENT_AVAILABLE else 'unavailable'
+        'adk_agent': 'available' if ADK_AGENT_AVAILABLE else 'unavailable',
+        'psa_video_feature': 'enabled'  # Will be dynamic later
     }), 200
 
 
