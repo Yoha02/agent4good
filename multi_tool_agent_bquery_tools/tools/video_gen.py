@@ -188,50 +188,45 @@ Keep composition simple and calm; focus attention on the icon and the single lin
         }
 
 
-def generate_video_with_veo3(veo_prompt: str, output_gcs_path: str) -> dict:
+def generate_video_with_veo3(veo_prompt: str, location: str = "California") -> dict:
     """
     Calls Google Veo 3 API to generate video.
     
     Args:
         veo_prompt: The formatted Veo prompt text
-        output_gcs_path: GCS path for output (e.g., "gs://bucket/videos/psa-123")
+        location: Location name for filename
     
     Returns:
         dict: {
             "status": "success" | "processing" | "error",
             "operation_id": "projects/.../operations/...",
-            "video_uri": "gs://bucket/path/video.mp4" (when complete),
+            "video_uri": "gs://bucket/path/video.mp4",
             "estimated_time": 60-90 seconds
         }
     """
     try:
-        # This will be implemented with actual Veo 3 API
-        # For now, return a placeholder response
+        # Import and use the Veo3Client
+        from ..integrations.veo3_client import get_veo3_client
         
-        # TODO: Implement actual Veo 3 API call
-        # from google import genai
-        # client = genai.Client()
-        # operation = client.models.generate_videos(
-        #     model="veo-3.0-generate-001",
-        #     prompt=veo_prompt,
-        #     config=GenerateVideosConfig(
-        #         aspect_ratio="9:16",
-        #         output_gcs_uri=output_gcs_path,
-        #     ),
-        # )
+        veo_client = get_veo3_client()
         
+        # Generate filename based on location and timestamp
         import time
-        operation_id = f"operation-{int(time.time())}"
+        timestamp = int(time.time())
+        safe_location = location.replace(' ', '-').lower()
+        output_filename = f"psa-{safe_location}-{timestamp}.mp4"
         
-        return {
-            "status": "processing",
-            "operation_id": operation_id,
-            "message": "Video generation started. This takes 60-90 seconds.",
-            "estimated_time": 75,
-            "output_path": output_gcs_path
-        }
+        # Call Veo 3 to generate video
+        result = veo_client.generate_video(
+            prompt=veo_prompt,
+            output_filename=output_filename
+        )
+        
+        return result
         
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return {
             "status": "error",
             "error_message": f"Error calling Veo 3 API: {str(e)}"
@@ -254,19 +249,13 @@ def check_video_generation_status(operation_id: str) -> dict:
         }
     """
     try:
-        # TODO: Implement actual operation polling
-        # from google import genai
-        # client = genai.Client()
-        # operation = client.operations.get(operation_id)
-        # if operation.done:
-        #     return {"status": "complete", "video_uri": operation.result.video.uri}
+        # Use the Veo3Client to check status
+        from ..integrations.veo3_client import get_veo3_client
         
-        # Placeholder response
-        return {
-            "status": "processing",
-            "progress": 50,
-            "message": "Video is being generated..."
-        }
+        veo_client = get_veo3_client()
+        result = veo_client.check_operation_status(operation_id)
+        
+        return result
         
     except Exception as e:
         return {

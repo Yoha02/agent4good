@@ -24,17 +24,19 @@ class Veo3Client:
     def _initialize_client(self):
         """Initialize the Veo 3 client"""
         try:
-            # TODO: Implement actual client initialization
-            # from google import genai
-            # self.client = genai.Client(
-            #     vertexai=True,
-            #     project=self.project_id,
-            #     location=self.location
-            # )
-            print(f"[VEO3] Client initialized (simulation mode)")
+            from google import genai
+            
+            # Initialize with Vertex AI
+            self.client = genai.Client(
+                vertexai=True,
+                project=self.project_id,
+                location=self.location
+            )
+            print(f"[VEO3] Client initialized successfully")
             print(f"[VEO3] Project: {self.project_id}, Location: {self.location}")
         except Exception as e:
             print(f"[VEO3] Warning: Could not initialize client: {e}")
+            print(f"[VEO3] Falling back to simulation mode")
             self.client = None
     
     def generate_video(self, prompt: str, output_filename: Optional[str] = None) -> Dict:
@@ -60,40 +62,50 @@ class Veo3Client:
             
             output_gcs_uri = f"gs://{self.gcs_bucket}/{self.gcs_prefix}{output_filename}"
             
-            # TODO: Implement actual Veo 3 API call
-            # from google.genai.types import GenerateVideosConfig
-            # 
-            # operation = self.client.models.generate_videos(
-            #     model="veo-3.0-generate-001",
-            #     prompt=prompt,
-            #     config=GenerateVideosConfig(
-            #         aspect_ratio="9:16",  # Vertical for social media
-            #         output_gcs_uri=output_gcs_uri,
-            #     ),
-            # )
-            # 
-            # return {
-            #     "operation_id": operation.name,
-            #     "status": "processing",
-            #     "output_gcs_uri": output_gcs_uri,
-            #     "estimated_seconds": 75
-            # }
+            # Check if client is initialized
+            if not self.client:
+                print(f"[VEO3] Client not available, using simulation mode")
+                operation_id = f"projects/{self.project_id}/operations/veo-sim-{int(time.time())}"
+                return {
+                    "operation_id": operation_id,
+                    "status": "processing",
+                    "output_gcs_uri": output_gcs_uri,
+                    "estimated_seconds": 75,
+                    "note": "Simulation mode - Veo 3 client not initialized"
+                }
             
-            # Simulation response
-            operation_id = f"projects/{self.project_id}/operations/veo-{int(time.time())}"
+            # Call real Veo 3 API
+            from google.genai.types import GenerateVideosConfig
             
-            print(f"[VEO3] Video generation started")
-            print(f"[VEO3] Output will be: {output_gcs_uri}")
+            print(f"[VEO3] Calling Veo 3 API...")
+            print(f"[VEO3] Prompt length: {len(prompt)} characters")
+            print(f"[VEO3] Output URI: {output_gcs_uri}")
+            
+            operation = self.client.models.generate_videos(
+                model="veo-3-fast-generate",  # Use fast model for 8-sec videos
+                prompt=prompt,
+                config=GenerateVideosConfig(
+                    aspect_ratio="9:16",  # Vertical for social media (1080x1920)
+                    output_gcs_uri=output_gcs_uri,
+                ),
+            )
+            
+            print(f"[VEO3] Video generation started!")
+            print(f"[VEO3] Operation ID: {operation.name}")
             
             return {
-                "operation_id": operation_id,
+                "operation_id": operation.name,
                 "status": "processing",
                 "output_gcs_uri": output_gcs_uri,
-                "estimated_seconds": 75,
-                "note": "Simulation mode - enable Veo 3 API to generate real videos"
+                "estimated_seconds": 90,  # Veo 3 typically takes 60-120 seconds
+                "message": "Video generation in progress"
             }
             
         except Exception as e:
+            print(f"[VEO3] Error: {e}")
+            import traceback
+            traceback.print_exc()
+            
             return {
                 "status": "error",
                 "error_message": f"Veo 3 generation error: {str(e)}"
@@ -114,29 +126,49 @@ class Veo3Client:
             }
         """
         try:
-            # TODO: Implement actual status checking
-            # operation = self.client.operations.get(operation_id)
-            # 
-            # if operation.done:
-            #     if operation.error:
-            #         return {"status": "error", "error_message": operation.error.message}
-            #     return {
-            #         "status": "complete",
-            #         "video_uri": operation.result.generated_videos[0].video.uri,
-            #         "progress": 100
-            #     }
-            # else:
-            #     # Estimate progress based on elapsed time
-            #     return {"status": "processing", "progress": 50}
+            if not self.client:
+                # Simulation mode
+                return {
+                    "status": "processing",
+                    "progress": 50,
+                    "message": "Video generation in progress (simulation)"
+                }
             
-            # Simulation response
-            return {
-                "status": "processing",
-                "progress": 50,
-                "message": "Video generation in progress (simulation)"
-            }
+            # Get operation status from Veo 3
+            operation = self.client.operations.get(operation_id)
+            
+            if operation.done:
+                # Operation completed
+                if operation.error:
+                    print(f"[VEO3] Generation failed: {operation.error.message}")
+                    return {
+                        "status": "error",
+                        "error_message": operation.error.message
+                    }
+                
+                # Success - extract video URI
+                video_uri = operation.result.generated_videos[0].video.uri
+                print(f"[VEO3] Video generation complete!")
+                print(f"[VEO3] Video URI: {video_uri}")
+                
+                return {
+                    "status": "complete",
+                    "video_uri": video_uri,
+                    "preview_url": self.get_public_url(video_uri),
+                    "progress": 100
+                }
+            else:
+                # Still processing - estimate progress
+                # Veo 3 typically takes 60-90 seconds
+                print(f"[VEO3] Video still generating...")
+                return {
+                    "status": "processing",
+                    "progress": 50,  # Could estimate based on elapsed time
+                    "message": "Video generation in progress"
+                }
             
         except Exception as e:
+            print(f"[VEO3] Status check error: {e}")
             return {
                 "status": "error",
                 "error_message": f"Status check error: {str(e)}"
