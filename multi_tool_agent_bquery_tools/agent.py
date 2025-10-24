@@ -36,6 +36,7 @@ COUNTY_STATE_MAPPING = {
     "Dallas": "Texas",
     "Wayne": "Michigan",
     "Santa Clara": "California",
+    "Alameda": "California",
     "Broward": "Florida",
     "Riverside": "California",
     "Queens": "New York",
@@ -443,6 +444,7 @@ def get_infectious_disease_data(county: Optional[str] = None, state: Optional[st
                 'Wisconsin': 'WI', 'Wyoming': 'WY'
             }
             state_abbrev = state_map.get(state, state[:2].upper() if len(state) > 2 else state.upper())
+            print(f"[DISEASE] Querying for state: {state} -> {state_abbrev}")
         
         # Query CDC BEAM dataset
         project_id = os.getenv("GOOGLE_CLOUD_PROJECT", "qwiklabs-gcp-00-4a7d408c735c")
@@ -545,7 +547,9 @@ Note: Data represents laboratory-confirmed isolates reported to surveillance sys
                 raise Exception("No data returned from BigQuery")
                 
         except Exception as query_error:
-            print(f"[DISEASE] BigQuery error: {query_error}, using mock data")
+            print(f"[DISEASE] BigQuery error: {query_error}")
+            print(f"[DISEASE] Query was: {query[:200]}...")
+            print(f"[DISEASE] Falling back to mock data")
             # Generate mock data as fallback
             location_desc = f"{county}, {state}" if county and state else state if state else "Demo Location"
             diseases_to_report = [disease] if disease else random.sample(INFECTIOUS_DISEASES, 3)
