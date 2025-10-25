@@ -82,7 +82,7 @@ class Veo3Client:
             
             # Use Veo 3.0 Fast model - has 1/2 RPM available
             operation = self.client.models.generate_videos(
-                model="veo-3.0-fast-generate",
+                model="veo-3.0-fast-generate-001",
                 prompt=prompt,
                 config=types.GenerateVideosConfig(
                     aspect_ratio="9:16",
