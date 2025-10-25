@@ -14,7 +14,15 @@ ENV/
 .pytest_cache/
 htmlcov/
 .coverage
+
+# Google Cloud / BigQuery Credentials
 service-account-key.json
+bigquery-credentials.json
+*-credentials.json
+*.json.key
+gcp-*.json
+
+# Data files
 *.zip
 
 # Integration documentation and tests (keep local only)
@@ -23,3 +31,5 @@ TWITTER_QUICK_START.md
 INTEGRATION_PLAN.md
 INTEGRATION_SUMMARY.md
 test_integration.py
+data/report_uploads/
+data/community_reports.csv

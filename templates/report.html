@@ -192,23 +192,23 @@
                 
                 <!-- Navigation Links -->
                 <div class="hidden md:flex space-x-8">
-                    <a href="/#dashboard" class="nav-link text-gray-300 hover:text-emerald-400 transition-colors duration-300 font-medium">
+                    <a href="/" onclick="window.location.href='/'; return false;" class="nav-link text-gray-300 hover:text-emerald-400 transition-colors duration-300 font-medium cursor-pointer">
                         <i class="fas fa-chart-line mr-2"></i>Dashboard
                     </a>
-                    <a href="/#air-quality" class="nav-link text-gray-300 hover:text-emerald-400 transition-colors duration-300 font-medium">
+                    <a href="/" onclick="window.location.href='/'; return false;" class="nav-link text-gray-300 hover:text-emerald-400 transition-colors duration-300 font-medium cursor-pointer">
                         <i class="fas fa-wind mr-2"></i>Air Quality
                     </a>
-                    <a href="/#infectious" class="nav-link text-gray-300 hover:text-emerald-400 transition-colors duration-300 font-medium">
+                    <a href="/" onclick="window.location.href='/'; return false;" class="nav-link text-gray-300 hover:text-emerald-400 transition-colors duration-300 font-medium cursor-pointer">
                         <i class="fas fa-virus mr-2"></i>Infectious Diseases
                     </a>
-                    <a href="/#insights" class="nav-link text-gray-300 hover:text-emerald-400 transition-colors duration-300 font-medium">
+                    <a href="/" onclick="window.location.href='/'; return false;" class="nav-link text-gray-300 hover:text-emerald-400 transition-colors duration-300 font-medium cursor-pointer">
                         <i class="fas fa-robot mr-2"></i>AI Insights
                     </a>
                 </div>
                 
                 <!-- CTA Buttons -->
                 <div class="hidden md:flex space-x-4">
-                    <button onclick="window.location.href='/report'" class="bg-emerald-500 hover:bg-emerald-600 text-white px-6 py-2 rounded-lg font-semibold transition-all duration-300 transform hover:scale-105 flex items-center space-x-2">
+                    <button onclick="window.location.href='/report'" class="bg-red-600 hover:bg-red-700 text-white px-6 py-2 rounded-lg font-semibold transition-all duration-300 transform hover:scale-105 flex items-center space-x-2">
                         <i class="fas fa-flag"></i>
                         <span>Report Issue</span>
                     </button>
@@ -231,20 +231,20 @@
         <!-- Mobile Menu -->
         <div id="mobileMenu" class="md:hidden hidden bg-navy-800/95 backdrop-blur-lg border-t border-white/20">
             <div class="px-4 py-4 space-y-3">
-                <a href="/#dashboard" class="block text-gray-300 hover:text-emerald-400 transition-colors duration-300 font-medium py-2">
+                <a href="/" onclick="window.location.href='/'; return false;" class="block text-gray-300 hover:text-emerald-400 transition-colors duration-300 font-medium py-2 cursor-pointer">
                     <i class="fas fa-chart-line mr-3"></i>Dashboard
                 </a>
-                <a href="/#air-quality" class="block text-gray-300 hover:text-emerald-400 transition-colors duration-300 font-medium py-2">
+                <a href="/" onclick="window.location.href='/'; return false;" class="block text-gray-300 hover:text-emerald-400 transition-colors duration-300 font-medium py-2 cursor-pointer">
                     <i class="fas fa-wind mr-3"></i>Air Quality
                 </a>
-                <a href="/#infectious" class="block text-gray-300 hover:text-emerald-400 transition-colors duration-300 font-medium py-2">
+                <a href="/" onclick="window.location.href='/'; return false;" class="block text-gray-300 hover:text-emerald-400 transition-colors duration-300 font-medium py-2 cursor-pointer">
                     <i class="fas fa-virus mr-3"></i>Infectious Diseases
                 </a>
-                <a href="/#insights" class="block text-gray-300 hover:text-emerald-400 transition-colors duration-300 font-medium py-2">
+                <a href="/" onclick="window.location.href='/'; return false;" class="block text-gray-300 hover:text-emerald-400 transition-colors duration-300 font-medium py-2 cursor-pointer">
                     <i class="fas fa-robot mr-3"></i>AI Insights
                 </a>
                 <div class="pt-4 border-t border-white/20 space-y-2">
-                    <button onclick="window.location.href='/report'" class="w-full bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2 rounded-lg font-semibold transition-all duration-300">
+                    <button onclick="window.location.href='/report'" class="w-full bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-semibold transition-all duration-300">
                         <i class="fas fa-flag mr-2"></i>Report Issue
                     </button>
                     <button onclick="window.location.href='/officials-login'" class="w-full bg-navy-600 hover:bg-navy-700 text-white px-4 py-2 rounded-lg font-semibold transition-all duration-300">
@@ -540,27 +540,27 @@
                     </div>
                 </div>
 
-                <!-- Photo Upload -->
+                <!-- Photo/Video Upload -->
                 <div class="form-section rounded-xl p-6 mb-8 border border-gray-200">
                     <h3 class="text-xl font-semibold text-gray-800 mb-4 flex items-center">
                         <i class="fas fa-camera mr-3 text-blue-600"></i>
-                        Photos (Optional)
+                        Photos & Videos (Optional)
                     </h3>
-                    <p class="text-sm text-gray-600 mb-4">Upload up to 3 photos to help document the issue</p>
+                    <p class="text-sm text-gray-600 mb-4">Upload up to 10 photos or videos to help document the issue</p>
                     
                     <!-- Upload Zone -->
                     <div id="uploadZone" class="upload-zone flex flex-col items-center justify-center cursor-pointer">
                         <i class="fas fa-cloud-upload-alt text-4xl text-gray-400 mb-4"></i>
-                        <p class="text-lg font-medium text-gray-600 mb-2">Drag & drop photos here</p>
+                        <p class="text-lg font-medium text-gray-600 mb-2">Drag & drop photos/videos here</p>
                         <p class="text-sm text-gray-500">or click to select files</p>
-                        <p class="text-xs text-gray-400 mt-2">PNG, JPG up to 5MB each</p>
+                        <p class="text-xs text-gray-400 mt-2">PNG, JPG, MP4, MOV up to 50MB each (max 10 files)</p>
                     </div>
                     
-                    <input type="file" id="photoInput" accept="image/*" multiple class="hidden">
+                    <input type="file" id="photoInput" accept="image/*,video/*" multiple class="hidden">
                     
-                    <!-- Photo Previews -->
-                    <div id="photoPreview" class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6 hidden">
-                        <!-- Dynamic photo previews will be inserted here -->
+                    <!-- Media Previews -->
+                    <div id="photoPreview" class="grid grid-cols-2 md:grid-cols-5 gap-4 mt-6 hidden">
+                        <!-- Dynamic media previews will be inserted here -->
                     </div>
                 </div>
 
