@@ -169,33 +169,54 @@ class Veo3Client:
                 # Success - extract video
                 generated_video = operation.result.generated_videos[0].video
                 
-                # Check if we have video_bytes (Google AI API) or uri (Vertex AI)
-                if hasattr(generated_video, 'video_bytes') and generated_video.video_bytes:
-                    # Google AI API mode - video returned as bytes
-                    print(f"[VEO3] Video generation complete! (bytes mode)")
-                    print(f"[VEO3] Video size: {len(generated_video.video_bytes)} bytes")
-                    
-                    # Save bytes to GCS or return directly
-                    video_data = generated_video.video_bytes
-                    
-                    return {
-                        "status": "complete",
-                        "video_bytes": video_data,
-                        "video_size": len(video_data),
-                        "mime_type": generated_video.mime_type,
-                        "progress": 100,
-                        "note": "Video returned as bytes - can be saved or streamed"
-                    }
-                elif hasattr(generated_video, 'uri') and generated_video.uri:
-                    # Vertex AI mode - video saved to GCS
+                # Get video URI (Google AI API always returns URI)
+                if hasattr(generated_video, 'uri') and generated_video.uri:
                     video_uri = generated_video.uri
-                    print(f"[VEO3] Video generation complete! (GCS mode)")
+                    print(f"[VEO3] Video generation complete!")
                     print(f"[VEO3] Video URI: {video_uri}")
                     
+                    # AUTOMATIC WORKFLOW: Download and upload to GCS
+                    api_key = os.getenv('GOOGLE_API_KEY')
+                    if api_key:
+                        print(f"[VEO3] Starting automatic download and GCS upload...")
+                        
+                        # Download video
+                        video_bytes = self.download_video_from_uri(video_uri, api_key)
+                        
+                        if video_bytes:
+                            # Upload to GCS
+                            gcs_result = self.upload_to_gcs(video_bytes)
+                            
+                            if gcs_result['status'] == 'success':
+                                # Return GCS URL (ready for UI and Twitter!)
+                                return {
+                                    "status": "complete",
+                                    "video_url": gcs_result['public_url'],  # For UI embedding
+                                    "gcs_uri": gcs_result['gcs_uri'],       # For Twitter upload
+                                    "video_size": gcs_result['video_size'],
+                                    "original_uri": video_uri,
+                                    "progress": 100,
+                                    "message": "Video ready and uploaded to GCS"
+                                }
+                    
+                    # Fallback if download/upload fails
                     return {
                         "status": "complete",
                         "video_uri": video_uri,
-                        "preview_url": self.get_public_url(video_uri),
+                        "progress": 100,
+                        "note": "Video generated but not uploaded to GCS"
+                    }
+                    
+                elif hasattr(generated_video, 'video_bytes') and generated_video.video_bytes:
+                    # Unlikely with Google AI API, but handle it
+                    video_data = generated_video.video_bytes
+                    gcs_result = self.upload_to_gcs(video_data)
+                    
+                    return {
+                        "status": "complete",
+                        "video_url": gcs_result['public_url'],
+                        "gcs_uri": gcs_result['gcs_uri'],
+                        "video_size": len(video_data),
                         "progress": 100
                     }
                 else:
