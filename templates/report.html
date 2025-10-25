@@ -324,59 +324,6 @@
                     <p class="text-gray-600">Your report helps us track and respond to health and environmental issues in your area</p>
                 </div>
 
-                <!-- Report Type Selection -->
-                <div class="form-section rounded-xl p-6 mb-8 border border-gray-200">
-                    <h3 class="text-xl font-semibold text-gray-800 mb-4 flex items-center">
-                        <i class="fas fa-list-alt mr-3 text-blue-600"></i>
-                        Report Type
-                    </h3>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <label class="report-type-option cursor-pointer">
-                            <input type="radio" name="reportType" value="health" class="hidden" required>
-                            <div class="border-2 border-gray-200 rounded-lg p-4 transition-all hover:border-blue-400 hover:bg-blue-50">
-                                <div class="flex items-center mb-2">
-                                    <i class="fas fa-heartbeat text-2xl text-red-500 mr-3"></i>
-                                    <span class="font-semibold text-gray-800">Health Symptoms</span>
-                                </div>
-                                <p class="text-sm text-gray-600">Respiratory issues, allergic reactions, illness outbreaks</p>
-                            </div>
-                        </label>
-                        
-                        <label class="report-type-option cursor-pointer">
-                            <input type="radio" name="reportType" value="environmental" class="hidden" required>
-                            <div class="border-2 border-gray-200 rounded-lg p-4 transition-all hover:border-green-400 hover:bg-green-50">
-                                <div class="flex items-center mb-2">
-                                    <i class="fas fa-leaf text-2xl text-green-500 mr-3"></i>
-                                    <span class="font-semibold text-gray-800">Environmental</span>
-                                </div>
-                                <p class="text-sm text-gray-600">Air quality, water issues, pollution, hazardous materials</p>
-                            </div>
-                        </label>
-                        
-                        <label class="report-type-option cursor-pointer">
-                            <input type="radio" name="reportType" value="weather" class="hidden" required>
-                            <div class="border-2 border-gray-200 rounded-lg p-4 transition-all hover:border-blue-400 hover:bg-blue-50">
-                                <div class="flex items-center mb-2">
-                                    <i class="fas fa-cloud-rain text-2xl text-blue-500 mr-3"></i>
-                                    <span class="font-semibold text-gray-800">Weather Incident</span>
-                                </div>
-                                <p class="text-sm text-gray-600">Severe weather, flooding, extreme temperatures</p>
-                            </div>
-                        </label>
-                        
-                        <label class="report-type-option cursor-pointer">
-                            <input type="radio" name="reportType" value="emergency" class="hidden" required>
-                            <div class="border-2 border-gray-200 rounded-lg p-4 transition-all hover:border-red-400 hover:bg-red-50">
-                                <div class="flex items-center mb-2">
-                                    <i class="fas fa-exclamation-triangle text-2xl text-red-500 mr-3"></i>
-                                    <span class="font-semibold text-gray-800">Emergency</span>
-                                </div>
-                                <p class="text-sm text-gray-600">Fire, chemical spills, infrastructure damage</p>
-                            </div>
-                        </label>
-                    </div>
-                </div>
-
                 <!-- Location Information -->
                 <div class="form-section rounded-xl p-6 mb-8 border border-gray-200">
                     <h3 class="text-xl font-semibold text-gray-800 mb-4 flex items-center">
@@ -459,6 +406,59 @@
                             <i class="fas fa-lock mr-1"></i>
                             Optional - only provide if you want to share a specific location
                         </p>
+                    </div>
+                </div>
+
+                <!-- Report Type Selection -->
+                <div class="form-section rounded-xl p-6 mb-8 border border-gray-200">
+                    <h3 class="text-xl font-semibold text-gray-800 mb-4 flex items-center">
+                        <i class="fas fa-list-alt mr-3 text-blue-600"></i>
+                        Report Type
+                    </h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <label class="report-type-option cursor-pointer">
+                            <input type="radio" name="reportType" value="health" class="hidden" required>
+                            <div class="border-2 border-gray-200 rounded-lg p-4 transition-all hover:border-blue-400 hover:bg-blue-50">
+                                <div class="flex items-center mb-2">
+                                    <i class="fas fa-heartbeat text-2xl text-red-500 mr-3"></i>
+                                    <span class="font-semibold text-gray-800">Health Symptoms</span>
+                                </div>
+                                <p class="text-sm text-gray-600">Respiratory issues, allergic reactions, illness outbreaks</p>
+                            </div>
+                        </label>
+                        
+                        <label class="report-type-option cursor-pointer">
+                            <input type="radio" name="reportType" value="environmental" class="hidden" required>
+                            <div class="border-2 border-gray-200 rounded-lg p-4 transition-all hover:border-green-400 hover:bg-green-50">
+                                <div class="flex items-center mb-2">
+                                    <i class="fas fa-leaf text-2xl text-green-500 mr-3"></i>
+                                    <span class="font-semibold text-gray-800">Environmental</span>
+                                </div>
+                                <p class="text-sm text-gray-600">Air quality, water issues, pollution, hazardous materials</p>
+                            </div>
+                        </label>
+                        
+                        <label class="report-type-option cursor-pointer">
+                            <input type="radio" name="reportType" value="weather" class="hidden" required>
+                            <div class="border-2 border-gray-200 rounded-lg p-4 transition-all hover:border-blue-400 hover:bg-blue-50">
+                                <div class="flex items-center mb-2">
+                                    <i class="fas fa-cloud-rain text-2xl text-blue-500 mr-3"></i>
+                                    <span class="font-semibold text-gray-800">Weather Incident</span>
+                                </div>
+                                <p class="text-sm text-gray-600">Severe weather, flooding, extreme temperatures</p>
+                            </div>
+                        </label>
+                        
+                        <label class="report-type-option cursor-pointer">
+                            <input type="radio" name="reportType" value="emergency" class="hidden" required>
+                            <div class="border-2 border-gray-200 rounded-lg p-4 transition-all hover:border-red-400 hover:bg-red-50">
+                                <div class="flex items-center mb-2">
+                                    <i class="fas fa-exclamation-triangle text-2xl text-red-500 mr-3"></i>
+                                    <span class="font-semibold text-gray-800">Emergency</span>
+                                </div>
+                                <p class="text-sm text-gray-600">Fire, chemical spills, gas leaks, infrastructure damage</p>
+                            </div>
+                        </label>
                     </div>
                 </div>
 
