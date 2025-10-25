@@ -17,6 +17,9 @@ htmlcov/
 service-account-key.json
 *.zip
 
-# Twitter integration documentation (keep local only)
+# Integration documentation and tests (keep local only)
 TWITTER_INTEGRATION_COMPLETE.md
 TWITTER_QUICK_START.md
+INTEGRATION_PLAN.md
+INTEGRATION_SUMMARY.md
+test_integration.py
