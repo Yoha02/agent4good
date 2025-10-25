@@ -54,25 +54,26 @@ class AirQualityAgent:
         self.model = genai_model
     
     def query_air_quality_data(self, state=None, days=7):
-        """Query air quality data from public BigQuery EPA dataset"""
+        """Query air quality data from YOUR BigQuery dataset"""
         if not self.bq_client:
             print("[BQ] No BigQuery client, using demo data")
             return self._generate_demo_data(state, days)
             
         try:
-            # Use public EPA dataset
+            # Use YOUR dataset: AirQualityData.Daily-AQI-County-2025
+            project = os.getenv('GOOGLE_CLOUD_PROJECT', 'qwiklabs-gcp-00-4a7d408c735c')
+            
             query = f"""
             SELECT 
-                date_local as date,
-                state_name,
-                county_name,
-                CAST(aqi AS INT64) as aqi,
-                parameter_name,
-                local_site_name as site_name,
-                arithmetic_mean as pm25_mean
-            FROM `bigquery-public-data.epa_historical_air_quality.pm25_frm_daily_summary`
-            WHERE date_local >= DATE_SUB(DATE('2021-11-08'), INTERVAL {days} DAY)
-            AND aqi IS NOT NULL
+                Date_Local as date,
+                State_Name as state_name,
+                County_Name as county_name,
+                CAST(AQI AS INT64) as aqi,
+                'PM2.5' as parameter_name,
+                'Monitoring Station' as site_name
+            FROM `{project}.AirQualityData.Daily-AQI-County-2025`
+            WHERE Date_Local >= DATE_SUB(CURRENT_DATE(), INTERVAL {days} DAY)
+            AND AQI IS NOT NULL
             """
             
             if state:
