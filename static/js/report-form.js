@@ -246,6 +246,152 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('successModal').classList.add('hidden');
     });
 
+    // ZIP Code Lookup Functionality
+    const zipCodeInput = document.getElementById('zipCode');
+    const zipLoadingIndicator = document.getElementById('zipLoadingIndicator');
+    const autoLocationInfo = document.getElementById('autoLocationInfo');
+    const detectedCity = document.getElementById('detectedCity');
+    const detectedState = document.getElementById('detectedState');
+    const detectedCounty = document.getElementById('detectedCounty');
+    const cityInput = document.getElementById('cityInput');
+    const stateInput = document.getElementById('stateInput');
+    const countyInput = document.getElementById('countyInput');
+
+    // Check if all required elements exist
+    if (!zipCodeInput || !zipLoadingIndicator || !autoLocationInfo || 
+        !detectedCity || !detectedState || !detectedCounty ||
+        !cityInput || !stateInput || !countyInput) {
+        console.error('ZIP lookup elements not found in DOM');
+        console.log({zipCodeInput, zipLoadingIndicator, autoLocationInfo, detectedCity, detectedState, detectedCounty, cityInput, stateInput, countyInput});
+        return; // Exit early if elements don't exist
+    }
+
+    // Debounce timer for ZIP lookup
+    let zipLookupTimer;
+
+    zipCodeInput.addEventListener('input', function() {
+        const zipCode = this.value.trim();
+        
+        // Clear previous timer
+        clearTimeout(zipLookupTimer);
+        
+        // Hide location info if ZIP is not complete
+        if (zipCode.length !== 5) {
+            autoLocationInfo.classList.add('hidden');
+            cityInput.value = '';
+            stateInput.value = '';
+            countyInput.value = '';
+            return;
+        }
+        
+        // Show loading indicator
+        zipLoadingIndicator.classList.remove('hidden');
+        
+        // Debounce lookup
+        zipLookupTimer = setTimeout(() => {
+            lookupZipCode(zipCode);
+        }, 500);
+    });
+
+    async function lookupZipCode(zipCode) {
+        try {
+            // Use the existing location service API
+            const response = await fetch(`/api/locations/search?query=${zipCode}`);
+            const data = await response.json();
+            
+            if (data.results && data.results.length > 0) {
+                const location = data.results[0];
+                
+                // Update display
+                detectedCity.textContent = location.city || '-';
+                detectedState.textContent = location.state_name || location.state_code || '-';
+                detectedCounty.textContent = location.county || '-';
+                
+                // Update hidden form fields
+                cityInput.value = location.city || '';
+                stateInput.value = location.state_code || '';
+                countyInput.value = location.county || '';
+                
+                // Show location info
+                autoLocationInfo.classList.remove('hidden');
+                
+                console.log('ZIP lookup successful:', location);
+            } else {
+                // ZIP not found
+                autoLocationInfo.classList.add('hidden');
+                alert('ZIP code not found. Please check and try again.');
+            }
+        } catch (error) {
+            console.error('Error looking up ZIP code:', error);
+            autoLocationInfo.classList.add('hidden');
+            alert('Error looking up ZIP code. Please try again.');
+        } finally {
+            zipLoadingIndicator.classList.add('hidden');
+        }
+    }
+
+    // "Use My Location" Button
+    const useMyLocationBtn = document.getElementById('useMyLocationBtn');
+    
+    useMyLocationBtn.addEventListener('click', async function() {
+        if (!navigator.geolocation) {
+            alert('Geolocation is not supported by your browser.');
+            return;
+        }
+        
+        // Show loading state
+        const originalHTML = this.innerHTML;
+        this.innerHTML = '<i class="fas fa-spinner fa-spin"></i> <span>Detecting...</span>';
+        this.disabled = true;
+        
+        navigator.geolocation.getCurrentPosition(
+            async (position) => {
+                const lat = position.coords.latitude;
+                const lng = position.coords.longitude;
+                
+                try {
+                    // Reverse geocode using Google Maps API (if available) or fallback
+                    // For now, we'll use a simple approach - find nearest ZIP from backend
+                    const response = await fetch(`/api/locations/reverse-geocode?lat=${lat}&lng=${lng}`);
+                    
+                    if (!response.ok) {
+                        throw new Error('Reverse geocoding failed');
+                    }
+                    
+                    const data = await response.json();
+                    
+                    if (data.zipcode) {
+                        // Auto-fill ZIP code
+                        zipCodeInput.value = data.zipcode;
+                        
+                        // Trigger lookup
+                        await lookupZipCode(data.zipcode);
+                    } else {
+                        throw new Error('Could not determine ZIP code from location');
+                    }
+                } catch (error) {
+                    console.error('Geolocation error:', error);
+                    alert('Could not determine your location. Please enter your ZIP code manually.');
+                } finally {
+                    // Restore button
+                    useMyLocationBtn.innerHTML = originalHTML;
+                    useMyLocationBtn.disabled = false;
+                }
+            },
+            (error) => {
+                console.error('Geolocation error:', error);
+                alert('Could not access your location. Please ensure location permissions are enabled and try again.');
+                useMyLocationBtn.innerHTML = originalHTML;
+                useMyLocationBtn.disabled = false;
+            },
+            {
+                enableHighAccuracy: true,
+                timeout: 10000,
+                maximumAge: 0
+            }
+        );
+    });
+
     // Mobile menu toggle
     window.toggleMobileMenu = function() {
         const mobileMenu = document.getElementById('mobileMenu');
