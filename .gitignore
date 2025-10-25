@@ -16,3 +16,7 @@ htmlcov/
 .coverage
 service-account-key.json
 *.zip
+
+# Twitter integration documentation (keep local only)
+TWITTER_INTEGRATION_COMPLETE.md
+TWITTER_QUICK_START.md

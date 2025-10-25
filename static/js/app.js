@@ -2,6 +2,7 @@
 let aqiChart = null;
 let currentState = '';
 let currentDays = 7;
+let lastVideoData = null; // Store video data for Twitter posting
 
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', function() {
@@ -319,6 +320,13 @@ async function askAI() {
     const question = questionInput.value.trim();
     if (!question) return;
 
+    // Check if user is approving Twitter post
+    if (lastVideoData && isTwitterApproval(question)) {
+        await postToTwitter(lastVideoData);
+        questionInput.value = '';
+        return;
+    }
+
     // Add user message
     addMessage(question, 'user');
     questionInput.value = '';
@@ -349,6 +357,11 @@ async function askAI() {
             // Add agent badge if available
             const agentBadge = data.agent ? `<div class="text-xs text-gray-500 mt-1">via ${data.agent}</div>` : '';
             addMessage(data.response + agentBadge, 'bot');
+            
+            // If video generation started, begin polling
+            if (data.task_id) {
+                pollForVideoCompletion(data.task_id);
+            }
         } else {
             addMessage('Sorry, I encountered an error. Please try again.', 'bot');
         }
@@ -357,6 +370,136 @@ async function askAI() {
         addMessage('Sorry, I could not connect to the AI service.', 'bot');
         console.error('Error asking AI:', error);
     }
+}
+
+// Check if user message is Twitter approval
+function isTwitterApproval(message) {
+    const lowerMsg = message.toLowerCase().trim();
+    const approvalPhrases = ['yes', 'yeah', 'sure', 'ok', 'okay', 'post it', 'post to twitter', 'tweet it', 'share it'];
+    return approvalPhrases.some(phrase => lowerMsg === phrase || lowerMsg.includes(phrase));
+}
+
+// Post video to Twitter
+async function postToTwitter(videoData) {
+    const questionInput = document.getElementById('questionInput');
+    
+    // Add user's approval message
+    addMessage('Yes, post to Twitter', 'user');
+    
+    // Show posting message
+    const loadingMsg = addMessage('Posting to Twitter... (This may take 60-90 seconds: downloading video, uploading to Twitter, processing)', 'bot');
+    
+    try {
+        // Create abort controller for timeout (2 minutes)
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 120000); // 2 minutes
+        
+        const response = await fetch('/api/post-to-twitter', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                video_url: videoData.video_url,
+                message: videoData.action_line,
+                hashtags: ['HealthAlert', 'PublicHealth', 'CommunityHealth', 'AirQuality']
+            }),
+            signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
+        const result = await response.json();
+        
+        // Remove loading message
+        loadingMsg.remove();
+        
+        if (result.success) {
+            const successMessage = `✓ Posted to Twitter successfully!\n\nView your post: ${result.tweet_url}\n\n${result.message}`;
+            addMessage(successMessage, 'bot');
+            
+            // Clear video data after posting
+            lastVideoData = null;
+        } else {
+            addMessage(`Sorry, I couldn't post to Twitter: ${result.error}`, 'bot');
+        }
+        
+    } catch (error) {
+        loadingMsg.remove();
+        if (error.name === 'AbortError') {
+            addMessage('Twitter posting timed out. The video may still have been posted. Please check your Twitter feed at https://twitter.com/AI_mmunity', 'bot');
+        } else {
+            addMessage('Sorry, there was an error posting to Twitter. Please try again.', 'bot');
+        }
+        console.error('Twitter posting error:', error);
+    }
+    
+    // Clear input
+    if (questionInput) {
+        questionInput.value = '';
+    }
+}
+
+// Poll for video generation completion
+const activeVideoPolls = new Set();
+
+async function pollForVideoCompletion(taskId) {
+    // Prevent duplicate polling
+    if (activeVideoPolls.has(taskId)) return;
+    activeVideoPolls.add(taskId);
+    
+    console.log(`[VIDEO] Starting poll for task: ${taskId}`);
+    
+    const maxAttempts = 30; // 30 * 5 sec = 2.5 minutes
+    
+    for (let i = 0; i < maxAttempts; i++) {
+        await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5 seconds
+        
+        try {
+            const response = await fetch(`/api/check-video-task/${taskId}`);
+            const status = await response.json();
+            
+            console.log(`[VIDEO] Poll ${i + 1}: ${status.status} - ${status.progress || 0}%`);
+            
+            if (status.status === 'complete') {
+                // Store video data for potential Twitter posting
+                lastVideoData = {
+                    video_url: status.video_url,
+                    action_line: status.action_line,
+                    task_id: taskId
+                };
+                
+                // Video is ready! Add new message with video
+                const videoMessage = `✓ Your PSA video is ready!
+
+[VIDEO:${status.video_url}]
+
+Action: "${status.action_line}"
+
+Would you like me to post this to Twitter?`;
+                
+                addMessage(videoMessage, 'bot');
+                activeVideoPolls.delete(taskId);
+                console.log(`[VIDEO] Task ${taskId} complete!`);
+                console.log('[VIDEO] Video data stored for Twitter posting');
+                return;
+            } else if (status.status === 'error') {
+                // Generation failed
+                addMessage(`Sorry, video generation encountered an error: ${status.error}`, 'bot');
+                activeVideoPolls.delete(taskId);
+                console.error(`[VIDEO] Task ${taskId} failed:`, status.error);
+                return;
+            }
+            // Continue polling if still processing
+        } catch (error) {
+            console.error('[VIDEO] Polling error:', error);
+            // Continue polling despite errors
+        }
+    }
+    
+    // Timeout
+    activeVideoPolls.delete(taskId);
+    addMessage('Video generation timed out. Please try again.', 'bot');
+    console.error(`[VIDEO] Task ${taskId} timeout`);
 }
 
 
@@ -368,13 +511,43 @@ function addMessage(text, type) {
     const messageDiv = document.createElement('div');
     messageDiv.className = `flex items-start space-x-3 ${type === 'user' ? 'justify-end' : ''}`;
     
+    // Parse video markers for bot messages
+    let messageContent = text;
+    let videoHtml = '';
+    
+    if (type === 'bot' && text.includes('[VIDEO:')) {
+        const videoMatch = text.match(/\[VIDEO:(.*?)\]/);
+        if (videoMatch) {
+            const videoUrl = videoMatch[1];
+            
+            // Remove video marker from text
+            messageContent = text.replace(/\[VIDEO:.*?\]/, '').trim();
+            
+            // Create video player
+            videoHtml = `
+                <div class="my-3">
+                    <video 
+                        controls 
+                        class="w-full rounded-lg shadow-lg" 
+                        style="max-width: 300px; max-height: 533px;"
+                        preload="metadata"
+                    >
+                        <source src="${videoUrl}" type="video/mp4">
+                        Your browser doesn't support video playback.
+                    </video>
+                </div>
+            `;
+        }
+    }
+    
     if (type === 'bot') {
         messageDiv.innerHTML = `
             <div class="w-10 h-10 bg-emerald-500 rounded-full flex items-center justify-center flex-shrink-0">
                 <i class="fas fa-robot text-white"></i>
             </div>
-            <div class="bg-white rounded-2xl rounded-tl-none p-4 shadow-md max-w-lg">
-                <p class="text-gray-700 leading-relaxed">${text}</p>
+            <div class="bg-white rounded-2xl rounded-tl-none p-4 shadow-md max-w-2xl">
+                ${videoHtml}
+                <p class="text-gray-700 leading-relaxed whitespace-pre-line">${messageContent}</p>
             </div>
         `;
     } else {
