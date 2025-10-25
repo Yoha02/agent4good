@@ -17,3 +17,6 @@ numpy>=1.24.0
 
 # Utilities
 requests>=2.31.0
+
+# US Location Data - lightweight, no complex dependencies
+zipcodes>=1.2.0
