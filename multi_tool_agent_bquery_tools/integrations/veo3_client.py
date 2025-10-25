@@ -74,15 +74,15 @@ class Veo3Client:
                     "note": "Simulation mode - Veo 3 client not initialized"
                 }
             
-            # Call Veo 3.1 Fast (proven to work!)
+            # Call Veo 3.0 Fast (rate limit available!)
             from google.genai import types
             
-            print(f"[VEO3] Calling Veo 3.1 Fast API...")
+            print(f"[VEO3] Calling Veo 3.0 Fast API (switching due to rate limits)...")
             print(f"[VEO3] Prompt length: {len(prompt)} characters")
             
-            # Use Veo 3.1 Fast model (works with Google AI API)
+            # Use Veo 3.0 Fast model - has 1/2 RPM available
             operation = self.client.models.generate_videos(
-                model="veo-3.1-fast-generate-preview",
+                model="veo-3.0-fast-generate",
                 prompt=prompt,
                 config=types.GenerateVideosConfig(
                     aspect_ratio="9:16",
