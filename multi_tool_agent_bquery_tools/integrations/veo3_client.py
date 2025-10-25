@@ -14,8 +14,8 @@ class Veo3Client:
         """Initialize Veo 3 client with credentials from environment"""
         self.project_id = os.getenv('GOOGLE_CLOUD_PROJECT')
         self.location = os.getenv('GOOGLE_CLOUD_LOCATION', 'us-central1')
-        self.gcs_bucket = os.getenv('GCS_VIDEO_BUCKET', 'psa-videos')
-        self.gcs_prefix = os.getenv('GCS_VIDEO_PREFIX', 'videos/')
+        self.gcs_bucket = os.getenv('GCS_VIDEO_BUCKET', 'qwiklabs-gcp-00-4a7d408c735c-psa-videos')
+        self.gcs_prefix = os.getenv('GCS_VIDEO_PREFIX', 'psa-videos/')
         
         # Will be initialized when actually implementing
         self.client = None
