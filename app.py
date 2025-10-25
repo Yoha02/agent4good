@@ -286,7 +286,7 @@ def health_recommendations():
 
 @app.route('/api/agent-chat', methods=['POST'])
 def agent_chat():
-    """API endpoint for ADK agent chat"""
+    """API endpoint for ADK agent chat - with async video generation support"""
     try:
         if not ADK_AGENT_AVAILABLE:
             return jsonify({
@@ -303,7 +303,69 @@ def agent_chat():
                 'error': 'No question provided'
             }), 400
         
-        # Call the ADK agent
+        # Check if user wants to generate PSA video
+        video_keywords = ['create video', 'generate psa', 'make video', 'create psa', 'video psa']
+        wants_video = any(keyword in question.lower() for keyword in video_keywords)
+        
+        if wants_video:
+            # Start async video generation
+            try:
+                from multi_tool_agent_bquery_tools.async_video_manager import get_video_manager
+                from multi_tool_agent_bquery_tools.integrations.veo3_client import get_veo3_client
+                from multi_tool_agent_bquery_tools.tools.video_gen import generate_action_line, create_veo_prompt
+                
+                # Get current state from request or default to California
+                state = request_data.get('state', currentState if 'currentState' in locals() else 'California')
+                
+                # Get current health data
+                health_data_list = agent.query_air_quality_data(state=state, days=1)
+                
+                if health_data_list:
+                    df = pd.DataFrame(health_data_list)
+                    avg_aqi = df['aqi'].mean() if 'aqi' in df else 50
+                    severity = "good" if avg_aqi <= 50 else "moderate" if avg_aqi <= 100 else "unhealthy" if avg_aqi <= 150 else "very unhealthy"
+                else:
+                    avg_aqi = 50
+                    severity = "moderate"
+                
+                health_data = {
+                    'type': 'air_quality',
+                    'severity': severity,
+                    'metric': avg_aqi,
+                    'location': state,
+                    'specific_concern': 'PM2.5'
+                }
+                
+                # Create task
+                video_manager = get_video_manager()
+                task_id = video_manager.create_task(location=state, data_type='air_quality')
+                
+                # Start background generation
+                veo_client = get_veo3_client()
+                video_manager.start_video_generation(
+                    task_id=task_id,
+                    health_data=health_data,
+                    veo_client=veo_client,
+                    action_line_func=generate_action_line,
+                    veo_prompt_func=create_veo_prompt
+                )
+                
+                # Return immediate response
+                return jsonify({
+                    'success': True,
+                    'response': f"I'll generate a health alert video for {state}. This takes about 60 seconds.\n\nYou can continue chatting while I work on this. I'll notify you when it's ready!\n\nIs there anything else I can help you with?",
+                    'task_id': task_id,
+                    'estimated_time': 60,
+                    'agent': 'ADK Multi-Agent System'
+                })
+                
+            except Exception as video_error:
+                print(f"[CHAT] Video generation error: {video_error}")
+                import traceback
+                traceback.print_exc()
+                # Fall through to normal chat
+        
+        # Normal chat flow
         response = call_adk_agent(question)
         
         return jsonify({
@@ -408,13 +470,37 @@ def approve_and_post_video():
         }), 500
 
 
+@app.route('/api/check-video-task/<task_id>')
+def check_video_task(task_id):
+    """Check status of async video generation task"""
+    try:
+        from multi_tool_agent_bquery_tools.async_video_manager import get_video_manager
+        
+        video_manager = get_video_manager()
+        task = video_manager.get_task(task_id)
+        
+        if task:
+            return jsonify(task)
+        else:
+            return jsonify({
+                'status': 'not_found',
+                'error': 'Task ID not found'
+            }), 404
+            
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'error': str(e)
+        }), 500
+
+
 @app.route('/health')
 def health_check():
     """Health check endpoint for Cloud Run"""
     return jsonify({
         'status': 'healthy',
         'adk_agent': 'available' if ADK_AGENT_AVAILABLE else 'unavailable',
-        'psa_video_feature': 'enabled'  # Will be dynamic later
+        'psa_video_feature': 'enabled'
     }), 200
 
 
