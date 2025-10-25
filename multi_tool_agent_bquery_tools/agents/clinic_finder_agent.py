@@ -1,6 +1,7 @@
 # ./agents/clinic_finder_agent.py
 import random
 from google.adk.agents import Agent
+from google.adk.tools import google_search, AgentTool
 
 GEMINI_MODEL = "gemini-2.0-flash"
 
@@ -37,6 +38,14 @@ def _mock_results(location: str):
     ]
     return [f"{random.choice(fake_names)} – {location.title()}"]
 
+google_search_agent= Agent(
+    name="google_search_agent",
+    model=GEMINI_MODEL,
+    description="Agent to answer questions using Google Search.",
+    instruction="You are agent that can search user query from Internet via tool 'google-search.",
+    tools=[google_search]
+)
+
 clinic_finder_agent = Agent(
     name="clinic_finder_agent",
     model=GEMINI_MODEL,
@@ -45,13 +54,17 @@ clinic_finder_agent = Agent(
         "You are a compassionate Clinic Finder Assistant.\n\n"
         "When users describe a symptom or ask for a doctor, infer the type of specialist "
         "(e.g., rash → dermatologist, cough → pulmonologist, toothache → dentist). "
-        "If they provide a location (city, county, or ZIP), pick 3-5 sample clinics from the pool "
-        "or fabricate realistic names.\n"
-        "For known test cities (Dublin CA, Brooklyn NY, San Jose CA) use the pre-defined examples.\n"
-        "Otherwise invent reasonable clinic names.\n\n"
+        "Ask them to provide location info (city, county, or ZIP)"
+        "Use tool 'google_search_agent' to search online for top 3-5 clinics which can help on user's issue"
+        "List the recommended clinic with reason, for example, this clinic is close, it's 24 hours, it has specialist for the symptom and so on  "
+        # "pick 3-5 sample clinics from the pool "
+        # "or fabricate realistic names.\n"
+        # "For known test cities (Dublin CA, Brooklyn NY, San Jose CA) use the pre-defined examples.\n"
+        # "Otherwise invent reasonable clinic names.\n\n"
         "Format results as a friendly list and end with: "
         "'Would you like me to look up another location or specialist?'"
     ),
+    tools=[AgentTool(google_search_agent)]
 )
 
 # simple helper the model can call internally
