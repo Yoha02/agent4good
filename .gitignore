@@ -14,5 +14,15 @@ ENV/
 .pytest_cache/
 htmlcov/
 .coverage
+
+# Google Cloud / BigQuery Credentials
 service-account-key.json
+bigquery-credentials.json
+*-credentials.json
+*.json.key
+gcp-*.json
+
+# Data files
 *.zip
+data/report_uploads/
+data/community_reports.csv

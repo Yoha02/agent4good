@@ -678,6 +678,154 @@ def officials_dashboard():
     """Public Health Officials dashboard - requires authentication in production"""
     return render_template('officials_dashboard.html')
 
+@app.route('/report')
+def report():
+    """Community report page"""
+    return render_template('report.html')
+
+@app.route('/api/submit-report', methods=['POST'])
+def submit_report():
+    """API endpoint to handle community report submissions"""
+    import csv
+    import uuid
+    from datetime import datetime
+    from werkzeug.utils import secure_filename
+    import os
+    from google.cloud import bigquery
+    
+    try:
+        # Get form data
+        data = request.form
+        
+        # Generate unique report ID
+        report_id = str(uuid.uuid4())
+        timestamp = datetime.utcnow()
+        
+        # Handle file uploads
+        media_files = request.files.getlist('media[]')
+        media_urls = []
+        media_count = len(media_files)
+        
+        # Create uploads directory if it doesn't exist
+        upload_dir = os.path.join('data', 'report_uploads', report_id)
+        os.makedirs(upload_dir, exist_ok=True)
+        
+        # Save uploaded files
+        for file in media_files:
+            if file and file.filename:
+                filename = secure_filename(file.filename)
+                filepath = os.path.join(upload_dir, filename)
+                file.save(filepath)
+                # In production, upload to cloud storage and get URL
+                media_urls.append(f"/uploads/{report_id}/{filename}")
+        
+        # Prepare data for BigQuery
+        row_data = {
+            'report_id': report_id,
+            'report_type': data.get('reportType', ''),
+            'timestamp': timestamp.isoformat() + 'Z',
+            'address': data.get('address', ''),
+            'zip_code': data.get('zipCode', ''),
+            'city': data.get('city', ''),
+            'state': data.get('state', ''),
+            'severity': data.get('severity', ''),
+            'specific_type': data.get('specificType', ''),
+            'description': data.get('description', ''),
+            'people_affected': data.get('peopleAffected', None),
+            'timeframe': data.get('timeframe', ''),
+            'contact_name': data.get('contactName', None),
+            'contact_email': data.get('contactEmail', None),
+            'contact_phone': data.get('contactPhone', None),
+            'is_anonymous': data.get('anonymous') == 'on',
+            'media_urls': media_urls,
+            'media_count': media_count,
+            'ai_media_summary': None,
+            'ai_overall_summary': None,
+            'status': 'pending',
+            'reviewed_by': None,
+            'reviewed_at': None,
+            'notes': None,
+            'latitude': None,
+            'longitude': None
+        }
+        
+        # Try to insert into BigQuery
+        try:
+            project_id = os.getenv('GOOGLE_CLOUD_PROJECT')
+            dataset_id = os.getenv('BIGQUERY_DATASET')
+            table_id = os.getenv('BIGQUERY_TABLE_REPORTS', 'community_reports')
+            
+            if project_id and dataset_id and project_id != 'your-actual-project-id':
+                # Initialize BigQuery client
+                client = bigquery.Client(project=project_id)
+                table_ref = f"{project_id}.{dataset_id}.{table_id}"
+                
+                # Insert row
+                errors = client.insert_rows_json(table_ref, [row_data])
+                
+                if errors:
+                    print(f"[BIGQUERY ERROR] Failed to insert: {errors}")
+                    # Fall back to CSV
+                    save_to_csv(row_data)
+                else:
+                    print(f"[BIGQUERY SUCCESS] Report {report_id} inserted into {table_ref}")
+            else:
+                print("[BIGQUERY] Not configured, saving to CSV only")
+                save_to_csv(row_data)
+                
+        except Exception as bq_error:
+            print(f"[BIGQUERY ERROR] {str(bq_error)}")
+            # Fall back to CSV
+            save_to_csv(row_data)
+        
+        print(f"[REPORT] New report saved: {report_id}")
+        print(f"[REPORT] Type: {row_data['report_type']}, Severity: {row_data['severity']}")
+        print(f"[REPORT] Location: {row_data['city']}, {row_data['state']} {row_data['zip_code']}")
+        print(f"[REPORT] Media files: {media_count}")
+        
+        return jsonify({
+            'success': True,
+            'report_id': report_id,
+            'message': 'Report submitted successfully'
+        })
+        
+    except Exception as e:
+        print(f"[ERROR] Report submission failed: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+def save_to_csv(row_data):
+    """Fallback: Save report to CSV file"""
+    import csv
+    import os
+    
+    # Convert lists to string for CSV
+    csv_data = row_data.copy()
+    csv_data['media_urls'] = str(csv_data['media_urls']) if csv_data['media_urls'] else '[]'
+    csv_data['is_anonymous'] = 'true' if csv_data['is_anonymous'] else 'false'
+    
+    # Append to CSV file
+    csv_file = 'data/community_reports.csv'
+    file_exists = os.path.isfile(csv_file)
+    
+    # Ensure data directory exists
+    os.makedirs('data', exist_ok=True)
+    
+    with open(csv_file, 'a', newline='', encoding='utf-8') as f:
+        writer = csv.DictWriter(f, fieldnames=csv_data.keys())
+        
+        # Write header if file is new
+        if not file_exists:
+            writer.writeheader()
+        
+        writer.writerow(csv_data)
+    
+    print(f"[CSV] Report saved to {csv_file}")
+
 @app.route('/api/air-quality-detailed', methods=['GET'])
 def get_air_quality_detailed():
     """API endpoint to get detailed pollutant-specific data from EPA AQS"""
