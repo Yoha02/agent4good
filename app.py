@@ -325,11 +325,27 @@ def agent_chat():
                 
                 if health_data_list:
                     df = pd.DataFrame(health_data_list)
-                    avg_aqi = df['aqi'].mean() if 'aqi' in df else 50
-                    severity = "good" if avg_aqi <= 50 else "moderate" if avg_aqi <= 100 else "unhealthy" if avg_aqi <= 150 else "very unhealthy"
+                    avg_aqi = int(df['aqi'].mean()) if 'aqi' in df and not df['aqi'].empty else 50
+                    
+                    # Determine severity based on AQI
+                    if avg_aqi <= 50:
+                        severity = "good"
+                    elif avg_aqi <= 100:
+                        severity = "moderate"  
+                    elif avg_aqi <= 150:
+                        severity = "unhealthy for sensitive groups"
+                    elif avg_aqi <= 200:
+                        severity = "unhealthy"
+                    elif avg_aqi <= 300:
+                        severity = "very unhealthy"
+                    else:
+                        severity = "hazardous"
                 else:
-                    avg_aqi = 50
+                    # Use demo data
+                    avg_aqi = 75  # Moderate default
                     severity = "moderate"
+                
+                print(f"[CHAT] Air quality data: AQI {avg_aqi}, Severity: {severity}")
                 
                 health_data = {
                     'type': 'air_quality',
