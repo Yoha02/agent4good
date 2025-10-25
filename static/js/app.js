@@ -2,6 +2,7 @@
 let aqiChart = null;
 let currentState = '';
 let currentDays = 7;
+let lastVideoData = null; // Store video data for Twitter posting
 
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', function() {
@@ -319,6 +320,13 @@ async function askAI() {
     const question = questionInput.value.trim();
     if (!question) return;
 
+    // Check if user is approving Twitter post
+    if (lastVideoData && isTwitterApproval(question)) {
+        await postToTwitter(lastVideoData);
+        questionInput.value = '';
+        return;
+    }
+
     // Add user message
     addMessage(question, 'user');
     questionInput.value = '';
@@ -364,6 +372,73 @@ async function askAI() {
     }
 }
 
+// Check if user message is Twitter approval
+function isTwitterApproval(message) {
+    const lowerMsg = message.toLowerCase().trim();
+    const approvalPhrases = ['yes', 'yeah', 'sure', 'ok', 'okay', 'post it', 'post to twitter', 'tweet it', 'share it'];
+    return approvalPhrases.some(phrase => lowerMsg === phrase || lowerMsg.includes(phrase));
+}
+
+// Post video to Twitter
+async function postToTwitter(videoData) {
+    const questionInput = document.getElementById('questionInput');
+    
+    // Add user's approval message
+    addMessage('Yes, post to Twitter', 'user');
+    
+    // Show posting message
+    const loadingMsg = addMessage('Posting to Twitter... (This may take 60-90 seconds: downloading video, uploading to Twitter, processing)', 'bot');
+    
+    try {
+        // Create abort controller for timeout (2 minutes)
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 120000); // 2 minutes
+        
+        const response = await fetch('/api/post-to-twitter', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                video_url: videoData.video_url,
+                message: videoData.action_line,
+                hashtags: ['HealthAlert', 'PublicHealth', 'CommunityHealth', 'AirQuality']
+            }),
+            signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
+        const result = await response.json();
+        
+        // Remove loading message
+        loadingMsg.remove();
+        
+        if (result.success) {
+            const successMessage = `✓ Posted to Twitter successfully!\n\nView your post: ${result.tweet_url}\n\n${result.message}`;
+            addMessage(successMessage, 'bot');
+            
+            // Clear video data after posting
+            lastVideoData = null;
+        } else {
+            addMessage(`Sorry, I couldn't post to Twitter: ${result.error}`, 'bot');
+        }
+        
+    } catch (error) {
+        loadingMsg.remove();
+        if (error.name === 'AbortError') {
+            addMessage('Twitter posting timed out. The video may still have been posted. Please check your Twitter feed at https://twitter.com/AI_mmunity', 'bot');
+        } else {
+            addMessage('Sorry, there was an error posting to Twitter. Please try again.', 'bot');
+        }
+        console.error('Twitter posting error:', error);
+    }
+    
+    // Clear input
+    if (questionInput) {
+        questionInput.value = '';
+    }
+}
+
 // Poll for video generation completion
 const activeVideoPolls = new Set();
 
@@ -386,6 +461,13 @@ async function pollForVideoCompletion(taskId) {
             console.log(`[VIDEO] Poll ${i + 1}: ${status.status} - ${status.progress || 0}%`);
             
             if (status.status === 'complete') {
+                // Store video data for potential Twitter posting
+                lastVideoData = {
+                    video_url: status.video_url,
+                    action_line: status.action_line,
+                    task_id: taskId
+                };
+                
                 // Video is ready! Add new message with video
                 const videoMessage = `✓ Your PSA video is ready!
 
@@ -398,6 +480,7 @@ Would you like me to post this to Twitter?`;
                 addMessage(videoMessage, 'bot');
                 activeVideoPolls.delete(taskId);
                 console.log(`[VIDEO] Task ${taskId} complete!`);
+                console.log('[VIDEO] Video data stored for Twitter posting');
                 return;
             } else if (status.status === 'error') {
                 // Generation failed

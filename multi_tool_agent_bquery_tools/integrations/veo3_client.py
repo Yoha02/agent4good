@@ -77,12 +77,12 @@ class Veo3Client:
             # Call Veo 3.0 Fast (rate limit available!)
             from google.genai import types
             
-            print(f"[VEO3] Calling Veo 3.1 Fast API with TIER 2 API Key!")
+            print(f"[VEO3] Calling Veo 3.0 Fast API with TIER 2 API Key!")
             print(f"[VEO3] Prompt length: {len(prompt)} characters")
             
-            # Use Veo 3.1 Fast model with Tier 2 API key (MUCH HIGHER LIMITS!)
+            # Use Veo 3.0 Fast model with Tier 2 API key (MUCH HIGHER LIMITS!)
             operation = self.client.models.generate_videos(
-                model="veo-3.1-fast-generate-preview",
+                model="veo-3.0-fast-generate-001",
                 prompt=prompt,
                 config=types.GenerateVideosConfig(
                     aspect_ratio="9:16",

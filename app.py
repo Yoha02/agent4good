@@ -92,9 +92,9 @@ class AirQualityAgent:
                 # Show the date range we got
                 dates = [d['date'] for d in data if 'date' in d]
                 if dates:
-                    print(f"[BQ] ✅ Retrieved {len(data)} REAL records! Date range: {min(dates)} to {max(dates)}")
+                    print(f"[BQ] SUCCESS: Retrieved {len(data)} REAL records! Date range: {min(dates)} to {max(dates)}")
                 else:
-                    print(f"[BQ] ✅ Retrieved {len(data)} REAL records from YOUR dataset!")
+                    print(f"[BQ] SUCCESS: Retrieved {len(data)} REAL records from YOUR dataset!")
                 return data
             else:
                 print(f"[BQ] No data found, using demo data")
@@ -516,6 +516,81 @@ def check_video_task(task_id):
     except Exception as e:
         return jsonify({
             'status': 'error',
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/post-to-twitter', methods=['POST'])
+def post_to_twitter():
+    """
+    Post a PSA video to Twitter/X
+    
+    Expected JSON:
+    {
+        "video_url": "https://storage.googleapis.com/...",
+        "message": "Health alert message",
+        "hashtags": ["HealthAlert", "AirQuality"] (optional)
+    }
+    """
+    try:
+        data = request.get_json()
+        
+        video_url = data.get('video_url')
+        message = data.get('message', '')
+        hashtags = data.get('hashtags', ['HealthAlert', 'PublicHealth', 'CommunityHealth'])
+        
+        if not video_url:
+            return jsonify({
+                'success': False,
+                'error': 'video_url is required'
+            }), 400
+        
+        if not message:
+            return jsonify({
+                'success': False,
+                'error': 'message is required'
+            }), 400
+        
+        # Import Twitter client
+        from multi_tool_agent_bquery_tools.integrations.twitter_client import get_twitter_client
+        
+        twitter_client = get_twitter_client()
+        
+        print(f"\n[FLASK] ===== Twitter Posting Request =====")
+        print(f"[FLASK] Video URL: {video_url[:50]}...")
+        print(f"[FLASK] Message: {message[:100]}...")
+        print(f"[FLASK] Hashtags: {hashtags}")
+        
+        # Post to Twitter
+        result = twitter_client.post_video_tweet(
+            video_url=video_url,
+            message=message,
+            hashtags=hashtags
+        )
+        
+        if result['status'] == 'success':
+            print(f"[FLASK] SUCCESS: Tweet posted successfully!")
+            print(f"[FLASK] URL: {result['tweet_url']}")
+            
+            return jsonify({
+                'success': True,
+                'tweet_url': result['tweet_url'],
+                'tweet_id': result['tweet_id'],
+                'message': result.get('message', 'Posted to Twitter successfully!')
+            })
+        else:
+            print(f"[FLASK] ERROR: Tweet posting failed: {result.get('error_message')}")
+            return jsonify({
+                'success': False,
+                'error': result.get('error_message', 'Unknown error')
+            }), 500
+        
+    except Exception as e:
+        print(f"[FLASK] ERROR: Twitter endpoint error: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
             'error': str(e)
         }), 500
 
