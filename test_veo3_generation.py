@@ -117,7 +117,7 @@ else:
                 print(f"Video received as bytes: {video_size:,} bytes")
                 
                 # Save to local file
-                output_file = "psa_video_output.mp4"
+                output_file = "psa_video_output2.mp4"
                 veo_client.save_video_bytes(video_bytes, output_file)
                 print(f"\nVideo saved to: {output_file}")
                 print(f"You can now:")

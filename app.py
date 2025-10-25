@@ -63,6 +63,8 @@ class AirQualityAgent:
             # Use YOUR dataset: AirQualityData.Daily-AQI-County-2025
             project = os.getenv('GOOGLE_CLOUD_PROJECT', 'qwiklabs-gcp-00-4a7d408c735c')
             
+            # First, let's see what date range is available in the table
+            # The table is called "Daily-AQI-County-2025" so it likely has 2025 data
             query = f"""
             SELECT 
                 Date_Local as date,
@@ -72,23 +74,27 @@ class AirQualityAgent:
                 'PM2.5' as parameter_name,
                 'Monitoring Station' as site_name
             FROM `{project}.AirQualityData.Daily-AQI-County-2025`
-            WHERE Date_Local >= DATE_SUB(CURRENT_DATE(), INTERVAL {days} DAY)
-            AND AQI IS NOT NULL
+            WHERE AQI IS NOT NULL
             """
             
             if state:
-                query += f" AND UPPER(state_name) = UPPER('{state}')"
+                query += f" AND UPPER(State_Name) = UPPER('{state}')"
             
-            query += " ORDER BY date_local DESC LIMIT 1000"
+            query += " ORDER BY Date_Local DESC LIMIT 100"
             
-            print(f"[BQ] Querying public EPA dataset for {state or 'all states'}, last {days} days")
+            print(f"[BQ] Querying YOUR dataset: AirQualityData.Daily-AQI-County-2025 for {state or 'all states'}")
             query_job = self.bq_client.query(query)
             results = query_job.result()
             
             data = [dict(row) for row in results]
             
             if data:
-                print(f"[BQ] Retrieved {len(data)} records from public EPA dataset")
+                # Show the date range we got
+                dates = [d['date'] for d in data if 'date' in d]
+                if dates:
+                    print(f"[BQ] ✅ Retrieved {len(data)} REAL records! Date range: {min(dates)} to {max(dates)}")
+                else:
+                    print(f"[BQ] ✅ Retrieved {len(data)} REAL records from YOUR dataset!")
                 return data
             else:
                 print(f"[BQ] No data found, using demo data")
