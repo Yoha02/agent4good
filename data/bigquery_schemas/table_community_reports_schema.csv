@@ -1,4 +1,28 @@
-report_id,report_type,timestamp,address,zip_code,city,state,severity,specific_type,description,people_affected,timeframe,contact_name,contact_email,contact_phone,is_anonymous,media_urls,media_count,status,reviewed_by,reviewed_at,notes,latitude,longitude
-STRING,STRING,TIMESTAMP,STRING,STRING,STRING,STRING,STRING,STRING,STRING,STRING,STRING,STRING,STRING,STRING,BOOLEAN,STRING,INTEGER,STRING,STRING,TIMESTAMP,STRING,FLOAT,FLOAT
-REQUIRED,REQUIRED,REQUIRED,REQUIRED,REQUIRED,REQUIRED,REQUIRED,REQUIRED,NULLABLE,REQUIRED,NULLABLE,REQUIRED,NULLABLE,NULLABLE,NULLABLE,REQUIRED,REPEATED,NULLABLE,REQUIRED,NULLABLE,NULLABLE,NULLABLE,NULLABLE,NULLABLE
-Unique identifier for the report (UUID),"Type of report: health, environmental, weather, emergency",Timestamp when the report was submitted,Street address or landmark,5-digit ZIP code,City name,2-letter state code,"Severity level: low, moderate, high, critical",Specific issue type based on report category,Detailed description of the issue,"Estimated number of people affected: 1, 2-5, 6-10, 11-25, 26-50, 50+","When incident occurred: now, 1hour, today, yesterday, week, ongoing",Name of person submitting report (optional),Email of person submitting report (optional),Phone number of person submitting report (optional),Whether the report was submitted anonymously,Array of URLs to uploaded images/videos (up to 10),Number of media files attached,"Report status: pending, reviewed, resolved, closed",ID of official who reviewed the report,Timestamp when report was reviewed,Internal notes from officials,Latitude coordinate of the incident location,Longitude coordinate of the incident location
+name,type,mode,description
+report_id,STRING,REQUIRED,Unique identifier for the report (UUID)
+report_type,STRING,REQUIRED,"Type of report: health, environmental, weather, emergency"
+timestamp,TIMESTAMP,REQUIRED,Timestamp when the report was submitted
+address,STRING,NULLABLE,Street address or landmark (optional)
+zip_code,STRING,REQUIRED,5-digit ZIP code
+city,STRING,REQUIRED,City name (auto-populated from ZIP)
+state,STRING,REQUIRED,2-letter state code (auto-populated from ZIP)
+county,STRING,NULLABLE,County name (auto-populated from ZIP)
+severity,STRING,REQUIRED,"Severity level: low, moderate, high, critical"
+specific_type,STRING,NULLABLE,Specific issue type based on report category
+description,STRING,REQUIRED,Detailed description of the issue
+people_affected,STRING,NULLABLE,"Estimated number of people affected: 1, 2-5, 6-10, 11-25, 26-50, 50+"
+timeframe,STRING,REQUIRED,"When incident occurred: now, 1hour, today, yesterday, week, ongoing"
+contact_name,STRING,NULLABLE,Name of person submitting report (optional)
+contact_email,STRING,NULLABLE,Email of person submitting report (optional)
+contact_phone,STRING,NULLABLE,Phone number of person submitting report (optional)
+is_anonymous,BOOLEAN,REQUIRED,Whether the report was submitted anonymously
+media_urls,STRING,REPEATED,Array of URLs to uploaded images/videos (up to 10)
+media_count,INTEGER,NULLABLE,Number of media files attached
+ai_media_summary,STRING,NULLABLE,AI generated summaries of image(s) and/or video(s) post from submission
+ai_overall_summary,STRING,NULLABLE,AI generated entire row summary
+status,STRING,REQUIRED,"Report status: pending, reviewed, resolved, closed"
+reviewed_by,STRING,NULLABLE,ID of official who reviewed the report
+reviewed_at,TIMESTAMP,NULLABLE,Timestamp when report was reviewed
+notes,STRING,NULLABLE,Internal notes from officials
+latitude,FLOAT,NULLABLE,Latitude coordinate of the incident location
+longitude,FLOAT,NULLABLE,Longitude coordinate of the incident location

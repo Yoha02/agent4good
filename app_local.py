@@ -5,6 +5,7 @@ import pandas as pd
 from datetime import datetime, timedelta
 import json
 import random
+import zipcodes
 from epa_service import EPAAirQualityService
 from epa_aqs_service import EPAAQSService
 from location_service_comprehensive import ComprehensiveLocationService
@@ -194,17 +195,81 @@ def search_locations():
     try:
         query = request.args.get('q', '').strip()
         if not query:
+            # Also support 'query' parameter
+            query = request.args.get('query', '').strip()
+        
+        if not query:
             return jsonify({
                 'success': False,
                 'error': 'Query parameter required'
             }), 400
         
-        results = location_service.search_locations(query)
+        # Use search_zipcodes method (the correct method name)
+        results = location_service.search_zipcodes(query)
         return jsonify({
             'success': True,
             'results': results,
             'query': query
         })
+    except Exception as e:
+        print(f"[ERROR] Location search failed: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/locations/reverse-geocode', methods=['GET'])
+def reverse_geocode():
+    """Reverse geocode lat/lng to ZIP code"""
+    try:
+        lat = request.args.get('lat')
+        lng = request.args.get('lng')
+        
+        if not lat or not lng:
+            return jsonify({
+                'success': False,
+                'error': 'Latitude and longitude required'
+            }), 400
+        
+        # Convert to float
+        lat = float(lat)
+        lng = float(lng)
+        
+        # Find nearest ZIP code from our database
+        # This is a simple implementation - in production you'd use Google Maps API
+        all_zips = zipcodes.list_all()
+        
+        min_distance = float('inf')
+        nearest_zip = None
+        
+        for zip_data in all_zips:
+            zip_lat = float(zip_data.get('lat', 0))
+            zip_lng = float(zip_data.get('long', 0))
+            
+            # Calculate simple distance (not perfect but works for nearest neighbor)
+            distance = ((lat - zip_lat) ** 2 + (lng - zip_lng) ** 2) ** 0.5
+            
+            if distance < min_distance:
+                min_distance = distance
+                nearest_zip = zip_data
+        
+        if nearest_zip:
+            return jsonify({
+                'success': True,
+                'zipcode': nearest_zip.get('zip_code'),
+                'city': nearest_zip.get('city'),
+                'state_code': nearest_zip.get('state'),
+                'county': nearest_zip.get('county'),
+                'distance': min_distance
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'Could not find nearest ZIP code'
+            }), 404
+            
     except Exception as e:
         return jsonify({
             'success': False,
@@ -724,10 +789,11 @@ def submit_report():
             'report_id': report_id,
             'report_type': data.get('reportType', ''),
             'timestamp': timestamp.isoformat() + 'Z',
-            'address': data.get('address', ''),
+            'address': data.get('address') or None,  # Optional - can be None
             'zip_code': data.get('zipCode', ''),
             'city': data.get('city', ''),
             'state': data.get('state', ''),
+            'county': data.get('county') or None,  # Auto-populated from ZIP
             'severity': data.get('severity', ''),
             'specific_type': data.get('specificType', ''),
             'description': data.get('description', ''),
