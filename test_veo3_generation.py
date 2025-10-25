@@ -109,11 +109,31 @@ else:
             print("[SUCCESS] VIDEO GENERATION COMPLETE!")
             print("=" * 80)
             print()
-            print(f"Video URI: {status_result.get('video_uri')}")
-            print(f"Preview URL: {status_result.get('preview_url')}")
-            print()
-            print("You can view the video at:")
-            print(f"  {status_result.get('preview_url')}")
+            
+            # Check if we have video bytes or URI
+            if 'video_bytes' in status_result:
+                video_bytes = status_result['video_bytes']
+                video_size = status_result['video_size']
+                print(f"Video received as bytes: {video_size:,} bytes")
+                
+                # Save to local file
+                output_file = "psa_video_output.mp4"
+                veo_client.save_video_bytes(video_bytes, output_file)
+                print(f"\nVideo saved to: {output_file}")
+                print(f"You can now:")
+                print(f"  1. Open {output_file} in your video player")
+                print(f"  2. Upload to your GCS bucket")
+                print(f"  3. Post to Twitter")
+                
+            elif 'video_uri' in status_result:
+                video_uri = status_result['video_uri']
+                preview_url = status_result['preview_url']
+                print(f"Video URI: {video_uri}")
+                print(f"Preview URL: {preview_url}")
+                print()
+                print("You can view the video at:")
+                print(f"  {preview_url}")
+            
             print()
             break
         elif status == 'error':
