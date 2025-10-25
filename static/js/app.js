@@ -349,6 +349,11 @@ async function askAI() {
             // Add agent badge if available
             const agentBadge = data.agent ? `<div class="text-xs text-gray-500 mt-1">via ${data.agent}</div>` : '';
             addMessage(data.response + agentBadge, 'bot');
+            
+            // If video generation started, begin polling
+            if (data.task_id) {
+                pollForVideoCompletion(data.task_id);
+            }
         } else {
             addMessage('Sorry, I encountered an error. Please try again.', 'bot');
         }
@@ -357,6 +362,61 @@ async function askAI() {
         addMessage('Sorry, I could not connect to the AI service.', 'bot');
         console.error('Error asking AI:', error);
     }
+}
+
+// Poll for video generation completion
+const activeVideoPolls = new Set();
+
+async function pollForVideoCompletion(taskId) {
+    // Prevent duplicate polling
+    if (activeVideoPolls.has(taskId)) return;
+    activeVideoPolls.add(taskId);
+    
+    console.log(`[VIDEO] Starting poll for task: ${taskId}`);
+    
+    const maxAttempts = 30; // 30 * 5 sec = 2.5 minutes
+    
+    for (let i = 0; i < maxAttempts; i++) {
+        await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5 seconds
+        
+        try {
+            const response = await fetch(`/api/check-video-task/${taskId}`);
+            const status = await response.json();
+            
+            console.log(`[VIDEO] Poll ${i + 1}: ${status.status} - ${status.progress || 0}%`);
+            
+            if (status.status === 'complete') {
+                // Video is ready! Add new message with video
+                const videoMessage = `✓ Your PSA video is ready!
+
+[VIDEO:${status.video_url}]
+
+Action: "${status.action_line}"
+
+Would you like me to post this to Twitter?`;
+                
+                addMessage(videoMessage, 'bot');
+                activeVideoPolls.delete(taskId);
+                console.log(`[VIDEO] Task ${taskId} complete!`);
+                return;
+            } else if (status.status === 'error') {
+                // Generation failed
+                addMessage(`Sorry, video generation encountered an error: ${status.error}`, 'bot');
+                activeVideoPolls.delete(taskId);
+                console.error(`[VIDEO] Task ${taskId} failed:`, status.error);
+                return;
+            }
+            // Continue polling if still processing
+        } catch (error) {
+            console.error('[VIDEO] Polling error:', error);
+            // Continue polling despite errors
+        }
+    }
+    
+    // Timeout
+    activeVideoPolls.delete(taskId);
+    addMessage('Video generation timed out. Please try again.', 'bot');
+    console.error(`[VIDEO] Task ${taskId} timeout`);
 }
 
 
@@ -368,13 +428,43 @@ function addMessage(text, type) {
     const messageDiv = document.createElement('div');
     messageDiv.className = `flex items-start space-x-3 ${type === 'user' ? 'justify-end' : ''}`;
     
+    // Parse video markers for bot messages
+    let messageContent = text;
+    let videoHtml = '';
+    
+    if (type === 'bot' && text.includes('[VIDEO:')) {
+        const videoMatch = text.match(/\[VIDEO:(.*?)\]/);
+        if (videoMatch) {
+            const videoUrl = videoMatch[1];
+            
+            // Remove video marker from text
+            messageContent = text.replace(/\[VIDEO:.*?\]/, '').trim();
+            
+            // Create video player
+            videoHtml = `
+                <div class="my-3">
+                    <video 
+                        controls 
+                        class="w-full rounded-lg shadow-lg" 
+                        style="max-width: 300px; max-height: 533px;"
+                        preload="metadata"
+                    >
+                        <source src="${videoUrl}" type="video/mp4">
+                        Your browser doesn't support video playback.
+                    </video>
+                </div>
+            `;
+        }
+    }
+    
     if (type === 'bot') {
         messageDiv.innerHTML = `
             <div class="w-10 h-10 bg-emerald-500 rounded-full flex items-center justify-center flex-shrink-0">
                 <i class="fas fa-robot text-white"></i>
             </div>
-            <div class="bg-white rounded-2xl rounded-tl-none p-4 shadow-md max-w-lg">
-                <p class="text-gray-700 leading-relaxed">${text}</p>
+            <div class="bg-white rounded-2xl rounded-tl-none p-4 shadow-md max-w-2xl">
+                ${videoHtml}
+                <p class="text-gray-700 leading-relaxed whitespace-pre-line">${messageContent}</p>
             </div>
         `;
     } else {
