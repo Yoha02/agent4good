@@ -111,7 +111,7 @@
             <div class="flex justify-between items-center h-20">
                 <!-- Logo -->
                 <div class="flex items-center space-x-3">
-                    <div class="w-12 h-12 bg-gradient-to-br from-emerald-400 to-emerald-600 rounded-xl flex items-center justify-center animate-pulse">
+                    <div class="w-12 h-12 min-w-[3rem] bg-gradient-to-br from-emerald-400 to-emerald-600 rounded-xl flex items-center justify-center animate-pulse flex-shrink-0">
                         <i class="fas fa-heartbeat text-white text-xl"></i>
                     </div>
                     <div>
@@ -256,6 +256,24 @@
                                 class="w-full bg-white text-navy-700 rounded-lg px-4 py-3 border border-gray-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 pr-10"
                             />
                             <i class="fas fa-search absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
+                        </div>
+
+                        <!-- Date Range Picker -->
+                        <div class="flex items-center gap-2 bg-white rounded-lg px-4 py-2 border border-gray-300">
+                            <i class="fas fa-calendar text-emerald-600"></i>
+                            <input 
+                                id="startDate" 
+                                type="date" 
+                                class="text-navy-700 focus:outline-none text-sm"
+                                title="Start Date"
+                            />
+                            <span class="text-gray-400">to</span>
+                            <input 
+                                id="endDate" 
+                                type="date" 
+                                class="text-navy-700 focus:outline-none text-sm"
+                                title="End Date"
+                            />
                         </div>
                         
                         <!-- Auto-location Button -->
@@ -776,6 +794,7 @@
 
     <!-- Scripts -->
     <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/pollutant-charts.js') }}"></script>
     <script src="{{ url_for('static', filename='js/three-bg.js') }}"></script>
     <script src="{{ url_for('static', filename='js/d3-viz.js') }}"></script>
     <script src="{{ url_for('static', filename='js/animations.js') }}"></script>

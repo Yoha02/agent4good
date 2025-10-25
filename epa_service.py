@@ -16,6 +16,8 @@ class EPAAirQualityService:
         self.forecast_url = "https://www.airnowapi.org/aq/forecast"
         self.observation_url = "https://www.airnowapi.org/aq/observation"
         self.timeout = 10  # Reduced timeout for better reliability
+        self.observation_parameters = 'O3,PM25,PM10,CO,SO2,NO2'
+        self.data_api_parameters = ['OZONE', 'PM2.5', 'PM10', 'CO', 'SO2', 'NO2']
         
         # RATE LIMITING & CACHING
         self.last_request_time = 0
@@ -37,7 +39,8 @@ class EPAAirQualityService:
         if cache_key in self.cache:
             cached_data, cached_time = self.cache[cache_key]
             if time.time() - cached_time < self.cache_duration:
-                print(f"[CACHE HIT] Using cached data for {params.get('zipCode', 'location')}")
+                print(f"[CACHE HIT] Using cached data for {params.get('zipCode', params.get('latitude', 'location'))}")
+                print(f"[CACHE HIT] Cache key: {cache_key[:100]}...")
                 return cached_data
         
         # RATE LIMITING: Ensure minimum time between requests
@@ -56,7 +59,15 @@ class EPAAirQualityService:
                 response = requests.get(endpoint, params=params, timeout=self.timeout)
                 
                 if response.status_code == 200:
-                    data = response.json()
+                    try:
+                        data = response.json()
+                    except ValueError:
+                        print(f"[EPA API] Failed to parse JSON. Raw response: {response.text[:200]}")
+                        data = None
+                    if isinstance(data, list) and len(data) == 0:
+                        print(f"[EPA API] Empty list returned for params: {params}")
+                    elif isinstance(data, dict) and not data:
+                        print(f"[EPA API] Empty dict returned for params: {params}")
                     # Cache successful response
                     self.cache[cache_key] = (data, time.time())
                     return data
@@ -84,12 +95,109 @@ class EPAAirQualityService:
                 
         return None
     
-    def get_current_aqi(self, zipcode: str = None, lat: float = None, lon: float = None, 
-                       distance: int = 50) -> Dict:
+    def _map_category_number(self, number: Optional[int]) -> Dict:
+        """Convert AirNow category number to structure similar to observation API."""
+        category_names = {
+            1: "Good",
+            2: "Moderate",
+            3: "Unhealthy for Sensitive Groups",
+            4: "Unhealthy",
+            5: "Very Unhealthy",
+            6: "Hazardous"
+        }
+        if number is None:
+            return {"Number": None, "Name": "Unknown"}
+        return {"Number": number, "Name": category_names.get(number, "Unknown")}
+
+    def _derive_state_from_aqs_code(self, aqs_code: Optional[str]) -> Optional[str]:
+        """Best-effort state lookup from AQS code (first two digits are FIPS)."""
+        if not aqs_code or len(aqs_code) < 2:
+            return None
+        fips_to_state = {
+            "01": "AL", "02": "AK", "04": "AZ", "05": "AR", "06": "CA",
+            "08": "CO", "09": "CT", "10": "DE", "11": "DC", "12": "FL",
+            "13": "GA", "15": "HI", "16": "ID", "17": "IL", "18": "IN",
+            "19": "IA", "20": "KS", "21": "KY", "22": "LA", "23": "ME",
+            "24": "MD", "25": "MA", "26": "MI", "27": "MN", "28": "MS",
+            "29": "MO", "30": "MT", "31": "NE", "32": "NV", "33": "NH",
+            "34": "NJ", "35": "NM", "36": "NY", "37": "NC", "38": "ND",
+            "39": "OH", "40": "OK", "41": "OR", "42": "PA", "44": "RI",
+            "45": "SC", "46": "SD", "47": "TN", "48": "TX", "49": "UT",
+            "50": "VT", "51": "VA", "53": "WA", "54": "WV", "55": "WI",
+            "56": "WY"
+        }
+        return fips_to_state.get(aqs_code[:2])
+
+    def _get_data_api_observations(self, lat: Optional[float], lon: Optional[float],
+                                   state_code: Optional[str], hours_back: int = 3) -> List[Dict]:
+        """Fallback to AirNow data API when observation endpoints return no data."""
+        if lat is None or lon is None:
+            return []
+
+        now_utc = datetime.utcnow()
+        start_date = (now_utc - timedelta(hours=hours_back)).strftime('%Y-%m-%dT%H')
+        end_date = (now_utc + timedelta(hours=1)).strftime('%Y-%m-%dT%H')
+
+        bbox_pad = 0.5
+        min_lat = max(-90.0, lat - bbox_pad)
+        max_lat = min(90.0, lat + bbox_pad)
+        min_lon = max(-180.0, lon - bbox_pad)
+        max_lon = min(180.0, lon + bbox_pad)
+
+        params = {
+            'startDate': start_date,
+            'endDate': end_date,
+            'parameters': ','.join(self.data_api_parameters).replace('PM2.5', 'PM25'),
+            'bbox': f"{min_lon},{min_lat},{max_lon},{max_lat}",
+            'dataType': 'A',
+            'verbose': 0
+        }
+
+        print(f"[EPA DATA API] Fallback request: {params['startDate']} to {params['endDate']} bbox={params['bbox']}")
+        data = self._make_request("https://www.airnowapi.org/aq/data/", params)
+
+        if not isinstance(data, list) or not data:
+            print("[EPA DATA API] No data returned from fallback endpoint")
+            return []
+
+        observations = []
+        for item in data:
+            aqi = item.get('AQI')
+            parameter = item.get('Parameter')
+            if aqi is None or parameter is None:
+                continue
+
+            utc_ts = item.get('UTC', '')
+            date_observed = utc_ts.split('T')[0] if 'T' in utc_ts else utc_ts
+            hour_observed = ''
+            if 'T' in utc_ts:
+                time_part = utc_ts.split('T')[1]
+                hour_observed = time_part[:2]
+
+            fallback_state = state_code or self._derive_state_from_aqs_code(item.get('FullAQSCode')) or 'Unknown'
+            observations.append({
+                'ParameterName': parameter,
+                'AQI': aqi,
+                'ReportingArea': item.get('SiteName', 'Unknown Site'),
+                'StateCode': fallback_state,
+                'DateObserved': date_observed,
+                'HourObserved': hour_observed,
+                'Category': self._map_category_number(item.get('Category')),
+                'source': 'AirNow Data API Fallback'
+            })
+
+        print(f"[EPA DATA API] Fallback returned {len(observations)} records")
+        return observations
+
+    def get_current_aqi(self, zipcode: str = None, lat: float = None, lon: float = None,
+                       state_code: str = None, distance: int = 50) -> Dict:
         """
         Get current AQI for a location - REAL EPA DATA ONLY
         """
-        params = {'distance': distance}
+        params = {
+            'distance': distance,
+            'parameters': self.observation_parameters
+        }
         
         if zipcode:
             params['zipCode'] = zipcode
@@ -100,6 +208,10 @@ class EPAAirQualityService:
             raise ValueError("Either zipcode or lat/lon must be provided")
         
         data = self._make_request(self.observation_url + "/zipCode/current/", params)
+
+        if (data is None or not data) and lat is not None and lon is not None:
+            print(f"[EPA API] Observation empty for zipcode={zipcode}, trying data API fallback")
+            data = self._get_data_api_observations(lat, lon, state_code)
         
         if data is None:
             print(f"[ERROR] EPA API returned None for zipcode={zipcode}")
@@ -109,8 +221,11 @@ class EPAAirQualityService:
             print(f"[ERROR] EPA API returned empty data for zipcode={zipcode}")
             return None
         
-        # Parse EPA response
-        aqi_data = data[0] if isinstance(data, list) and data else data
+        # Parse EPA response - return dominant parameter
+        if isinstance(data, list) and data:
+            aqi_data = max(data, key=lambda item: item.get('AQI', 0))
+        else:
+            aqi_data = data
         
         return {
             'current_aqi': aqi_data.get('AQI', 0),
@@ -119,9 +234,57 @@ class EPAAirQualityService:
             'location': f"{aqi_data.get('ReportingArea', 'Unknown')}, {aqi_data.get('StateCode', 'Unknown')}",
             'date_observed': aqi_data.get('DateObserved', ''),
             'hour_observed': aqi_data.get('HourObserved', ''),
-            'source': 'EPA/AirNow API',
+            'source': aqi_data.get('source', 'EPA/AirNow API'),
             'is_real_data': True
         }
+    
+    def get_all_current_parameters(self, zipcode: str = None, lat: float = None, lon: float = None,
+                                   state_code: str = None, distance: int = 50) -> List[Dict]:
+        """
+        Get ALL current parameters (PM2.5, PM10, O3, etc.) for a location - REAL EPA DATA
+        Returns a list of all monitored parameters at the location
+        """
+        params = {
+            'distance': distance,
+            'parameters': self.observation_parameters
+        }
+        
+        if zipcode:
+            params['zipCode'] = zipcode
+        elif lat is not None and lon is not None:
+            params['latitude'] = lat
+            params['longitude'] = lon
+        else:
+            raise ValueError("Either zipcode or lat/lon must be provided")
+        
+        data = self._make_request(self.observation_url + "/zipCode/current/", params)
+
+        if (data is None or not data) and lat is not None and lon is not None:
+            print(f"[EPA ALL PARAMS] Observation empty for zipcode={zipcode}, invoking fallback")
+            data = self._get_data_api_observations(lat, lon, state_code)
+        
+        if data is None or not data:
+            print(f"[EPA ALL PARAMS] No data returned for zipcode={zipcode}")
+            return []
+        
+        # EPA API returns ALL parameters in the list
+        print(f"[EPA ALL PARAMS] Got {len(data)} parameter records")
+        
+        all_params = []
+        for item in data:
+            param_name = item.get('ParameterName', 'Unknown')
+            print(f"[EPA ALL PARAMS] Found parameter: {param_name}, AQI: {item.get('AQI', 0)}")
+            all_params.append({
+                'parameter': param_name,
+                'aqi': item.get('AQI', 0),
+                'location': f"{item.get('ReportingArea', 'Unknown')}, {item.get('StateCode', 'Unknown')}",
+                'date_observed': item.get('DateObserved', ''),
+                'hour_observed': item.get('HourObserved', ''),
+                'category': item.get('Category', {}),
+                'source': item.get('source', 'EPA/AirNow API')
+            })
+        
+        return all_params
     
     def get_forecast(self, zipcode: str = None, lat: float = None, lon: float = None,
                     date: str = None, distance: int = 50) -> List[Dict]:
@@ -163,7 +326,8 @@ class EPAAirQualityService:
         return forecast_list
     
     def get_historical_data(self, zipcode: str = None, lat: float = None, lon: float = None,
-                          start_date: str = None, end_date: str = None, distance: int = 50) -> List[Dict]:
+                          state_code: str = None, start_date: str = None, end_date: str = None,
+                          distance: int = 50) -> List[Dict]:
         """
         Get historical AQI data (Note: EPA API has limited historical data)
         """
@@ -182,7 +346,8 @@ class EPAAirQualityService:
         while current_date <= end_dt:
             # Get current data and simulate historical
             try:
-                current_data = self.get_current_aqi(zipcode=zipcode, lat=lat, lon=lon, distance=distance)
+                current_data = self.get_current_aqi(zipcode=zipcode, lat=lat, lon=lon,
+                                                   state_code=state_code, distance=distance)
                 if current_data and current_data.get('is_real_data'):
                     # Simulate historical variance (±20% of current AQI)
                     base_aqi = current_data.get('current_aqi', 50)

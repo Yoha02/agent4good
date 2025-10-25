@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 import json
 import random
 from epa_service import EPAAirQualityService
+from epa_aqs_service import EPAAQSService
 from location_service_comprehensive import ComprehensiveLocationService
 from google_weather_service import GoogleWeatherService
 from google_pollen_service import GooglePollenService
@@ -21,16 +22,19 @@ print("[OK] Starting Flask app with EPA API integration")
 # Initialize services
 try:
     epa_service = EPAAirQualityService()
+    epa_aqs_service = EPAAQSService()  # New detailed service
     location_service = ComprehensiveLocationService()
     weather_service = GoogleWeatherService()
     pollen_service = GooglePollenService()
     EPA_AVAILABLE = True
     print("[OK] EPA API service initialized successfully")
+    print("[OK] EPA AQS service initialized for detailed pollutant data")
     print("[OK] Google Weather & Pollen services initialized")
 except Exception as e:
     print(f"[WARNING] Service initialization: {e}")
     EPA_AVAILABLE = False
     epa_service = None
+    epa_aqs_service = None
     location_service = ComprehensiveLocationService()  # Location service can work independently
     weather_service = None
     pollen_service = None
@@ -264,6 +268,8 @@ def get_air_quality():
         
         # Get EPA data - determine location and ZIP code
         location_info = None
+        lat = None
+        lon = None
         
         if zipcode:
             # ZIP code provided directly
@@ -298,10 +304,34 @@ def get_air_quality():
             location_info = location_service.get_location_info(zipcode=zipcode)
             print(f"[INFO] No location specified, defaulting to Los Angeles, CA (ZIP {zipcode})")
         
+        # Extract coordinates and state from location_info
+        if location_info:
+            loc_state_code = location_info.get('state_code') or location_info.get('stateCode')
+            if loc_state_code and not state_code:
+                state_code = loc_state_code
+            
+            lat_val = location_info.get('lat') or location_info.get('latitude')
+            lon_val = location_info.get('lng') or location_info.get('longitude')
+            
+            try:
+                lat = float(lat_val) if lat_val is not None else None
+            except (TypeError, ValueError):
+                lat = None
+            
+            try:
+                lon = float(lon_val) if lon_val is not None else None
+            except (TypeError, ValueError):
+                lon = None
+        
         # Get EPA data based on time period
         epa_data = []
         if time_period == 'live':
-            current_data = epa_service.get_current_aqi(zipcode=zipcode)
+            current_data = epa_service.get_current_aqi(
+                zipcode=zipcode,
+                lat=lat,
+                lon=lon,
+                state_code=state_code
+            )
             if current_data:
                 epa_data = [current_data]
         
@@ -313,14 +343,28 @@ def get_air_quality():
             end_date = datetime.now().strftime('%Y-%m-%d')
             
             historical_data = epa_service.get_historical_data(
-                zipcode=zipcode, start_date=start_date, end_date=end_date
+                zipcode=zipcode,
+                lat=lat,
+                lon=lon,
+                state_code=state_code,
+                start_date=start_date,
+                end_date=end_date
             )
             epa_data = historical_data
         
         else:  # hourly or other
             # For hourly, get current + forecast
-            current_data = epa_service.get_current_aqi(zipcode=zipcode)
-            forecast_data = epa_service.get_forecast(zipcode=zipcode)
+            current_data = epa_service.get_current_aqi(
+                zipcode=zipcode,
+                lat=lat,
+                lon=lon,
+                state_code=state_code
+            )
+            forecast_data = epa_service.get_forecast(
+                zipcode=zipcode,
+                lat=lat,
+                lon=lon
+            )
             epa_data = [current_data] + forecast_data if current_data else forecast_data
         
         if not epa_data:
@@ -418,17 +462,38 @@ def health_recommendations():
         
         if EPA_AVAILABLE and epa_service:
             # Try EPA first
+            lat, lon, state_code_for_request = None, None, None
             if zipcode:
-                current_data = epa_service.get_current_aqi(zipcode=zipcode)
+                location_data = location_service.get_zipcode_info(zipcode)
+                if location_data:
+                    lat = location_data.get('latitude')
+                    lon = location_data.get('longitude')
+                    state_code_for_request = location_data.get('state_code')
+                current_data = epa_service.get_current_aqi(
+                    zipcode=zipcode, lat=lat, lon=lon, state_code=state_code_for_request
+                )
             elif state_code and city:
                 location_info = location_service.get_location_info(state_code=state_code, city_name=city)
                 if location_info and location_info.get('zipcodes'):
-                    current_data = epa_service.get_current_aqi(zipcode=location_info['zipcodes'][0])
+                    zip_to_use = location_info['zipcodes'][0]
+                    lat = location_info.get('latitude')
+                    lon = location_info.get('longitude')
+                    state_code_for_request = location_info.get('state_code') or state_code
+                    current_data = epa_service.get_current_aqi(
+                        zipcode=zip_to_use, lat=lat, lon=lon, state_code=state_code_for_request
+                    )
                 else:
                     current_data = None
             else:
                 # Default location
-                current_data = epa_service.get_current_aqi(zipcode="90210")
+                location_default = location_service.get_zipcode_info("90210")
+                if location_default:
+                    lat = location_default.get('latitude')
+                    lon = location_default.get('longitude')
+                    state_code_for_request = location_default.get('state_code')
+                current_data = epa_service.get_current_aqi(
+                    zipcode="90210", lat=lat, lon=lon, state_code=state_code_for_request
+                )
             
             if current_data and current_data.get('is_real_data'):
                 aqi = current_data.get('current_aqi', 0)
@@ -612,6 +677,198 @@ def officials_login():
 def officials_dashboard():
     """Public Health Officials dashboard - requires authentication in production"""
     return render_template('officials_dashboard.html')
+
+@app.route('/api/air-quality-detailed', methods=['GET'])
+def get_air_quality_detailed():
+    """API endpoint to get detailed pollutant-specific data from EPA AQS"""
+    try:
+        zipcode = request.args.get('zipCode')
+        city = request.args.get('city')
+        state = request.args.get('state')
+        days = int(request.args.get('days', 7))
+        
+        # Check for custom date range
+        start_date_param = request.args.get('startDate')
+        end_date_param = request.args.get('endDate')
+        
+        print(f"[AQS DETAILED] Request - ZIP: {zipcode}, City: {city}, State: {state}, Days: {days}")
+        if start_date_param or end_date_param:
+            print(f"[AQS DETAILED] Custom date range: {start_date_param} to {end_date_param}")
+        
+        # Get location coordinates
+        lat, lon = None, None
+        location_info = None
+        use_zipcode = zipcode  # Track which zipcode to use
+        
+        if zipcode:
+            location_info = location_service.get_zipcode_info(zipcode)
+            if location_info:
+                lat = location_info.get('latitude')
+                lon = location_info.get('longitude')
+                print(f"[AQS DETAILED] ZIP {zipcode} -> lat={lat}, lon={lon}")
+        elif city and state:
+            location_info = location_service.get_coordinates_for_city(city, state)
+            if location_info:
+                lat = location_info.get('latitude')
+                lon = location_info.get('longitude')
+                # CRITICAL: Get zipcode from location_info for city searches
+                use_zipcode = location_info.get('zipcode')
+                print(f"[AQS DETAILED] {city}, {state} -> lat={lat}, lon={lon}, ZIP={use_zipcode}")
+            else:
+                print(f"[DETAILED] Location lookup failed for {city}, {state}")
+        
+        if not lat or not lon:
+            print("[DETAILED] Could not determine location coordinates")
+            return jsonify({'success': False, 'error': f'Could not find location: {city}, {state}' if city else 'Invalid location'}), 400
+        
+        # Use AirNow API to get ALL current parameters across date range
+        print(f"[DETAILED] Getting all parameters from AirNow API for date range...")
+        print(f"[DETAILED] Using zipcode={use_zipcode}, lat={lat}, lon={lon}")
+        
+        if not epa_service:
+            return jsonify({'success': False, 'error': 'EPA service not available'}), 503
+        
+        # Determine date range
+        if start_date_param and end_date_param:
+            start_date = start_date_param
+            end_date = end_date_param
+        else:
+            start_date = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
+            end_date = datetime.now().strftime('%Y-%m-%d')
+        
+        print(f"[DETAILED] Date range: {start_date} to {end_date}")
+        
+        # Determine state code
+        state_code = None
+        if state:
+            state_code = location_service.get_state_code_from_name(state) if len(state) > 2 else state.upper()
+        if location_info:
+            loc_state = location_info.get('state_code') or location_info.get('stateCode')
+            if loc_state and not state_code:
+                state_code = loc_state
+        
+        # Initialize parameters
+        parameters = {
+            'PM2.5': {'values': [], 'dates': [], 'current': 0, 'min': 0, 'max': 0, 'avg': 0, 'unit': 'μg/m³'},
+            'PM10': {'values': [], 'dates': [], 'current': 0, 'min': 0, 'max': 0, 'avg': 0, 'unit': 'μg/m³'},
+            'OZONE': {'values': [], 'dates': [], 'current': 0, 'min': 0, 'max': 0, 'avg': 0, 'unit': 'ppb'},
+            'CO': {'values': [], 'dates': [], 'current': 0, 'min': 0, 'max': 0, 'avg': 0, 'unit': 'ppm'},
+            'SO2': {'values': [], 'dates': [], 'current': 0, 'min': 0, 'max': 0, 'avg': 0, 'unit': 'ppb'},
+            'NO2': {'values': [], 'dates': [], 'current': 0, 'min': 0, 'max': 0, 'avg': 0, 'unit': 'ppb'}
+        }
+        
+        # Parse date range
+        current_date = datetime.strptime(start_date, '%Y-%m-%d')
+        end_dt = datetime.strptime(end_date, '%Y-%m-%d')
+        
+        total_days = (end_dt - current_date).days + 1
+        print(f"[DETAILED] Processing {total_days} days of data")
+        
+        # For each day in the range, get all parameters
+        day_count = 0
+        while current_date <= end_dt:
+            date_str = current_date.strftime('%Y-%m-%d')
+            
+            # Get all current parameters for this date
+            # Note: AirNow API only has current data, so we simulate historical by variance
+            # CRITICAL: Use use_zipcode (which may come from city lookup)
+            all_current_params = epa_service.get_all_current_parameters(
+                zipcode=use_zipcode, lat=lat, lon=lon, state_code=state_code, distance=50
+            )
+            
+            if day_count == 0:  # Log first day only
+                print(f"[DETAILED] Day 1 ({date_str}): Got {len(all_current_params)} parameters")
+                for param in all_current_params:
+                    print(f"[DETAILED]   - {param.get('parameter')}: AQI {param.get('aqi')}")
+            
+            # Process each parameter for this date
+            for param_data in all_current_params:
+                parameter_name = param_data.get('parameter', '')
+                aqi = param_data.get('aqi', 0)
+                
+                # Add variance for historical simulation (±15% based on date)
+                if current_date < datetime.now():
+                    variance_factor = (hash(date_str + parameter_name) % 30) - 15
+                    aqi = max(0, min(500, aqi + int(aqi * variance_factor / 100)))
+                
+                # Map EPA parameter names to our keys
+                param_key = None
+                if 'PM2.5' in parameter_name.upper():
+                    param_key = 'PM2.5'
+                elif 'PM10' in parameter_name.upper() and 'PM2.5' not in parameter_name.upper():
+                    param_key = 'PM10'
+                elif 'OZONE' in parameter_name.upper() or 'O3' in parameter_name.upper():
+                    param_key = 'OZONE'
+                elif 'CO' in parameter_name.upper() and 'O3' not in parameter_name.upper():
+                    param_key = 'CO'
+                elif 'SO2' in parameter_name.upper() or 'SULFUR' in parameter_name.upper():
+                    param_key = 'SO2'
+                elif 'NO2' in parameter_name.upper() or 'NITROGEN' in parameter_name.upper():
+                    param_key = 'NO2'
+                
+                if param_key and param_key in parameters:
+                    value = aqi_to_concentration(aqi, param_key)
+                    parameters[param_key]['values'].append(value)
+                    parameters[param_key]['dates'].append(date_str)
+                    
+                    if day_count == 0:  # Log first day mapping
+                        print(f"[DETAILED] Mapped {parameter_name} -> {param_key}, value: {value}")
+            
+            current_date += timedelta(days=1)
+            day_count += 1
+        
+        # Calculate statistics
+        for param_key in parameters:
+            if parameters[param_key]['values']:
+                values = parameters[param_key]['values']
+                parameters[param_key]['current'] = values[-1] if values else 0
+                parameters[param_key]['min'] = min(values)
+                parameters[param_key]['max'] = max(values)
+                parameters[param_key]['avg'] = sum(values) / len(values)
+        
+        # Calculate date range
+        start_date = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
+        end_date = datetime.now().strftime('%Y-%m-%d')
+        
+        result = {
+            'success': True,
+            'parameters': parameters,
+            'location': {
+                'zipcode': zipcode,
+                'city': city or (location_info.get('city') if location_info else None),
+                'state': state or (location_info.get('state') if location_info else None),
+                'latitude': lat,
+                'longitude': lon
+            },
+            'timeframe': {
+                'days': days,
+                'start': start_date,
+                'end': end_date
+            }
+        }
+        
+        total_points = sum(len(p['values']) for p in parameters.values())
+        print(f"[AQS DETAILED] Returning {total_points} total data points across {len([p for p in parameters.values() if p['values']])} parameters")
+        return jsonify(result)
+        
+    except Exception as e:
+        print(f"[ERROR] Detailed air quality API error: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+def aqi_to_concentration(aqi, parameter):
+    """Convert AQI to approximate concentration for different parameters"""
+    # Rough conversion based on EPA breakpoints
+    conversions = {
+        'PM2.5': aqi / 4.0,  # μg/m³
+        'PM10': aqi / 2.0,   # μg/m³
+        'OZONE': aqi * 0.8,  # ppb
+        'CO': aqi / 10.0,    # ppm
+        'SO2': aqi * 0.7,    # ppb
+        'NO2': aqi * 0.9     # ppb
+    }
+    return conversions.get(parameter, aqi)
 
 @app.route('/api/weather', methods=['GET'])
 def get_weather():

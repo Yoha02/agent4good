@@ -1,0 +1,32 @@
+field_name,data_type,mode,description
+item_id,STRING,REQUIRED,Unique identifier for the data item (GUID or generated)
+source_id,INTEGER,REQUIRED,Foreign key to data_sources table
+title,STRING,NULLABLE,Title/headline of the item
+description,STRING,NULLABLE,Full description or content
+link,STRING,NULLABLE,URL to original source
+published_date,TIMESTAMP,NULLABLE,Publication/event date and time
+category,STRING,NULLABLE,Category (alert/warning/info/forecast)
+severity,STRING,NULLABLE,Severity level (critical/high/moderate/low)
+location_name,STRING,NULLABLE,Location name (city/county/state)
+state_code,STRING,NULLABLE,2-letter state code
+latitude,FLOAT,NULLABLE,Latitude coordinate
+longitude,FLOAT,NULLABLE,Longitude coordinate
+geometry,GEOGRAPHY,NULLABLE,GeoJSON geometry (for BigQuery GIS)
+affected_area_polygon,STRING,NULLABLE,Polygon coordinates as JSON string
+event_type,STRING,NULLABLE,Type of event (wildfire/earthquake/storm/health)
+magnitude,FLOAT,NULLABLE,Magnitude (earthquakes) or intensity value
+pollutant_type,STRING,NULLABLE,Air pollutant if applicable (PM2.5/Ozone/etc)
+aqi_value,INTEGER,NULLABLE,Air Quality Index if applicable
+health_metric,STRING,NULLABLE,Health metric name
+health_value,FLOAT,NULLABLE,Health metric value
+health_unit,STRING,NULLABLE,Unit of measurement
+drug_name,STRING,NULLABLE,Drug/medication name (for drug availability)
+availability_status,STRING,NULLABLE,Available/Limited/Unavailable
+facility_name,STRING,NULLABLE,Facility or reporting location
+alert_level,STRING,NULLABLE,Alert level (red/orange/yellow/green)
+expires_at,TIMESTAMP,NULLABLE,Expiration timestamp for alerts
+metadata_json,STRING,NULLABLE,Additional metadata as JSON string
+is_active,BOOLEAN,NULLABLE,Whether item is currently active
+is_archived,BOOLEAN,NULLABLE,Whether item has been archived
+created_at,TIMESTAMP,REQUIRED,When record was created in database
+updated_at,TIMESTAMP,NULLABLE,Last update timestamp

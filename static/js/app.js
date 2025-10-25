@@ -252,8 +252,9 @@ function getAutoLocation() {
 
 // Initialize the application
 function initializeApp() {
-    // Set default to California
-    currentState = 'California';
+    // Set default to California with ZIP code
+    currentState = 'CA';
+    currentZip = '90210';  // Beverly Hills, CA - reliable EPA monitoring station
     updateAPIStatus('loading', 'Initializing...', 'Loading default location data');
     
     // Load cities for California on startup
@@ -261,6 +262,13 @@ function initializeApp() {
     
     loadAirQualityData();
     loadHealthRecommendations();
+    
+    // Initialize pollutant charts immediately on page load (even without location)
+    if (typeof initializePollutantCharts === 'function') {
+        console.log('[APP] Initializing pollutant charts on page load');
+        // Call with null/empty to show empty charts
+        initializePollutantCharts(null, null, null);
+    }
 }
 
 // Handle state selection change
@@ -398,6 +406,32 @@ function setupEventListeners() {
         questionInput.addEventListener('keypress', function(e) {
             if (e.key === 'Enter') {
                 askAI();
+            }
+        });
+    }
+    
+    // Date picker change listeners
+    const startDateInput = document.getElementById('startDate');
+    const endDateInput = document.getElementById('endDate');
+    
+    if (startDateInput) {
+        startDateInput.addEventListener('change', function() {
+            console.log('[Date Picker] Start date changed:', this.value);
+            // Refresh charts if we have a location
+            if (currentZip || (currentCity && currentState)) {
+                console.log('[Date Picker] Refreshing charts with new date range');
+                initializePollutantCharts(currentZip, currentCity, currentState);
+            }
+        });
+    }
+    
+    if (endDateInput) {
+        endDateInput.addEventListener('change', function() {
+            console.log('[Date Picker] End date changed:', this.value);
+            // Refresh charts if we have a location
+            if (currentZip || (currentCity && currentState)) {
+                console.log('[Date Picker] Refreshing charts with new date range');
+                initializePollutantCharts(currentZip, currentCity, currentState);
             }
         });
     }
@@ -1428,6 +1462,11 @@ async function loadWeatherData() {
     } catch (error) {
         console.error('[Weather] Error loading data:', error);
     }
+    
+    // Load detailed pollutant charts
+    if (typeof initializePollutantCharts === 'function') {
+        initializePollutantCharts(currentZip, currentCity, currentState);
+    }
 }
 
 // Load pollen data
@@ -1572,4 +1611,12 @@ function getPollenIcon(upi) {
     if (upi == 3) return '🌺';
     if (upi == 4) return '🌼';
     return '🌻';
+}
+
+// Mobile menu toggle function
+function toggleMobileMenu() {
+    const mobileMenu = document.getElementById('mobileMenu');
+    if (mobileMenu) {
+        mobileMenu.classList.toggle('hidden');
+    }
 }
