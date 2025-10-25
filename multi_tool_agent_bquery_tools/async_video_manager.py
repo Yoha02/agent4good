@@ -126,21 +126,22 @@ class VideoGenerationManager:
                     
                     status = veo_client.check_operation_status(operation)
                     
-                    if status['status'] == 'complete':
+                    if status.get('status') == 'complete':
                         # Video ready with public URL!
                         self.update_task(task_id, {
                             'status': 'complete',
                             'progress': 100,
-                            'video_url': status['video_url'],
+                            'video_url': status.get('video_url'),
                             'gcs_uri': status.get('gcs_uri'),
                             'action_line': action_line,
-                            'video_size': status.get('video_size')
+                            'video_size': status.get('video_size'),
+                            'message': status.get('message', 'Video ready')
                         })
                         return
-                    elif status['status'] == 'error':
+                    elif status.get('status') == 'error':
                         self.update_task(task_id, {
                             'status': 'error',
-                            'error': status.get('error_message')
+                            'error': status.get('error_message', 'Unknown error')
                         })
                         return
                 

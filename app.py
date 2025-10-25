@@ -304,8 +304,11 @@ def agent_chat():
             }), 400
         
         # Check if user wants to generate PSA video
-        video_keywords = ['create video', 'generate psa', 'make video', 'create psa', 'video psa']
+        video_keywords = ['create video', 'generate psa', 'make video', 'create psa', 'video psa', 'psa video']
         wants_video = any(keyword in question.lower() for keyword in video_keywords)
+        
+        print(f"[CHAT] Question: {question}")
+        print(f"[CHAT] Wants video: {wants_video}")
         
         if wants_video:
             # Start async video generation
