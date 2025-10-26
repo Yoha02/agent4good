@@ -1,8 +1,0 @@
-source_id,source_name,source_type,url,data_format,category,refresh_minutes,active,geocoded,state_filter,description,created_at
-1,InciWeb Wildfire Incidents,rss,https://inciweb.nwcg.gov/feeds/rss/incidents/,rss,wildfire,30,true,true,,Active wildfire incidents from InciWeb,2025-10-25T00:00:00Z
-2,USGS Earthquake Feed,atom,https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.atom,atom,earthquake,15,true,true,,Real-time earthquakes from USGS,2025-10-25T00:00:00Z
-3,NOAA Storm Prediction Center,rss,https://www.spc.noaa.gov/products/spcwwrss.xml,rss,weather,15,true,true,,Severe weather alerts and watches,2025-10-25T00:00:00Z
-4,NY State Health Data,xml,https://health.data.ny.gov/api/views/jw46-jpb7/rows.xml,xml,health,60,true,true,NY,New York health metrics and indicators,2025-10-25T00:00:00Z
-5,CDC COVID-19 Test Positivity,xml,https://data.cdc.gov/api/views/j8mb-icvb/rows.xml,xml,health,60,true,true,,COVID-19 test positivity rates by state,2025-10-25T00:00:00Z
-6,Drug Availability Data,geojson,https://healthdata.gov/api/views/b4vg-5e3r/rows.geojson,geojson,drug,120,true,true,,Medication and drug availability,2025-10-25T00:00:00Z
-7,Colorado Respiratory Infections,geojson,https://services3.arcgis.com/66aUo8zsujfVXRIT/arcgis/rest/services/CDPHE_Respiratory_Illness_Data/FeatureServer/0/query?where=1%3D1&outFields=*&f=geojson,geojson,health,60,true,true,CO,Respiratory infection surveillance data,2025-10-25T00:00:00Z

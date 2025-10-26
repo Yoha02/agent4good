@@ -1,0 +1,89 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches: [ main, combined-branch-s ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+env:
+  # GitHub Secrets are automatically available as environment variables
+  SECRET_KEY: ${{ secrets.SECRET_KEY }}
+  FLASK_ENV: production
+  
+  # Google Cloud Configuration
+  GOOGLE_CLOUD_PROJECT: ${{ secrets.GOOGLE_CLOUD_PROJECT }}
+  BIGQUERY_DATASET: ${{ secrets.BIGQUERY_DATASET }}
+  BIGQUERY_TABLE_REPORTS: ${{ secrets.BIGQUERY_TABLE_REPORTS }}
+  
+  # Google API Keys
+  GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+  GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+  
+  # EPA API Configuration
+  EPA_API_KEY: ${{ secrets.EPA_API_KEY }}
+  AQS_API_KEY: ${{ secrets.AQS_API_KEY }}
+  AQS_EMAIL: ${{ secrets.AQS_EMAIL }}
+  
+  # Optional: Port
+  PORT: 8080
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.12'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+    
+    - name: Set up Google Cloud credentials
+      uses: google-github-actions/auth@v1
+      with:
+        credentials_json: ${{ secrets.GCP_CREDENTIALS }}
+    
+    - name: Configure Google Cloud SDK
+      uses: google-github-actions/setup-gcloud@v1
+    
+    - name: Run tests (if you have any)
+      run: |
+        # Add your test commands here
+        # python -m pytest tests/
+        echo "Tests would run here"
+    
+    - name: Build Docker image
+      run: |
+        docker build -t gcr.io/${{ secrets.GOOGLE_CLOUD_PROJECT }}/agent4good:${{ github.sha }} .
+    
+    - name: Push to Google Container Registry
+      run: |
+        gcloud auth configure-docker
+        docker push gcr.io/${{ secrets.GOOGLE_CLOUD_PROJECT }}/agent4good:${{ github.sha }}
+    
+    - name: Deploy to Cloud Run
+      run: |
+        gcloud run deploy agent4good \
+          --image gcr.io/${{ secrets.GOOGLE_CLOUD_PROJECT }}/agent4good:${{ github.sha }} \
+          --platform managed \
+          --region us-central1 \
+          --allow-unauthenticated \
+          --set-env-vars SECRET_KEY=${{ secrets.SECRET_KEY }} \
+          --set-env-vars GOOGLE_CLOUD_PROJECT=${{ secrets.GOOGLE_CLOUD_PROJECT }} \
+          --set-env-vars BIGQUERY_DATASET=${{ secrets.BIGQUERY_DATASET }} \
+          --set-env-vars BIGQUERY_TABLE_REPORTS=${{ secrets.BIGQUERY_TABLE_REPORTS }} \
+          --set-env-vars GOOGLE_API_KEY=${{ secrets.GOOGLE_API_KEY }} \
+          --set-env-vars GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }} \
+          --set-env-vars EPA_API_KEY=${{ secrets.EPA_API_KEY }} \
+          --set-env-vars AQS_API_KEY=${{ secrets.AQS_API_KEY }} \
+          --set-env-vars AQS_EMAIL=${{ secrets.AQS_EMAIL }} \
+          --set-env-vars PORT=8080

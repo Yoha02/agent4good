@@ -3,11 +3,216 @@ let aqiChart = null;
 let currentState = '';
 let currentCity = '';
 let currentZip = '';
+let lastVideoData = null; // Store video data for Twitter posting
+
+// Voice control variables
+let recognition = null;
+let isListening = false;
+let speechEnabled = false;
+let currentUtterance = null;
+let selectedVoice = 'en-US-Neural2-F'; // Google Cloud TTS voice (Female Neural2)
+let currentAudio = null;
+
+// Initialize speech recognition
+function initializeSpeechRecognition() {
+    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        recognition = new SpeechRecognition();
+        recognition.continuous = false;
+        recognition.interimResults = false;
+        recognition.lang = 'en-US';
+
+        recognition.onstart = function() {
+            isListening = true;
+            updateMicrophoneButton();
+            console.log('[VOICE] Speech recognition started');
+        };
+
+        recognition.onresult = function(event) {
+            const transcript = event.results[0][0].transcript;
+            console.log('[VOICE] Recognized:', transcript);
+            document.getElementById('questionInput').value = transcript;
+            // Automatically ask the question
+            setTimeout(() => askAI(), 500);
+        };
+
+        recognition.onerror = function(event) {
+            console.error('[VOICE] Speech recognition error:', event.error);
+            isListening = false;
+            updateMicrophoneButton();
+            if (event.error === 'not-allowed') {
+                alert('Microphone access denied. Please enable microphone permissions.');
+            }
+        };
+
+        recognition.onend = function() {
+            isListening = false;
+            updateMicrophoneButton();
+            console.log('[VOICE] Speech recognition ended');
+        };
+
+        return true;
+    } else {
+        console.warn('[VOICE] Speech recognition not supported');
+        return false;
+    }
+}
+
+// Toggle voice input
+function toggleVoiceInput() {
+    if (!recognition) {
+        if (!initializeSpeechRecognition()) {
+            alert('Voice input is not supported in your browser. Please use Chrome, Edge, or Safari.');
+            return;
+        }
+    }
+
+    if (isListening) {
+        recognition.stop();
+    } else {
+        recognition.start();
+    }
+}
+
+// Update microphone button state
+function updateMicrophoneButton() {
+    const micButton = document.getElementById('micButton');
+    if (micButton) {
+        if (isListening) {
+            micButton.classList.add('bg-red-500', 'hover:bg-red-600');
+            micButton.classList.remove('bg-gray-500', 'hover:bg-gray-600');
+            micButton.innerHTML = '<i class="fas fa-microphone-slash"></i>';
+        } else {
+            micButton.classList.add('bg-gray-500', 'hover:bg-gray-600');
+            micButton.classList.remove('bg-red-500', 'hover:bg-red-600');
+            micButton.innerHTML = '<i class="fas fa-microphone"></i>';
+        }
+    }
+}
+
+// Toggle speech output
+function toggleSpeechOutput() {
+    speechEnabled = !speechEnabled;
+    
+    // Stop any current speech
+    if (!speechEnabled && currentAudio) {
+        currentAudio.pause();
+        currentAudio = null;
+    }
+    
+    // Update button state
+    const speakerButton = document.getElementById('speakerButton');
+    if (speakerButton) {
+        if (speechEnabled) {
+            speakerButton.classList.add('bg-emerald-500', 'hover:bg-emerald-600');
+            speakerButton.classList.remove('bg-gray-500', 'hover:bg-gray-600');
+            speakerButton.innerHTML = '<i class="fas fa-volume-up"></i>';
+        } else {
+            speakerButton.classList.add('bg-gray-500', 'hover:bg-gray-600');
+            speakerButton.classList.remove('bg-emerald-500', 'hover:bg-emerald-600');
+            speakerButton.innerHTML = '<i class="fas fa-volume-mute"></i>';
+        }
+    }
+    
+    console.log('[VOICE] Speech output:', speechEnabled ? 'enabled (Google Cloud TTS)' : 'disabled');
+}
+
+// Change voice selection
+function changeVoice(voiceName) {
+    selectedVoice = voiceName;
+    console.log('[VOICE] Voice changed to:', voiceName);
+}
+
+// Preview the selected voice
+async function previewVoice() {
+    const previewText = "Hello! I'm your AI health advisor. This is how I sound with the selected voice.";
+    
+    // Temporarily enable speech for preview if disabled
+    const wasEnabled = speechEnabled;
+    speechEnabled = true;
+    
+    await speakText(previewText);
+    
+    // Restore original state
+    speechEnabled = wasEnabled;
+}
+
+// Speak text using Google Cloud Text-to-Speech
+async function speakText(text) {
+    if (!speechEnabled) return;
+    
+    // Stop any ongoing speech
+    if (currentAudio) {
+        currentAudio.pause();
+        currentAudio = null;
+    }
+    
+    // Remove HTML tags for clean text
+    const cleanText = text.replace(/<[^>]*>/g, '').replace(/via.*$/, '').trim();
+    
+    if (!cleanText) return;
+    
+    try {
+        console.log('[VOICE] Requesting Google TTS for:', cleanText.substring(0, 50) + '...');
+        
+        // Call backend API for Google TTS
+        const response = await fetch('/api/text-to-speech', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                text: cleanText,
+                voice: selectedVoice
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success && data.audio) {
+            // Convert base64 to audio blob
+            const audioBlob = base64ToBlob(data.audio, 'audio/mp3');
+            const audioUrl = URL.createObjectURL(audioBlob);
+            
+            // Create and play audio
+            currentAudio = new Audio(audioUrl);
+            currentAudio.onended = () => {
+                URL.revokeObjectURL(audioUrl);
+                currentAudio = null;
+            };
+            
+            currentAudio.onerror = (error) => {
+                console.error('[VOICE] Audio playback error:', error);
+                URL.revokeObjectURL(audioUrl);
+                currentAudio = null;
+            };
+            
+            await currentAudio.play();
+            console.log('[VOICE] Playing Google TTS audio with voice:', data.voice);
+        } else {
+            console.error('[VOICE] TTS failed:', data.error);
+        }
+    } catch (error) {
+        console.error('[VOICE] Text-to-Speech error:', error);
+    }
+}
+
+// Helper function to convert base64 to blob
+function base64ToBlob(base64, mimeType) {
+    const byteCharacters = atob(base64);
+    const byteNumbers = new Array(byteCharacters.length);
+    
+    for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
+    }
+    
+    const byteArray = new Uint8Array(byteNumbers);
+    return new Blob([byteArray], { type: mimeType });
+}
 let currentDays = 7;
 let locationData = {}; // Cache location data
 let autocomplete = null; // Google Places Autocomplete
 let geocoder = null; // Google Geocoder
-let lastVideoData = null; // Store video data for Twitter posting
 
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', function() {
@@ -240,14 +445,14 @@ function getAutoLocation() {
                             document.getElementById('locationSearch').value = `${city}, ${state} ${zipCode}`;
                             
                             // Update dropdowns
-                            const stateSelect = document.getElementById('stateSelect');
-                            if (stateSelect) {
+    const stateSelect = document.getElementById('stateSelect');
+    if (stateSelect) {
                                 stateSelect.value = state || '';
                             }
                             
                             // Load ALL data
-                            loadAirQualityData();
-                            loadHealthRecommendations();
+            loadAirQualityData();
+            loadHealthRecommendations();
                             loadWeatherData();
                             loadPollenData();
                             
@@ -595,6 +800,9 @@ function applyLocationFilter() {
     }
     
     updateLocationDisplay(locationText);
+    
+    // Update chat location context indicator
+    updateChatLocationContext(locationText);
     
     console.log('Applying filter - State:', currentState, 'City:', currentCity, 'ZIP:', currentZip);
     loadAirQualityData();
@@ -1298,6 +1506,21 @@ function updateChart(data) {
     console.log('Chart created successfully');
 }
 
+// Update chat location context indicator
+function updateChatLocationContext(locationText) {
+    const contextDiv = document.getElementById('chatLocationContext');
+    const contextTextSpan = document.getElementById('chatLocationText');
+    
+    if (contextDiv && contextTextSpan) {
+        if (locationText && locationText !== 'California') {
+            contextTextSpan.textContent = locationText;
+            contextDiv.classList.remove('hidden');
+        } else {
+            contextDiv.classList.add('hidden');
+        }
+    }
+}
+
 // Ask AI function
 async function askAI() {
     const questionInput = document.getElementById('questionInput');
@@ -1356,6 +1579,53 @@ async function askAI() {
         loadingMsg.remove();
 
         if (data.success) {
+            // Debug: Log response data
+            console.log('[Chat Debug] Response data:', data);
+            
+            // Build context indicators
+            let contextIndicators = '';
+            
+            // Add location context badge if available
+            if (data.location) {
+                contextIndicators += `<div class="text-xs text-emerald-600 font-medium mt-1 flex items-center">
+                    <i class="fas fa-map-marker-alt mr-1"></i>
+                    Location: ${data.location}
+                </div>`;
+            } else if (actualState || actualCity) {
+                // Show location even if backend doesn't return it
+                const locationParts = [actualCity, actualState];
+                if (actualZip) {
+                    locationParts.push(`(${actualZip})`);
+                }
+                const locationText = locationParts.filter(Boolean).join(', ');
+                contextIndicators += `<div class="text-xs text-emerald-600 font-medium mt-1 flex items-center">
+                    <i class="fas fa-map-marker-alt mr-1"></i>
+                    Location: ${locationText}
+                </div>`;
+            }
+            
+            // Add time frame indicator if we have time frame data
+            if (timeFrame) {
+                contextIndicators += `<div class="text-xs text-blue-600 font-medium mt-1 flex items-center">
+                    <i class="fas fa-calendar-alt mr-1"></i>
+                    Time Frame: ${timeFrame.period}
+                </div>`;
+            }
+            
+            // Add current time indicator
+            const now = new Date();
+            const currentTime = now.toLocaleString('en-US', { 
+                weekday: 'short', 
+                month: 'short', 
+                day: 'numeric', 
+                hour: '2-digit', 
+                minute: '2-digit' 
+            });
+            contextIndicators += `<div class="text-xs text-purple-600 font-medium mt-1 flex items-center">
+                <i class="fas fa-clock mr-1"></i>
+                Current Time: ${currentTime}
+            </div>`;
+            
             // Add agent badge if available
             const agentBadge = data.agent ? `<div class="text-xs text-gray-500 mt-1">via ${data.agent}</div>` : '';
             
@@ -1373,6 +1643,7 @@ async function askAI() {
             
             // If video generation started, begin polling
             if (data.task_id) {
+                console.log('[VIDEO] Task ID received:', data.task_id);
                 pollForVideoCompletion(data.task_id);
             }
         } else {
@@ -1393,8 +1664,17 @@ function isTwitterApproval(message) {
 }
 
 // Post video to Twitter
+const isPostingToTwitter = { value: false }; // Flag to prevent duplicate posts
+
 async function postToTwitter(videoData) {
     const questionInput = document.getElementById('questionInput');
+    
+    // Prevent duplicate posting
+    if (isPostingToTwitter.value) {
+        console.log('[TWITTER] Already posting, ignoring duplicate call');
+        return;
+    }
+    isPostingToTwitter.value = true;
     
     // Add user's approval message
     addMessage('Yes, post to Twitter', 'user');
@@ -1427,7 +1707,7 @@ async function postToTwitter(videoData) {
         loadingMsg.remove();
         
         if (result.success) {
-            const successMessage = `✓ Posted to Twitter successfully!\n\nView your post: ${result.tweet_url}\n\n${result.message}`;
+            const successMessage = `Posted to Twitter successfully!\n\nView your post: ${result.tweet_url}\n\n${result.message}`;
             addMessage(successMessage, 'bot');
             
             // Clear video data after posting
@@ -1444,6 +1724,9 @@ async function postToTwitter(videoData) {
             addMessage('Sorry, there was an error posting to Twitter. Please try again.', 'bot');
         }
         console.error('Twitter posting error:', error);
+    } finally {
+        // Reset posting flag
+        isPostingToTwitter.value = false;
     }
     
     // Clear input
@@ -1482,7 +1765,7 @@ async function pollForVideoCompletion(taskId) {
                 };
                 
                 // Video is ready! Add new message with video
-                const videoMessage = `✓ Your PSA video is ready!
+                const videoMessage = `Your PSA video is ready!
 
 [VIDEO:${status.video_url}]
 
@@ -1513,6 +1796,36 @@ Would you like me to post this to Twitter?`;
     activeVideoPolls.delete(taskId);
     addMessage('Video generation timed out. Please try again.', 'bot');
     console.error(`[VIDEO] Task ${taskId} timeout`);
+}
+
+// Clear chat history
+function clearChat() {
+    const chatMessages = document.getElementById('chatMessages');
+    if (!chatMessages) return;
+    
+    // Stop any ongoing speech
+    if (currentAudio) {
+        currentAudio.pause();
+        currentAudio = null;
+    }
+    
+    // Clear all messages
+    chatMessages.innerHTML = '';
+    
+    // Add welcome message back
+    const welcomeDiv = document.createElement('div');
+    welcomeDiv.className = 'flex items-start space-x-3';
+    welcomeDiv.innerHTML = `
+        <div class="w-10 h-10 bg-emerald-500 rounded-full flex items-center justify-center flex-shrink-0">
+            <i class="fas fa-robot text-white"></i>
+        </div>
+        <div class="bg-white rounded-2xl rounded-tl-none p-4 shadow-md max-w-lg">
+            <p class="text-gray-700">Hello! I'm your AI health advisor. Ask me anything about air quality, disease risks, or health recommendations for your community.</p>
+        </div>
+    `;
+    chatMessages.appendChild(welcomeDiv);
+    
+    console.log('[CHAT] Chat history cleared');
 }
 
 
@@ -1563,6 +1876,11 @@ function addMessage(text, type) {
                 <p class="text-gray-700 leading-relaxed whitespace-pre-line">${messageContent}</p>
             </div>
         `;
+        
+        // Speak the bot's response if speech is enabled
+        if (speechEnabled) {
+            speakText(text);
+        }
     } else {
         messageDiv.innerHTML = `
             <div class="bg-navy-700 text-white rounded-2xl rounded-tr-none p-4 shadow-md max-w-lg">

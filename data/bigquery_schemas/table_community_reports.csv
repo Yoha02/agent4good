@@ -1,1 +1,0 @@
-report_id,timestamp,report_type,severity,specific_type,description,address,zip_code,city,state,people_affected,timeframe,contact_name,contact_email,contact_phone,anonymous,latitude,longitude,photos_count,photo_urls,status,created_at,updated_at,assigned_to,response_notes

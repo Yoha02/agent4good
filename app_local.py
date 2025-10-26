@@ -14,8 +14,17 @@ from epa_aqs_service import EPAAQSService
 from location_service_comprehensive import ComprehensiveLocationService
 from google_weather_service import GoogleWeatherService
 from google_pollen_service import GooglePollenService
-from google.cloud import storage
+from google.cloud import storage, bigquery, texttospeech
 import google.generativeai as genai
+import base64
+
+# PSA Video Integration
+try:
+    from multi_tool_agent_bquery_tools.async_video_manager import VideoGenerationManager
+    PSA_VIDEO_AVAILABLE = True
+except ImportError as e:
+    print(f"[INFO] PSA Video features not available: {e}")
+    PSA_VIDEO_AVAILABLE = False
 
 # Load environment variables
 load_dotenv()
@@ -52,6 +61,36 @@ except Exception as e:
     storage_client = None
     bucket = None
 
+# Initialize BigQuery client
+try:
+    bq_client = bigquery.Client(project=GCP_PROJECT_ID)
+    print(f"[OK] BigQuery client initialized for project: {GCP_PROJECT_ID}")
+except Exception as e:
+    print(f"[WARNING] BigQuery initialization failed: {e}")
+    bq_client = None
+
+# Initialize Gemini AI model
+try:
+    if GEMINI_API_KEY:
+        model = genai.GenerativeModel('gemini-pro')
+        print("[OK] Gemini AI model initialized")
+    else:
+        model = None
+        print("[WARNING] No Gemini API key, AI features will be limited")
+except Exception as e:
+    print(f"[WARNING] Gemini model initialization failed: {e}")
+    model = None
+
+# Initialize Google Text-to-Speech client
+try:
+    tts_client = texttospeech.TextToSpeechClient()
+    TTS_AVAILABLE = True
+    print("[OK] Google Text-to-Speech client initialized")
+except Exception as e:
+    print(f"[WARNING] Text-to-Speech initialization failed: {e}")
+    TTS_AVAILABLE = False
+    tts_client = None
+
 # Initialize services
 try:
     epa_service = EPAAirQualityService()
@@ -71,6 +110,26 @@ except Exception as e:
     location_service = ComprehensiveLocationService()  # Location service can work independently
     weather_service = None
     pollen_service = None
+
+# Initialize PSA Video Manager
+video_manager = None
+if PSA_VIDEO_AVAILABLE:
+    try:
+        video_manager = VideoGenerationManager()
+        print("[OK] PSA Video Manager initialized")
+    except Exception as e:
+        print(f"[WARNING] PSA Video Manager initialization failed: {e}")
+        video_manager = None
+        PSA_VIDEO_AVAILABLE = False
+
+# Import ADK agent (optional, for backwards compatibility)
+try:
+    from multi_tool_agent_bquery_tools.agent import call_agent as call_adk_agent
+    ADK_AGENT_AVAILABLE = True
+    print("[OK] ADK Agent loaded successfully!")
+except Exception as e:
+    print(f"[INFO] ADK Agent not available (optional): {e}")
+    ADK_AGENT_AVAILABLE = False
 
 # ===== FILE UPLOAD & AI ANALYSIS HELPERS =====
 
@@ -254,12 +313,62 @@ def assign_auto_status(ai_tags, ai_confidence):
 
 # ===== END FILE UPLOAD & AI HELPERS =====
 
-# Mock data for fallback when EPA is unavailable
-class MockAirQualityAgent:
-    """Mock agent for local testing"""
+
+class AirQualityAgent:
+    """Google SDK Agent for Air Quality Analysis with BigQuery + Gemini AI"""
+    
+    def __init__(self, bq_client, genai_model):
+        self.bq_client = bq_client
+        self.model = genai_model
     
     def query_air_quality_data(self, state=None, days=7):
-        """Generate mock air quality data"""
+        """Query air quality data from public BigQuery EPA dataset"""
+        if not self.bq_client:
+            print("[BQ] No BigQuery client, using demo data")
+            return self._generate_demo_data(state, days)
+            
+        try:
+            # Use public EPA dataset
+            query = f"""
+            SELECT 
+                date_local as date,
+                state_name,
+                county_name,
+                CAST(aqi AS INT64) as aqi,
+                parameter_name,
+                local_site_name as site_name,
+                arithmetic_mean as pm25_mean
+            FROM `bigquery-public-data.epa_historical_air_quality.pm25_frm_daily_summary`
+            WHERE date_local >= DATE_SUB(DATE('2021-11-08'), INTERVAL {days} DAY)
+            AND aqi IS NOT NULL
+            """
+            
+            if state:
+                query += f" AND UPPER(state_name) = UPPER('{state}')"
+            
+            query += " ORDER BY date_local DESC LIMIT 1000"
+            
+            print(f"[BQ] Querying public EPA dataset for {state or 'all states'}, last {days} days")
+            query_job = self.bq_client.query(query)
+            results = query_job.result()
+            
+            data = [dict(row) for row in results]
+            
+            if data:
+                print(f"[BQ] Retrieved {len(data)} records from public EPA dataset")
+                return data
+            else:
+                print(f"[BQ] No data found, using demo data")
+                return self._generate_demo_data(state, days)
+                
+        except Exception as e:
+            print(f"[BQ ERROR] {e}")
+            print("[BQ] Falling back to demo data")
+            return self._generate_demo_data(state, days)
+    
+    def _generate_demo_data(self, state=None, days=7):
+        """Generate demo data when BigQuery is unavailable"""
+        import random
         data = []
         states = ['California', 'Texas', 'New York', 'Florida', 'Illinois']
         counties = {
@@ -270,7 +379,7 @@ class MockAirQualityAgent:
             'Illinois': ['Cook', 'DuPage', 'Lake']
         }
         
-        selected_states = [state] if state and state in states else states[:3]
+        selected_states = [state] if state else states[:3]
         
         for day in range(days):
             date = datetime.now() - timedelta(days=day)
@@ -290,20 +399,37 @@ class MockAirQualityAgent:
         return data
     
     def analyze_with_ai(self, data, question):
-        """Mock AI analysis"""
-        df = pd.DataFrame(data)
-        avg_aqi = df['aqi'].mean() if not df.empty else 50
-        
-        responses = [
-            f"Based on the air quality data, the average AQI is {avg_aqi:.1f}. This indicates moderate air quality.",
-            f"The PM2.5 levels in your area are within acceptable ranges. Consider outdoor activities during morning hours.",
-            f"Air quality monitoring shows seasonal variations. Stay informed about daily AQI levels for better health planning.",
-        ]
-        
-        return random.choice(responses)
+        """Use Gemini AI to analyze air quality data"""
+        try:
+            if not self.model or not data:
+                return "AI analysis unavailable at the moment."
+            
+            # Prepare data summary for AI
+            df = pd.DataFrame(data)
+            data_summary = df.describe().to_string() if not df.empty else "No data available"
+            
+            prompt = f"""
+            You are an air quality health advisor. Analyze this air quality data and answer the question.
+            
+            Data Summary:
+            {data_summary}
+            
+            Recent Records:
+            {df.head(10).to_string() if not df.empty else "No recent data"}
+            
+            Question: {question}
+            
+            Provide a helpful, actionable response focused on community health and wellness.
+            """
+            
+            response = self.model.generate_content(prompt)
+            return response.text
+        except Exception as e:
+            print(f"Error with AI analysis: {e}")
+            return "Unable to generate AI analysis at this time."
     
     def get_statistics(self, data):
-        """Calculate statistics from mock data"""
+        """Calculate statistics from air quality data"""
         if not data:
             return {}
         
@@ -319,9 +445,10 @@ class MockAirQualityAgent:
         
         return stats
 
-# Initialize the mock agent
-agent = MockAirQualityAgent()
-ADK_AGENT_AVAILABLE = False  # Set to False for local testing
+
+# Initialize the AI agent
+agent = AirQualityAgent(bq_client, model)
+
 
 @app.route('/')
 def index():
@@ -850,7 +977,7 @@ def health_recommendations():
 
 @app.route('/api/agent-chat', methods=['POST'])
 def agent_chat():
-    """API endpoint for agent chat - fallback mode"""
+    """API endpoint for ADK agent chat with fallback to Gemini AI"""
     try:
         request_data = request.get_json()
         question = request_data.get('question', '')
@@ -861,20 +988,349 @@ def agent_chat():
                 'error': 'No question provided'
             }), 400
         
-        # Use mock AI since ADK agent is not available
+        # Get location context from request
         state = request_data.get('state', None)
+        city = request_data.get('city', None)
+        zipcode = request_data.get('zipcode', None)
         days = int(request_data.get('days', 7))
-        data = agent.query_air_quality_data(state=state, days=days)
-        analysis = agent.analyze_with_ai(data, question)
+        time_frame = request_data.get('time_frame', None)
+        
+        # Debug: Log received parameters
+        print(f"[AGENT-CHAT] Received parameters: state={state}, city={city}, zipcode={zipcode}, days={days}, time_frame={time_frame}")
+        
+        # Build location context string for AI
+        location_context = ""
+        if zipcode:
+            location_context = f"ZIP code {zipcode}"
+            if city and state:
+                location_context = f"{city}, {state} (ZIP: {zipcode})"
+        elif city and state:
+            location_context = f"{city}, {state}"
+        elif state:
+            location_context = state
+        
+        # Check for PSA video generation keywords
+        video_keywords = [
+            'create video', 'generate video', 'make video', 'produce video',
+            'create psa', 'generate psa', 'make psa',
+            'psa video', 'public service announcement', 'health alert video',
+            'create announcement', 'make announcement'
+        ]
+        
+        wants_video = any(keyword in question.lower() for keyword in video_keywords)
+        
+        if wants_video and PSA_VIDEO_AVAILABLE and video_manager:
+            print(f"[PSA-VIDEO] Video generation requested for: {location_context or state or 'Unknown location'}")
+            try:
+                # Create video generation task
+                task_id = video_manager.create_task({
+                    'question': question,
+                    'state': state,
+                    'city': city,
+                    'zipcode': zipcode,
+                    'location_context': location_context
+                })
+                
+                # Start background video generation
+                from multi_tool_agent_bquery_tools.integrations.veo3_client import get_veo3_client
+                from multi_tool_agent_bquery_tools.tools.video_gen import generate_action_line, create_veo_prompt
+                
+                # Get current health data for video context
+                health_data_for_video = agent.query_air_quality_data(state=state, days=1)
+                
+                if health_data_for_video:
+                    df = pd.DataFrame(health_data_for_video)
+                    avg_aqi = int(df['aqi'].mean()) if 'aqi' in df and not df['aqi'].empty else 50
+                    
+                    # Determine severity
+                    if avg_aqi <= 50:
+                        severity = "good"
+                    elif avg_aqi <= 100:
+                        severity = "moderate"
+                    elif avg_aqi <= 150:
+                        severity = "unhealthy for sensitive groups"
+                    elif avg_aqi <= 200:
+                        severity = "unhealthy"
+                    elif avg_aqi <= 300:
+                        severity = "very unhealthy"
+                    else:
+                        severity = "hazardous"
+                else:
+                    avg_aqi = 75
+                    severity = "moderate"
+                
+                health_data = {
+                    'type': 'air_quality',
+                    'severity': severity,
+                    'metric': avg_aqi,
+                    'location': state or 'Unknown',
+                    'specific_concern': 'PM2.5'
+                }
+                
+                veo_client = get_veo3_client()
+                video_manager.start_video_generation(
+                    task_id=task_id,
+                    health_data=health_data,
+                    veo_client=veo_client,
+                    action_line_func=generate_action_line,
+                    veo_prompt_func=create_veo_prompt
+                )
+                
+                print(f"[PSA-VIDEO] Task {task_id} created and started")
+                
+                return jsonify({
+                    'success': True,
+                    'response': f"I'll generate a health alert video for {location_context or state or 'your area'}. This takes about 60 seconds.\n\nYou can continue chatting while I work on this. I'll notify you when it's ready!\n\nIs there anything else I can help you with?",
+                    'task_id': task_id,
+                    'estimated_time': 60,
+                    'agent': 'PSA Video Generator',
+                    'location': location_context
+                })
+                
+            except Exception as video_error:
+                print(f"[PSA-VIDEO] Error starting video generation: {video_error}")
+                import traceback
+                traceback.print_exc()
+                # Fall through to normal chat
+        
+        # Try ADK agent first if available (only if model is working)
+        if ADK_AGENT_AVAILABLE and model:
+            try:
+                print(f"[AGENT-CHAT] Using ADK agent for question: {question}")
+                # Enhance question with location context if not already mentioned
+                enhanced_question = question
+                if location_context and location_context.lower() not in question.lower():
+                    enhanced_question = f"For {location_context}: {question}"
+                
+                print(f"[AGENT-CHAT] Enhanced question: {enhanced_question}")
+                
+                # Prepare location context for ADK agent
+                location_context_dict = None
+                if state or city or zipcode:
+                    location_context_dict = {
+                        'state': state,
+                        'city': city,
+                        'zipCode': zipcode,
+                        'formattedAddress': location_context
+                    }
+                
+                # Call ADK agent with context
+                response = call_adk_agent(enhanced_question, location_context=location_context_dict, time_frame=time_frame)
+                print(f"[AGENT-CHAT] ADK response received: {response[:100]}...")
+                
+                # Check if response indicates an API key error
+                if "API key is not set up" in response or "cannot fulfill this request" in response:
+                    print(f"[WARNING] ADK agent has API key issue, falling back to Gemini AI")
+                    raise Exception("ADK agent API key error")
+                
+                result = {
+                    'success': True,
+                    'response': response,
+                    'agent': 'ADK Multi-Agent System',
+                    'location': location_context
+                }
+                print(f"[AGENT-CHAT] Returning successful response via ADK")
+                return jsonify(result)
+            except Exception as adk_error:
+                print(f"[ERROR] ADK agent failed: {adk_error}")
+                import traceback
+                traceback.print_exc()
+                print(f"[AGENT-CHAT] Falling back to Gemini AI")
+        
+        # Fallback to Gemini AI with comprehensive environmental data
+        # Gather all available environmental data for the location
+        environmental_data = {
+            'air_quality': None,
+            'weather': None,
+            'pollen': None,
+            'detailed_pollutants': None
+        }
+        
+        # 1. Get air quality data
+        try:
+            if EPA_AVAILABLE and epa_service:
+                if zipcode:
+                    environmental_data['air_quality'] = epa_service.get_current_aqi(zipcode=zipcode)
+                elif state:
+                    # Get representative city for state
+                    cities = location_service.get_cities_by_state(location_service.get_state_code_from_name(state))
+                    if cities:
+                        zip_data = location_service.get_zipcode_info(cities[0].get('zipcode'))
+                        if zip_data:
+                            environmental_data['air_quality'] = epa_service.get_current_aqi(zipcode=zip_data['zipcode'])
+        except Exception as e:
+            print(f"[CHATBOT] Error fetching air quality: {e}")
+        
+        # 2. Get weather data
+        try:
+            if weather_service and zipcode:
+                weather_result = weather_service.get_weather(zipcode=zipcode)
+                if weather_result and weather_result.get('current'):
+                    environmental_data['weather'] = weather_result['current']
+        except Exception as e:
+            print(f"[CHATBOT] Error fetching weather: {e}")
+        
+        # 3. Get pollen data
+        try:
+            if pollen_service and zipcode:
+                pollen_result = pollen_service.get_pollen(zipcode=zipcode)
+                if pollen_result and pollen_result.get('current'):
+                    environmental_data['pollen'] = pollen_result['current']
+        except Exception as e:
+            print(f"[CHATBOT] Error fetching pollen: {e}")
+        
+        # 4. Get detailed pollutant data
+        try:
+            if EPA_AVAILABLE and epa_aqs_service and zipcode:
+                detailed_result = epa_aqs_service.get_detailed_pollutants(zipcode=zipcode, days=days)
+                if detailed_result:
+                    environmental_data['detailed_pollutants'] = detailed_result
+        except Exception as e:
+            print(f"[CHATBOT] Error fetching detailed pollutants: {e}")
+        
+        # Get historical air quality data from BigQuery
+        historical_data = agent.query_air_quality_data(state=state, days=days)
+        
+        # Build comprehensive context for AI
+        context_parts = [f"User is asking about {location_context}." if location_context else ""]
+        
+        # Add current air quality info
+        if environmental_data['air_quality']:
+            aqi_data = environmental_data['air_quality']
+            if isinstance(aqi_data, list) and len(aqi_data) > 0:
+                aqi = aqi_data[0].get('AQI', 'N/A')
+                category = aqi_data[0].get('Category', {}).get('Name', 'Unknown')
+                context_parts.append(f"Current AQI: {aqi} ({category})")
+        
+        # Add weather info
+        if environmental_data['weather']:
+            weather = environmental_data['weather']
+            temp = weather.get('temperature', {})
+            if temp:
+                temp_f = temp.get('value', 'N/A')
+                context_parts.append(f"Temperature: {temp_f}°F")
+            humidity = weather.get('relativeHumidity', 'N/A')
+            if humidity != 'N/A':
+                context_parts.append(f"Humidity: {humidity}%")
+        
+        # Add pollen info
+        if environmental_data['pollen']:
+            pollen = environmental_data['pollen']
+            pollen_index = pollen.get('index', {}).get('value', 'N/A')
+            if pollen_index != 'N/A':
+                context_parts.append(f"Pollen Index: {pollen_index}")
+            # Add specific pollen types
+            types = pollen.get('types', [])
+            if types:
+                high_pollen = [t['name'] for t in types if t.get('index', {}).get('value', 0) >= 4]
+                if high_pollen:
+                    context_parts.append(f"High pollen: {', '.join(high_pollen)}")
+        
+        # Add detailed pollutants
+        if environmental_data['detailed_pollutants']:
+            pollutants = environmental_data['detailed_pollutants']
+            pollutant_summary = []
+            for pollutant in pollutants:
+                param = pollutant.get('parameter', 'Unknown')
+                value = pollutant.get('value', 'N/A')
+                unit = pollutant.get('unit', '')
+                pollutant_summary.append(f"{param}: {value} {unit}")
+            if pollutant_summary:
+                context_parts.append(f"Pollutants: {', '.join(pollutant_summary[:5])}")  # First 5
+        
+        # Combine all context
+        environmental_context = " | ".join([p for p in context_parts if p])
+        enhanced_question = f"{environmental_context}\n\nQuestion: {question}"
+        
+        print(f"[AGENT-CHAT] Using Gemini fallback")
+        print(f"[AGENT-CHAT] Enhanced context: {environmental_context}")
+        
+        analysis = agent.analyze_with_ai(historical_data, enhanced_question)
+        
+        print(f"[AGENT-CHAT] Gemini response received: {analysis[:100]}...")
+        
+        result = {
+            'success': True,
+            'response': analysis,
+            'agent': 'Gemini AI with Comprehensive Environmental Data',
+            'data_points': len(historical_data),
+            'location': location_context,
+            'environmental_data': environmental_data  # Include for debugging/frontend use
+        }
+        print(f"[AGENT-CHAT] Returning successful response via Gemini")
+        return jsonify(result)
+        
+    except Exception as e:
+        print(f"[ERROR] Agent chat failed completely: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/text-to-speech', methods=['POST'])
+def text_to_speech():
+    """Convert text to speech using Google Cloud Text-to-Speech"""
+    if not TTS_AVAILABLE or not tts_client:
+        return jsonify({
+            'success': False,
+            'error': 'Text-to-Speech service not available'
+        }), 503
+    
+    try:
+        data = request.json
+        text = data.get('text', '')
+        
+        if not text:
+            return jsonify({'success': False, 'error': 'No text provided'}), 400
+        
+        # Clean text - remove HTML tags
+        import re
+        clean_text = re.sub('<[^<]+?>', '', text)
+        clean_text = clean_text.replace('via Gemini AI', '').replace('via ADK Multi-Agent System', '').strip()
+        
+        # Configure voice parameters
+        # Using Neural2 voices for most natural sound
+        voice_name = data.get('voice', 'en-US-Neural2-F')  # Default: Female Neural2
+        
+        # Available premium voices:
+        # en-US-Neural2-A (Male), en-US-Neural2-C (Female), en-US-Neural2-D (Male)
+        # en-US-Neural2-E (Female), en-US-Neural2-F (Female), en-US-Neural2-G (Female)
+        # en-US-Neural2-H (Female), en-US-Neural2-I (Male), en-US-Neural2-J (Male)
+        
+        synthesis_input = texttospeech.SynthesisInput(text=clean_text)
+        
+        voice = texttospeech.VoiceSelectionParams(
+            language_code="en-US",
+            name=voice_name
+        )
+        
+        audio_config = texttospeech.AudioConfig(
+            audio_encoding=texttospeech.AudioEncoding.MP3,
+            speaking_rate=0.95,  # Slightly slower for clarity
+            pitch=0.0,
+            volume_gain_db=0.0
+        )
+        
+        # Perform the text-to-speech request
+        response = tts_client.synthesize_speech(
+            input=synthesis_input,
+            voice=voice,
+            audio_config=audio_config
+        )
+        
+        # Convert audio to base64 for transmission
+        audio_base64 = base64.b64encode(response.audio_content).decode('utf-8')
         
         return jsonify({
             'success': True,
-            'response': analysis,
-            'agent': 'Mock AI (Local Development Mode)',
-            'data_points': len(data)
+            'audio': audio_base64,
+            'voice': voice_name
         })
         
     except Exception as e:
+        print(f"[ERROR] Text-to-Speech error: {e}")
         return jsonify({
             'success': False,
             'error': str(e)
@@ -2117,6 +2573,204 @@ def get_pollen():
         traceback.print_exc()
         return jsonify({'success': False, 'error': str(e)}), 500
 
+# ===== PSA VIDEO ENDPOINTS =====
+
+@app.route('/api/generate-psa-video', methods=['POST'])
+def generate_psa_video_endpoint():
+    """Generate PSA video from current health data"""
+    if not PSA_VIDEO_AVAILABLE or not video_manager:
+        return jsonify({
+            'success': False,
+            'error': 'PSA video feature not available'
+        }), 503
+    
+    try:
+        request_data = request.get_json()
+        location = request_data.get('location', 'California')
+        data_type = request_data.get('data_type', 'air_quality')  # or 'disease'
+        
+        # Get current health data
+        if data_type == 'air_quality':
+            health_data = agent.query_air_quality_data(state=location, days=1)
+            if health_data:
+                df = pd.DataFrame(health_data)
+                avg_aqi = df['aqi'].mean() if 'aqi' in df else 50
+                severity = "good" if avg_aqi <= 50 else "moderate" if avg_aqi <= 100 else "unhealthy"
+            else:
+                avg_aqi = 50
+                severity = "good"
+        else:
+            # Disease data
+            avg_aqi = 0
+            severity = "moderate"
+        
+        # Call agent to generate action line and video
+        prompt = f"Create a PSA video for {location} about {data_type}. Current severity: {severity}, AQI: {avg_aqi}"
+        
+        if ADK_AGENT_AVAILABLE:
+            response = call_adk_agent(prompt)
+            
+            return jsonify({
+                'success': True,
+                'action_line': 'Generated action line here',  # Extract from response
+                'status': 'processing',
+                'message': response,
+                'note': 'PSA video generation initiated'
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'PSA video generation requires ADK agent'
+            }), 503
+            
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/approve-and-post', methods=['POST'])
+def approve_and_post_video():
+    """Post approved video to Twitter"""
+    if not PSA_VIDEO_AVAILABLE:
+        return jsonify({
+            'success': False,
+            'error': 'PSA video feature not available'
+        }), 503
+    
+    try:
+        request_data = request.get_json()
+        video_uri = request_data.get('video_uri')
+        message = request_data.get('message')
+        hashtags = request_data.get('hashtags', [])
+        
+        # TODO: Implement actual Twitter posting
+        # For now, simulate success
+        
+        return jsonify({
+            'success': True,
+            'tweet_url': 'https://twitter.com/CommunityHealth/status/123456',
+            'message': 'Video posted successfully (simulation mode)',
+            'note': 'Add Twitter API credentials to enable real posting'
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/check-video-task/<task_id>')
+def check_video_task(task_id):
+    """Check status of async video generation task"""
+    if not PSA_VIDEO_AVAILABLE or not video_manager:
+        return jsonify({
+            'status': 'error',
+            'error': 'PSA video feature not available'
+        }), 503
+    
+    try:
+        task = video_manager.get_task(task_id)
+        
+        if task:
+            return jsonify(task)
+        else:
+            return jsonify({
+                'status': 'not_found',
+                'error': 'Task ID not found'
+            }), 404
+            
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/post-to-twitter', methods=['POST'])
+def post_to_twitter():
+    """
+    Post a PSA video to Twitter/X
+    
+    Expected JSON:
+    {
+        "video_url": "https://storage.googleapis.com/...",
+        "message": "Health alert message",
+        "hashtags": ["HealthAlert", "AirQuality"] (optional)
+    }
+    """
+    if not PSA_VIDEO_AVAILABLE:
+        return jsonify({
+            'success': False,
+            'error': 'PSA video feature not available'
+        }), 503
+    
+    try:
+        data = request.get_json()
+        
+        video_url = data.get('video_url')
+        message = data.get('message', '')
+        hashtags = data.get('hashtags', ['HealthAlert', 'PublicHealth', 'CommunityHealth'])
+        
+        if not video_url:
+            return jsonify({
+                'success': False,
+                'error': 'video_url is required'
+            }), 400
+        
+        if not message:
+            return jsonify({
+                'success': False,
+                'error': 'message is required'
+            }), 400
+        
+        # Import Twitter client
+        from multi_tool_agent_bquery_tools.integrations.twitter_client import get_twitter_client
+        
+        twitter_client = get_twitter_client()
+        
+        print(f"\n[TWITTER] ===== Twitter Posting Request =====")
+        print(f"[TWITTER] Video URL: {video_url[:50]}...")
+        print(f"[TWITTER] Message: {message[:100]}...")
+        print(f"[TWITTER] Hashtags: {hashtags}")
+        
+        # Post to Twitter
+        result = twitter_client.post_video_tweet(
+            video_url=video_url,
+            message=message,
+            hashtags=hashtags
+        )
+        
+        if result['status'] == 'success':
+            print(f"[TWITTER] SUCCESS: Tweet posted!")
+            print(f"[TWITTER] URL: {result['tweet_url']}")
+            
+            return jsonify({
+                'success': True,
+                'tweet_url': result['tweet_url'],
+                'tweet_id': result['tweet_id'],
+                'message': result.get('message', 'Posted to Twitter successfully!')
+            })
+        else:
+            print(f"[TWITTER] ERROR: {result.get('error_message')}")
+            return jsonify({
+                'success': False,
+                'error': result.get('error_message', 'Unknown error')
+            }), 500
+        
+    except Exception as e:
+        print(f"[TWITTER] ERROR: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+# ===== END PSA VIDEO ENDPOINTS =====
+
 @app.route('/acknowledgements')
 def acknowledgements():
     """Acknowledgements page"""
@@ -2128,8 +2782,16 @@ def health_check():
     """Health check endpoint"""
     return jsonify({
         'status': 'healthy',
-        'mode': 'local_development',
-        'adk_agent': 'unavailable (local mode)'
+        'mode': 'production',
+        'adk_agent': 'available' if ADK_AGENT_AVAILABLE else 'unavailable',
+        'psa_video_feature': 'enabled' if PSA_VIDEO_AVAILABLE else 'disabled',
+        'services': {
+            'epa': EPA_AVAILABLE,
+            'weather': weather_service is not None,
+            'pollen': pollen_service is not None,
+            'gcs': GCS_AVAILABLE,
+            'tts': TTS_AVAILABLE
+        }
     }), 200
 
 if __name__ == '__main__':

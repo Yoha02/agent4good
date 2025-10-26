@@ -1,13 +1,23 @@
 import os
 import random
 import google.auth
-from google.adk.tools.bigquery import BigQueryCredentialsConfig, BigQueryToolset
-from google.adk.tools.bigquery.config import BigQueryToolConfig, WriteMode
 from ..tools.common_utils import COUNTY_STATE_MAPPING, infer_state_from_county
 from typing import Optional, Tuple, Dict, List
 
 
 INFECTIOUS_DISEASES = ["Salmonella", "E. coli", "Norovirus", "Hepatitis A", "Giardia", "Cryptosporidium"]
+
+# Disease synonym mapping - maps user-friendly names to actual CDC BEAM database names
+DISEASE_SYNONYMS = {
+    "e. coli": "STEC",
+    "e coli": "STEC",
+    "escherichia coli": "STEC",
+    "e.coli": "STEC",
+    "stec": "STEC",
+    "stec o157": "STEC",
+    "shiga toxin-producing e. coli": "STEC",
+    "shiga toxin producing e coli": "STEC",
+}
 
 
 def get_infectious_disease_data(county: Optional[str] = None, state: Optional[str] = None, 
@@ -59,6 +69,13 @@ def get_infectious_disease_data(county: Optional[str] = None, state: Optional[st
         if state_abbrev:
             where_conditions.append(f"State = '{state_abbrev}'")
         if disease:
+            # Check for disease synonym
+            disease_lower = disease.lower().strip()
+            mapped_disease = DISEASE_SYNONYMS.get(disease_lower, disease)
+            if mapped_disease != disease:
+                print(f"[DISEASE] Mapped disease '{disease}' to '{mapped_disease}'")
+                disease = mapped_disease
+            
             where_conditions.append(f"LOWER(Pathogen) LIKE LOWER('%{disease}%')")
         if year:
             where_conditions.append(f"Year = {year}")
@@ -67,39 +84,62 @@ def get_infectious_disease_data(county: Optional[str] = None, state: Optional[st
         
         where_clause = " AND ".join(where_conditions) if where_conditions else "Year = 2025"
         
+        # Debug logging
+        print(f"[DISEASE] Query parameters: state={state_abbrev}, disease={disease}, year={year}")
+        print(f"[DISEASE] WHERE clause: {where_clause}")
+        
         query = f"""
         SELECT 
             Year,
             Month,
             State,
-            Source_Type,
+            `Source Type`,
             Pathogen,
-            Serotype_or_Species,
-            SUM(Number_of_isolates) as total_cases
+            `Serotype or Species`,
+            SUM(`Number of isolates`) as total_cases
         FROM `{project_id}.beam_report_data_folder.beam_report_data`
         WHERE {where_clause}
-        GROUP BY Year, Month, State, Source_Type, Pathogen, Serotype_or_Species
+        GROUP BY Year, Month, State, `Source Type`, Pathogen, `Serotype or Species`
         ORDER BY total_cases DESC
         LIMIT 50
         """
         
-        # Execute query
+        # Execute query using standard BigQuery client with ADK credentials
         try:
+            from google.cloud import bigquery
+            
             application_default_credentials, _ = google.auth.default()
-            credentials_config = BigQueryCredentialsConfig(
+            
+            # Use standard BigQuery client (ADK's BigQueryToolset.execute_sql doesn't exist)
+            client = bigquery.Client(
+                project=project_id,
                 credentials=application_default_credentials
             )
-            tool_config = BigQueryToolConfig(write_mode=WriteMode.BLOCKED)
             
-            bigquery_toolset = BigQueryToolset(
-                credentials_config=credentials_config, 
-                bigquery_tool_config=tool_config
-            )
+            # Debug: Print the full query
+            print(f"[DISEASE] Executing BigQuery query on project: {project_id}")
+            print(f"[DISEASE] Full query:")
+            print(query)
             
-            result = bigquery_toolset.execute_sql(
-                project_id=project_id,
-                query=query
-            )
+            query_job = client.query(query)
+            results = query_job.result()
+            
+            # Convert to expected format
+            result_data = []
+            for row in results:
+                result_data.append(dict(row))
+            
+            print(f"[DISEASE] Query returned {len(result_data)} rows from CDC BEAM dataset")
+            if result_data:
+                print(f"[DISEASE] Sample data: {result_data[0]}")
+            
+            # Create result object matching expected format
+            class QueryResult:
+                def __init__(self, data):
+                    self.status = "success" if data else "no_data"
+                    self.data = data
+            
+            result = QueryResult(result_data)
             
             if result.status == "success" and result.data:
                 # Process real data
@@ -109,13 +149,13 @@ def get_infectious_disease_data(county: Optional[str] = None, state: Optional[st
                 for row in result.data[:10]:  # Top 10 pathogens
                     cases = int(row.get('total_cases', 0))
                     pathogen = row.get('Pathogen', 'Unknown')
-                    source = row.get('Source_Type', 'Unknown')
+                    source = row.get('Source Type', 'Unknown')
                     
                     report_data.append({
                         "disease": pathogen,
                         "cases": cases,
                         "source": source,
-                        "serotype": row.get('Serotype_or_Species', 'N/A')
+                        "serotype": row.get('Serotype or Species', 'N/A')
                     })
                     total_cases += cases
                 
@@ -158,41 +198,41 @@ Note: Data represents laboratory-confirmed isolates reported to surveillance sys
             # Generate mock data as fallback
             location_desc = f"{county}, {state}" if county and state else state if state else "Demo Location"
             diseases_to_report = [disease] if disease else random.sample(INFECTIOUS_DISEASES, 3)
-        
-        report_data = []
-        total_cases = 0
-        
-        for disease_name in diseases_to_report:
-            cases = random.randint(15, 250)
-            report_data.append({
-                "disease": disease_name,
-                "cases": cases,
+            
+            report_data = []
+            total_cases = 0
+            
+            for disease_name in diseases_to_report:
+                cases = random.randint(15, 250)
+                report_data.append({
+                    "disease": disease_name,
+                    "cases": cases,
                     "source": "Mock Data"
-            })
-            total_cases += cases
-        
+                })
+                total_cases += cases
+            
             year_text = f" in {year}" if year else " (demo data)"
-        
-        report = f"""Infectious Disease Report for {location_desc}{year_text}:
+            
+            report = f"""Infectious Disease Report for {location_desc}{year_text}:
 (Demo Mode - Real data requires BigQuery access)
 
 Total Cases Reported: {total_cases}
 
 Disease Breakdown:"""
-        
-        for data in report_data:
-            report += f"""
-- {data['disease']}: {data['cases']} cases"""
-        
-        return {
-            "status": "success",
-            "report": report,
-            "data": {
-                "location": location_desc,
-                "total_cases": total_cases,
-                "diseases": report_data
+            
+            for disease_data in report_data:
+                report += f"""
+- {disease_data['disease']}: {disease_data['cases']} cases"""
+            
+            return {
+                "status": "success",
+                "report": report,
+                "data": {
+                    "location": location_desc,
+                    "total_cases": total_cases,
+                    "diseases": report_data
+                }
             }
-        }
         
     except Exception as e:
         return {
