@@ -338,6 +338,7 @@ def agent_chat():
         request_data = request.get_json()
         question = request_data.get('question', '')
         location_context = request_data.get('location_context', None)
+        time_frame = request_data.get('time_frame', None)
         
         if not question:
             return jsonify({
@@ -446,8 +447,8 @@ def agent_chat():
                 traceback.print_exc()
                 # Fall through to normal chat
         
-        # Normal chat flow
-        response = call_adk_agent(question)
+        # Normal chat flow - pass context to agent
+        response = call_adk_agent(question, location_context=location_context, time_frame=time_frame)
         
         return jsonify({
             'success': True,

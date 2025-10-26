@@ -1336,6 +1336,20 @@ async function askAI() {
             }
         }
         
+        // Get time frame from date inputs
+        const startDateInput = document.getElementById('startDate');
+        const endDateInput = document.getElementById('endDate');
+        let timeFrame = null;
+        
+        if (startDateInput && endDateInput && startDateInput.value && endDateInput.value) {
+            timeFrame = {
+                start_date: startDateInput.value,
+                end_date: endDateInput.value,
+                period: `${startDateInput.value} to ${endDateInput.value}`
+            };
+            console.log('[Chat] Using time frame:', timeFrame);
+        }
+        
         // Try ADK agent first
         const response = await fetch('/api/agent-chat', {
             method: 'POST',
@@ -1346,7 +1360,8 @@ async function askAI() {
                 question: question,
                 state: currentState,
                 days: currentDays,
-                location_context: locationContext
+                location_context: locationContext,
+                time_frame: timeFrame
             })
         });
 
@@ -1359,17 +1374,38 @@ async function askAI() {
             // Add agent badge if available
             const agentBadge = data.agent ? `<div class="text-xs text-gray-500 mt-1">via ${data.agent}</div>` : '';
             
-            // Add location context indicator if location data is available
-            let locationIndicator = '';
+            // Add context indicators if available
+            let contextIndicators = '';
             if (locationContext) {
                 const locationText = [locationContext.city, locationContext.state, locationContext.zipCode].filter(Boolean).join(', ');
-                locationIndicator = `<div class="text-xs text-emerald-600 mt-1 flex items-center">
+                contextIndicators += `<div class="text-xs text-emerald-600 mt-1 flex items-center">
                     <i class="fas fa-map-marker-alt mr-1"></i>
                     Using location: ${locationText}
                 </div>`;
             }
             
-            addMessage(data.response + agentBadge + locationIndicator, 'bot');
+            if (timeFrame) {
+                contextIndicators += `<div class="text-xs text-blue-600 mt-1 flex items-center">
+                    <i class="fas fa-calendar-alt mr-1"></i>
+                    Using time frame: ${timeFrame.period}
+                </div>`;
+            }
+            
+            // Add current time indicator
+            const now = new Date();
+            const currentTime = now.toLocaleString('en-US', { 
+                weekday: 'short', 
+                month: 'short', 
+                day: 'numeric', 
+                hour: '2-digit', 
+                minute: '2-digit' 
+            });
+            contextIndicators += `<div class="text-xs text-purple-600 mt-1 flex items-center">
+                <i class="fas fa-clock mr-1"></i>
+                Current time: ${currentTime}
+            </div>`;
+            
+            addMessage(data.response + agentBadge + contextIndicators, 'bot');
             
             // If video generation started, begin polling
             if (data.task_id) {
