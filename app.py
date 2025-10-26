@@ -54,40 +54,47 @@ class AirQualityAgent:
         self.model = genai_model
     
     def query_air_quality_data(self, state=None, days=7):
-        """Query air quality data from public BigQuery EPA dataset"""
+        """Query air quality data from YOUR BigQuery dataset"""
         if not self.bq_client:
             print("[BQ] No BigQuery client, using demo data")
             return self._generate_demo_data(state, days)
             
         try:
-            # Use public EPA dataset
+            # Use YOUR dataset: AirQualityData.Daily-AQI-County-2025
+            project = os.getenv('GOOGLE_CLOUD_PROJECT', 'qwiklabs-gcp-00-4a7d408c735c')
+            
+            # First, let's see what date range is available in the table
+            # The table is called "Daily-AQI-County-2025" so it likely has 2025 data
             query = f"""
             SELECT 
-                date_local as date,
-                state_name,
-                county_name,
-                CAST(aqi AS INT64) as aqi,
-                parameter_name,
-                local_site_name as site_name,
-                arithmetic_mean as pm25_mean
-            FROM `bigquery-public-data.epa_historical_air_quality.pm25_frm_daily_summary`
-            WHERE date_local >= DATE_SUB(DATE('2021-11-08'), INTERVAL {days} DAY)
-            AND aqi IS NOT NULL
+                Date_Local as date,
+                State_Name as state_name,
+                County_Name as county_name,
+                CAST(AQI AS INT64) as aqi,
+                'PM2.5' as parameter_name,
+                'Monitoring Station' as site_name
+            FROM `{project}.AirQualityData.Daily-AQI-County-2025`
+            WHERE AQI IS NOT NULL
             """
             
             if state:
-                query += f" AND UPPER(state_name) = UPPER('{state}')"
+                query += f" AND UPPER(State_Name) = UPPER('{state}')"
             
-            query += " ORDER BY date_local DESC LIMIT 1000"
+            query += " ORDER BY Date_Local DESC LIMIT 100"
             
-            print(f"[BQ] Querying public EPA dataset for {state or 'all states'}, last {days} days")
+            print(f"[BQ] Querying YOUR dataset: AirQualityData.Daily-AQI-County-2025 for {state or 'all states'}")
             query_job = self.bq_client.query(query)
             results = query_job.result()
             
             data = [dict(row) for row in results]
             
             if data:
-                print(f"[BQ] Retrieved {len(data)} records from public EPA dataset")
+                # Show the date range we got
+                dates = [d['date'] for d in data if 'date' in d]
+                if dates:
+                    print(f"[BQ] SUCCESS: Retrieved {len(data)} REAL records! Date range: {min(dates)} to {max(dates)}")
+                else:
+                    print(f"[BQ] SUCCESS: Retrieved {len(data)} REAL records from YOUR dataset!")
                 return data
             else:
                 print(f"[BQ] No data found, using demo data")
@@ -288,7 +295,7 @@ def health_recommendations():
 
 @app.route('/api/agent-chat', methods=['POST'])
 def agent_chat():
-    """API endpoint for ADK agent chat"""
+    """API endpoint for ADK agent chat - with async video generation support"""
     try:
         if not ADK_AGENT_AVAILABLE:
             return jsonify({
@@ -305,7 +312,88 @@ def agent_chat():
                 'error': 'No question provided'
             }), 400
         
-        # Call the ADK agent
+        # Check if user wants to generate PSA video
+        video_keywords = ['create video', 'generate psa', 'make video', 'create psa', 'video psa', 'psa video']
+        wants_video = any(keyword in question.lower() for keyword in video_keywords)
+        
+        print(f"[CHAT] Question: {question}")
+        print(f"[CHAT] Wants video: {wants_video}")
+        
+        if wants_video:
+            # Start async video generation
+            try:
+                from multi_tool_agent_bquery_tools.async_video_manager import get_video_manager
+                from multi_tool_agent_bquery_tools.integrations.veo3_client import get_veo3_client
+                from multi_tool_agent_bquery_tools.tools.video_gen import generate_action_line, create_veo_prompt
+                
+                # Get current state from request or default to California
+                state = request_data.get('state', currentState if 'currentState' in locals() else 'California')
+                
+                # Get current health data
+                health_data_list = agent.query_air_quality_data(state=state, days=1)
+                
+                if health_data_list:
+                    df = pd.DataFrame(health_data_list)
+                    avg_aqi = int(df['aqi'].mean()) if 'aqi' in df and not df['aqi'].empty else 50
+                    
+                    # Determine severity based on AQI
+                    if avg_aqi <= 50:
+                        severity = "good"
+                    elif avg_aqi <= 100:
+                        severity = "moderate"  
+                    elif avg_aqi <= 150:
+                        severity = "unhealthy for sensitive groups"
+                    elif avg_aqi <= 200:
+                        severity = "unhealthy"
+                    elif avg_aqi <= 300:
+                        severity = "very unhealthy"
+                    else:
+                        severity = "hazardous"
+                else:
+                    # Use demo data
+                    avg_aqi = 75  # Moderate default
+                    severity = "moderate"
+                
+                print(f"[CHAT] Air quality data: AQI {avg_aqi}, Severity: {severity}")
+                
+                health_data = {
+                    'type': 'air_quality',
+                    'severity': severity,
+                    'metric': avg_aqi,
+                    'location': state,
+                    'specific_concern': 'PM2.5'
+                }
+                
+                # Create task
+                video_manager = get_video_manager()
+                task_id = video_manager.create_task(location=state, data_type='air_quality')
+                
+                # Start background generation
+                veo_client = get_veo3_client()
+                video_manager.start_video_generation(
+                    task_id=task_id,
+                    health_data=health_data,
+                    veo_client=veo_client,
+                    action_line_func=generate_action_line,
+                    veo_prompt_func=create_veo_prompt
+                )
+                
+                # Return immediate response
+                return jsonify({
+                    'success': True,
+                    'response': f"I'll generate a health alert video for {state}. This takes about 60 seconds.\n\nYou can continue chatting while I work on this. I'll notify you when it's ready!\n\nIs there anything else I can help you with?",
+                    'task_id': task_id,
+                    'estimated_time': 60,
+                    'agent': 'ADK Multi-Agent System'
+                })
+                
+            except Exception as video_error:
+                print(f"[CHAT] Video generation error: {video_error}")
+                import traceback
+                traceback.print_exc()
+                # Fall through to normal chat
+        
+        # Normal chat flow
         response = call_adk_agent(question)
         
         return jsonify({
@@ -339,6 +427,178 @@ def agent_chat():
 def acknowledgements():
     """Acknowledgements page"""
     return render_template('acknowledgements.html')
+@app.route('/api/generate-psa-video', methods=['POST'])
+def generate_psa_video_endpoint():
+    """Generate PSA video from current health data"""
+    try:
+        request_data = request.get_json()
+        location = request_data.get('location', 'California')
+        data_type = request_data.get('data_type', 'air_quality')  # or 'disease'
+        
+        # Get current health data
+        if data_type == 'air_quality':
+            health_data = agent.query_air_quality_data(state=location, days=1)
+            if health_data:
+                df = pd.DataFrame(health_data)
+                avg_aqi = df['aqi'].mean() if 'aqi' in df else 50
+                severity = "good" if avg_aqi <= 50 else "moderate" if avg_aqi <= 100 else "unhealthy"
+            else:
+                avg_aqi = 50
+                severity = "good"
+        else:
+            # Disease data
+            avg_aqi = 0
+            severity = "moderate"
+        
+        # Call agent to generate action line and video
+        prompt = f"Create a PSA video for {location} about {data_type}. Current severity: {severity}, AQI: {avg_aqi}"
+        
+        if ADK_AGENT_AVAILABLE:
+            response = call_adk_agent(prompt)
+            
+            return jsonify({
+                'success': True,
+                'action_line': 'Generated action line here',  # Extract from response
+                'status': 'processing',
+                'message': response,
+                'note': 'PSA video generation initiated'
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'PSA video generation requires ADK agent'
+            }), 503
+            
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/approve-and-post', methods=['POST'])
+def approve_and_post_video():
+    """Post approved video to Twitter"""
+    try:
+        request_data = request.get_json()
+        video_uri = request_data.get('video_uri')
+        message = request_data.get('message')
+        hashtags = request_data.get('hashtags', [])
+        
+        # TODO: Implement actual Twitter posting
+        # For now, simulate success
+        
+        return jsonify({
+            'success': True,
+            'tweet_url': 'https://twitter.com/CommunityHealth/status/123456',
+            'message': 'Video posted successfully (simulation mode)',
+            'note': 'Add Twitter API credentials to enable real posting'
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/check-video-task/<task_id>')
+def check_video_task(task_id):
+    """Check status of async video generation task"""
+    try:
+        from multi_tool_agent_bquery_tools.async_video_manager import get_video_manager
+        
+        video_manager = get_video_manager()
+        task = video_manager.get_task(task_id)
+        
+        if task:
+            return jsonify(task)
+        else:
+            return jsonify({
+                'status': 'not_found',
+                'error': 'Task ID not found'
+            }), 404
+            
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/post-to-twitter', methods=['POST'])
+def post_to_twitter():
+    """
+    Post a PSA video to Twitter/X
+    
+    Expected JSON:
+    {
+        "video_url": "https://storage.googleapis.com/...",
+        "message": "Health alert message",
+        "hashtags": ["HealthAlert", "AirQuality"] (optional)
+    }
+    """
+    try:
+        data = request.get_json()
+        
+        video_url = data.get('video_url')
+        message = data.get('message', '')
+        hashtags = data.get('hashtags', ['HealthAlert', 'PublicHealth', 'CommunityHealth'])
+        
+        if not video_url:
+            return jsonify({
+                'success': False,
+                'error': 'video_url is required'
+            }), 400
+        
+        if not message:
+            return jsonify({
+                'success': False,
+                'error': 'message is required'
+            }), 400
+        
+        # Import Twitter client
+        from multi_tool_agent_bquery_tools.integrations.twitter_client import get_twitter_client
+        
+        twitter_client = get_twitter_client()
+        
+        print(f"\n[FLASK] ===== Twitter Posting Request =====")
+        print(f"[FLASK] Video URL: {video_url[:50]}...")
+        print(f"[FLASK] Message: {message[:100]}...")
+        print(f"[FLASK] Hashtags: {hashtags}")
+        
+        # Post to Twitter
+        result = twitter_client.post_video_tweet(
+            video_url=video_url,
+            message=message,
+            hashtags=hashtags
+        )
+        
+        if result['status'] == 'success':
+            print(f"[FLASK] SUCCESS: Tweet posted successfully!")
+            print(f"[FLASK] URL: {result['tweet_url']}")
+            
+            return jsonify({
+                'success': True,
+                'tweet_url': result['tweet_url'],
+                'tweet_id': result['tweet_id'],
+                'message': result.get('message', 'Posted to Twitter successfully!')
+            })
+        else:
+            print(f"[FLASK] ERROR: Tweet posting failed: {result.get('error_message')}")
+            return jsonify({
+                'success': False,
+                'error': result.get('error_message', 'Unknown error')
+            }), 500
+        
+    except Exception as e:
+        print(f"[FLASK] ERROR: Twitter endpoint error: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
 
 
 @app.route('/health')
@@ -346,7 +606,8 @@ def health_check():
     """Health check endpoint for Cloud Run"""
     return jsonify({
         'status': 'healthy',
-        'adk_agent': 'available' if ADK_AGENT_AVAILABLE else 'unavailable'
+        'adk_agent': 'available' if ADK_AGENT_AVAILABLE else 'unavailable',
+        'psa_video_feature': 'enabled'
     }), 200
 
 
