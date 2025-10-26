@@ -106,6 +106,24 @@ function onPlaceSelected() {
     currentCity = city;
     currentZip = zipCode;
     
+    // Store location data in browser storage for chat agent
+    const locationData = {
+        city: city,
+        state: state,
+        county: county,
+        zipCode: zipCode,
+        formattedAddress: place.formatted_address,
+        coordinates: {
+            lat: place.geometry.location.lat(),
+            lng: place.geometry.location.lng()
+        },
+        timestamp: new Date().toISOString()
+    };
+    
+    // Store in localStorage for persistence
+    localStorage.setItem('currentLocationData', JSON.stringify(locationData));
+    console.log('[Location Search] Location data stored for chat agent:', locationData);
+    
     // Update dropdowns if applicable
     if (state) {
         document.getElementById('stateSelect').value = state || '';
@@ -199,6 +217,25 @@ function getAutoLocation() {
                             currentState = state;
                             currentCity = city;
                             
+                            // Store location data in browser storage for chat agent
+                            const locationData = {
+                                city: city,
+                                state: state,
+                                county: '', // Auto-location doesn't provide county
+                                zipCode: zipCode,
+                                formattedAddress: results[0].formatted_address,
+                                coordinates: {
+                                    lat: position.coords.latitude,
+                                    lng: position.coords.longitude
+                                },
+                                timestamp: new Date().toISOString(),
+                                source: 'auto-location'
+                            };
+                            
+                            // Store in localStorage for persistence
+                            localStorage.setItem('currentLocationData', JSON.stringify(locationData));
+                            console.log('[Auto-location] Location data stored for chat agent:', locationData);
+                            
                             // Update search box
                             document.getElementById('locationSearch').value = `${city}, ${state} ${zipCode}`;
                             
@@ -273,11 +310,23 @@ function getAutoLocation() {
 
 // Initialize the application
 function initializeApp() {
-    // Set default to California
-    currentState = 'California';
-    updateAPIStatus('loading', 'Initializing...', 'Loading default location data');
+    // Load stored location data if available
+    loadStoredLocationData();
     
-    // Load cities for California on startup
+    // Set default to California if no stored location
+    if (!currentState) {
+        currentState = 'California';
+    }
+    
+    // Set default date range (2024 to 2025)
+    setDefaultDateRange();
+    
+    // Update date range display
+    updateDateRangeDisplay();
+    
+    updateAPIStatus('loading', 'Initializing...', 'Loading location data');
+    
+    // Load cities for current state on startup
     onStateChange();
     
     loadAirQualityData();
@@ -288,6 +337,57 @@ function initializeApp() {
         console.log('[APP] Initializing pollutant charts on page load');
         // Call with null/empty to show empty charts
         initializePollutantCharts(null, null, null);
+    }
+}
+
+// Set default date range (2024 to 2025)
+function setDefaultDateRange() {
+    const startDateInput = document.getElementById('startDate');
+    const endDateInput = document.getElementById('endDate');
+    
+    if (startDateInput && endDateInput) {
+        // Set default dates to 2024-2025
+        startDateInput.value = '2024-01-01';
+        endDateInput.value = '2025-12-31';
+        
+        console.log('[APP] Default date range set: 2024-01-01 to 2025-12-31');
+    }
+}
+
+// Load stored location data from localStorage
+function loadStoredLocationData() {
+    const storedLocationData = localStorage.getItem('currentLocationData');
+    
+    if (storedLocationData) {
+        try {
+            const locationData = JSON.parse(storedLocationData);
+            
+            // Check if location data is recent (within 24 hours)
+            const dataAge = Date.now() - new Date(locationData.timestamp).getTime();
+            const maxAge = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
+            
+            if (dataAge < maxAge) {
+                // Restore location data
+                currentState = locationData.state || '';
+                currentCity = locationData.city || '';
+                currentZip = locationData.zipCode || '';
+                
+                // Update search box if it exists
+                const searchInput = document.getElementById('locationSearch');
+                if (searchInput && locationData.formattedAddress) {
+                    searchInput.value = locationData.formattedAddress;
+                }
+                
+                console.log('[APP] Restored location data:', locationData);
+                updateAPIStatus('success', 'Location Restored', `${locationData.city || ''}, ${locationData.state || ''}`);
+            } else {
+                console.log('[APP] Stored location data is too old, clearing');
+                localStorage.removeItem('currentLocationData');
+            }
+        } catch (e) {
+            console.warn('[APP] Failed to parse stored location data:', e);
+            localStorage.removeItem('currentLocationData');
+        }
     }
 }
 
@@ -437,6 +537,7 @@ function setupEventListeners() {
     if (startDateInput) {
         startDateInput.addEventListener('change', function() {
             console.log('[Date Picker] Start date changed:', this.value);
+            updateDateRangeDisplay();
             // Refresh charts if we have a location
             if (currentZip || (currentCity && currentState)) {
                 console.log('[Date Picker] Refreshing charts with new date range');
@@ -448,6 +549,7 @@ function setupEventListeners() {
     if (endDateInput) {
         endDateInput.addEventListener('change', function() {
             console.log('[Date Picker] End date changed:', this.value);
+            updateDateRangeDisplay();
             // Refresh charts if we have a location
             if (currentZip || (currentCity && currentState)) {
                 console.log('[Date Picker] Refreshing charts with new date range');
@@ -548,6 +650,37 @@ function updateLocationDisplay(location) {
     const locationText = document.getElementById('currentLocationText');
     if (locationText) {
         locationText.textContent = location;
+    }
+    
+    // Update date range display
+    updateDateRangeDisplay();
+}
+
+// Update date range display
+function updateDateRangeDisplay() {
+    const startDateInput = document.getElementById('startDate');
+    const endDateInput = document.getElementById('endDate');
+    const dateRangeText = document.getElementById('dateRangeText');
+    
+    if (startDateInput && endDateInput && dateRangeText) {
+        const startDate = startDateInput.value;
+        const endDate = endDateInput.value;
+        
+        if (startDate && endDate) {
+            // Format dates for display
+            const startFormatted = new Date(startDate).toLocaleDateString('en-US', { 
+                year: 'numeric', 
+                month: 'short' 
+            });
+            const endFormatted = new Date(endDate).toLocaleDateString('en-US', { 
+                year: 'numeric', 
+                month: 'short' 
+            });
+            
+            dateRangeText.textContent = `(${startFormatted} - ${endFormatted})`;
+        } else {
+            dateRangeText.textContent = '';
+        }
     }
 }
 
@@ -660,6 +793,20 @@ async function loadAirQualityData() {
         const params = new URLSearchParams({
             days: currentDays
         });
+        
+        // Add date range parameters
+        const startDateInput = document.getElementById('startDate');
+        const endDateInput = document.getElementById('endDate');
+        
+        if (startDateInput && startDateInput.value) {
+            params.append('start_date', startDateInput.value);
+            console.log('Using start date:', startDateInput.value);
+        }
+        
+        if (endDateInput && endDateInput.value) {
+            params.append('end_date', endDateInput.value);
+            console.log('Using end date:', endDateInput.value);
+        }
         
         if (currentZip) {
             params.append('zipCode', currentZip);
@@ -781,6 +928,18 @@ async function loadHealthRecommendations() {
         const params = new URLSearchParams();
         if (currentState) {
             params.append('state', currentState);
+        }
+        
+        // Add date range parameters
+        const startDateInput = document.getElementById('startDate');
+        const endDateInput = document.getElementById('endDate');
+        
+        if (startDateInput && startDateInput.value) {
+            params.append('start_date', startDateInput.value);
+        }
+        
+        if (endDateInput && endDateInput.value) {
+            params.append('end_date', endDateInput.value);
         }
 
         const response = await fetch(`/api/health-recommendations?${params}`);
@@ -1164,6 +1323,19 @@ async function askAI() {
     const loadingMsg = addMessage('Thinking...', 'bot');
     
     try {
+        // Get stored location data for chat agent
+        const storedLocationData = localStorage.getItem('currentLocationData');
+        let locationContext = null;
+        
+        if (storedLocationData) {
+            try {
+                locationContext = JSON.parse(storedLocationData);
+                console.log('[Chat] Using stored location data:', locationContext);
+            } catch (e) {
+                console.warn('[Chat] Failed to parse stored location data:', e);
+            }
+        }
+        
         // Try ADK agent first
         const response = await fetch('/api/agent-chat', {
             method: 'POST',
@@ -1173,7 +1345,8 @@ async function askAI() {
             body: JSON.stringify({
                 question: question,
                 state: currentState,
-                days: currentDays
+                days: currentDays,
+                location_context: locationContext
             })
         });
 
@@ -1185,7 +1358,18 @@ async function askAI() {
         if (data.success) {
             // Add agent badge if available
             const agentBadge = data.agent ? `<div class="text-xs text-gray-500 mt-1">via ${data.agent}</div>` : '';
-            addMessage(data.response + agentBadge, 'bot');
+            
+            // Add location context indicator if location data is available
+            let locationIndicator = '';
+            if (locationContext) {
+                const locationText = [locationContext.city, locationContext.state, locationContext.zipCode].filter(Boolean).join(', ');
+                locationIndicator = `<div class="text-xs text-emerald-600 mt-1 flex items-center">
+                    <i class="fas fa-map-marker-alt mr-1"></i>
+                    Using location: ${locationText}
+                </div>`;
+            }
+            
+            addMessage(data.response + agentBadge + locationIndicator, 'bot');
             
             // If video generation started, begin polling
             if (data.task_id) {
@@ -1486,6 +1670,18 @@ async function loadWeatherData() {
             params.append('state', currentState);
         }
         
+        // Add date range parameters
+        const startDateInput = document.getElementById('startDate');
+        const endDateInput = document.getElementById('endDate');
+        
+        if (startDateInput && startDateInput.value) {
+            params.append('start_date', startDateInput.value);
+        }
+        
+        if (endDateInput && endDateInput.value) {
+            params.append('end_date', endDateInput.value);
+        }
+        
         const url = `/api/weather?${params.toString()}`;
         console.log('[Weather] Fetching from:', url);
         
@@ -1524,6 +1720,18 @@ async function loadPollenData() {
         else if (currentCity && currentState) {
             params.append('city', currentCity);
             params.append('state', currentState);
+        }
+        
+        // Add date range parameters
+        const startDateInput = document.getElementById('startDate');
+        const endDateInput = document.getElementById('endDate');
+        
+        if (startDateInput && startDateInput.value) {
+            params.append('start_date', startDateInput.value);
+        }
+        
+        if (endDateInput && endDateInput.value) {
+            params.append('end_date', endDateInput.value);
         }
         
         const url = `/api/pollen?${params.toString()}`;
