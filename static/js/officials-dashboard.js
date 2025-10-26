@@ -22,12 +22,13 @@ document.addEventListener('DOMContentLoaded', function() {
     let showAllColumns = false; // Column toggle state
     
     // Define column sets
-    const conciseColumns = ['report_type', 'timestamp', 'city', 'state', 'zip_code', 'severity', 'description', 'status'];
+    const conciseColumns = ['report_type', 'timestamp', 'city', 'state', 'severity', 'status', 'ai_tags', 'manual_tags'];
     const allColumns = [
         'report_id', 'report_type', 'description', 'severity', 'status', 
         'street_address', 'city', 'state', 'county', 'zip_code',
         'timestamp', 'when_happened', 'affected_count', 'specific_type',
         'reporter_name', 'reporter_contact', 'ai_overall_summary', 'ai_media_summary',
+        'ai_tags', 'manual_tags', 'ai_confidence',
         'reviewed_by', 'reviewed_at', 'exclude_from_analysis', 'exclusion_reason'
     ];
     
@@ -76,27 +77,31 @@ document.addEventListener('DOMContentLoaded', function() {
         // Report type filter
         document.getElementById('reportTypeFilter').addEventListener('change', function() {
             currentFilters.report_type = this.value;
+            loadReportsData();
         });
         
         // Severity filter
         document.getElementById('severityFilter').addEventListener('change', function() {
             currentFilters.severity = this.value;
+            loadReportsData();
         });
         
         // Status filter
         document.getElementById('statusFilter').addEventListener('change', function() {
             currentFilters.status = this.value;
+            loadReportsData();
         });
         
         // Timeframe filter
         document.getElementById('timeframeFilter').addEventListener('change', function() {
             currentFilters.timeframe = this.value;
+            loadReportsData();
         });
         
-        // Apply filters button
-        document.getElementById('applyFiltersBtn').addEventListener('click', function() {
-            currentPage = 1;
-            loadReportsData();
+        // Tag filter (client-side)
+        document.getElementById('tagFilter').addEventListener('change', function() {
+            currentFilters.tag = this.value;
+            applyClientSideFilters();
         });
         
         // Clear filters button
@@ -237,6 +242,7 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('severityFilter').value = '';
         document.getElementById('statusFilter').value = '';
         document.getElementById('timeframeFilter').value = '';
+        document.getElementById('tagFilter').value = '';
         document.getElementById('searchInput').value = '';
         
         // Disable dependent dropdowns
@@ -254,6 +260,7 @@ document.addEventListener('DOMContentLoaded', function() {
             severity: '',
             status: '',
             timeframe: '',
+            tag: '',
             timePeriod: 'live'
         };
         
@@ -270,7 +277,7 @@ document.addEventListener('DOMContentLoaded', function() {
         try {
             const params = new URLSearchParams();
             
-            // Add all filters
+            // Add all filters (except tag which is client-side)
             if (currentFilters.state) params.append('state', currentFilters.state);
             if (currentFilters.city) params.append('city', currentFilters.city);
             if (currentFilters.county) params.append('county', currentFilters.county);
@@ -292,7 +299,7 @@ document.addEventListener('DOMContentLoaded', function() {
             if (data.success) {
                 allReports = data.reports;
                 totalReports = data.total;
-                renderReportsTable(allReports);
+                applyClientSideFilters();
                 updatePagination();
                 updateStatsCards(allReports);
                 updateCharts(allReports);
@@ -309,6 +316,38 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
     
+    // Apply client-side filters (tag + search)
+    function applyClientSideFilters() {
+        let filtered = [...allReports];
+        
+        // Apply tag filter
+        if (currentFilters.tag) {
+            filtered = filtered.filter(report => {
+                const aiTags = report.ai_tags ? parseAITags(report.ai_tags) : [];
+                const manualTags = report.manual_tags ? parseAITags(report.manual_tags) : [];
+                const allTags = [...aiTags, ...manualTags];
+                return allTags.some(tag => 
+                    tag.toLowerCase().replace(/_/g, '-') === currentFilters.tag.toLowerCase().replace(/_/g, '-')
+                );
+            });
+        }
+        
+        // Apply search filter
+        const searchTerm = document.getElementById('searchInput').value.toLowerCase().trim();
+        if (searchTerm) {
+            filtered = filtered.filter(report => (
+                report.description?.toLowerCase().includes(searchTerm) ||
+                report.city?.toLowerCase().includes(searchTerm) ||
+                report.state?.toLowerCase().includes(searchTerm) ||
+                report.zip_code?.includes(searchTerm) ||
+                report.report_type?.toLowerCase().includes(searchTerm) ||
+                report.specific_type?.toLowerCase().includes(searchTerm)
+            ));
+        }
+        
+        renderReportsTable(filtered);
+    }
+    
     // Render reports table
     function renderReportsTable(reports) {
         // Render table headers
@@ -318,7 +357,7 @@ document.addEventListener('DOMContentLoaded', function() {
         tbody.innerHTML = '';
         
         if (reports.length === 0) {
-            const colspan = showAllColumns ? 23 : 7;
+            const colspan = showAllColumns ? 25 : 8;
             tbody.innerHTML = `
                 <tr>
                     <td colspan="${colspan}" class="px-6 py-12 text-center text-gray-500">
@@ -395,6 +434,9 @@ document.addEventListener('DOMContentLoaded', function() {
             
             if (showAllColumns) {
                 // Show all columns
+                const aiTags = report.ai_tags ? parseAITags(report.ai_tags) : [];
+                const manualTags = report.manual_tags ? parseAITags(report.manual_tags) : [];
+                
                 rowHTML = `
                     <td class="px-4 py-3 text-xs text-gray-600">${report.report_id ? report.report_id.substring(0, 8) + '...' : '-'}</td>
                     <td class="px-4 py-3 whitespace-nowrap text-sm">
@@ -419,6 +461,19 @@ document.addEventListener('DOMContentLoaded', function() {
                     <td class="px-4 py-3 text-sm">${report.reporter_contact || '-'}</td>
                     <td class="px-4 py-3 text-xs max-w-xs truncate">${report.ai_overall_summary || '-'}</td>
                     <td class="px-4 py-3 text-xs max-w-xs truncate">${report.ai_media_summary || '-'}</td>
+                    <td class="px-4 py-3">
+                        <div class="flex flex-wrap gap-1">
+                            ${aiTags.map(tag => `<span class="px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full text-xs">${tag}</span>`).join('')}
+                            ${aiTags.length === 0 ? '-' : ''}
+                        </div>
+                    </td>
+                    <td class="px-4 py-3">
+                        <div class="flex flex-wrap gap-1">
+                            ${manualTags.map(tag => `<span class="px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full text-xs">${tag}</span>`).join('')}
+                            ${manualTags.length === 0 ? '-' : ''}
+                        </div>
+                    </td>
+                    <td class="px-4 py-3 text-sm">${report.ai_confidence !== null && report.ai_confidence !== undefined ? (report.ai_confidence * 100).toFixed(0) + '%' : '-'}</td>
                     <td class="px-4 py-3 text-sm">${report.reviewed_by || '-'}</td>
                     <td class="px-4 py-3 text-xs">${report.reviewed_at ? new Date(report.reviewed_at).toLocaleString() : '-'}</td>
                     <td class="px-4 py-3 text-center">${report.exclude_from_analysis ? '<i class="fas fa-check-circle text-orange-500"></i>' : '-'}</td>
@@ -430,7 +485,10 @@ document.addEventListener('DOMContentLoaded', function() {
                     </td>
                 `;
             } else {
-                // Show concise columns
+                // Show concise columns with tags
+                const aiTags = report.ai_tags ? parseAITags(report.ai_tags) : [];
+                const manualTags = report.manual_tags ? parseAITags(report.manual_tags) : [];
+                
                 rowHTML = `
                     <td class="px-6 py-4 whitespace-nowrap text-sm">
                         <div class="flex items-center">
@@ -445,20 +503,39 @@ document.addEventListener('DOMContentLoaded', function() {
                     </td>
                     <td class="px-6 py-4 text-sm text-gray-900">
                         <div class="font-medium">${report.city}, ${report.state}</div>
-                        <div class="text-xs text-gray-500">${report.zip_code}${report.county ? ' • ' + report.county : ''}</div>
+                        <div class="text-xs text-gray-500">${report.county || 'Unknown County'}</div>
                     </td>
                     <td class="px-6 py-4 whitespace-nowrap">
                         <span class="px-2.5 py-1 rounded-full text-xs font-semibold ${severityClass}">
                             ${capitalize(report.severity)}
                         </span>
                     </td>
-                    <td class="px-6 py-4 text-sm text-gray-700 max-w-md truncate">
-                        ${report.description || '-'}
-                    </td>
                     <td class="px-6 py-4 whitespace-nowrap">
                         <span class="px-2.5 py-1 rounded-full text-xs font-semibold ${statusClass}">
                             ${capitalize(report.status)}
                         </span>
+                    </td>
+                    <td class="px-6 py-4">
+                        <div class="flex flex-wrap gap-1 max-w-xs">
+                            ${aiTags.slice(0, 3).map(tag => `
+                                <span class="px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full text-xs font-medium">
+                                    ${tag}
+                                </span>
+                            `).join('')}
+                            ${aiTags.length > 3 ? `<span class="text-xs text-gray-400">+${aiTags.length - 3}</span>` : ''}
+                            ${aiTags.length === 0 ? '<span class="text-xs text-gray-400">-</span>' : ''}
+                        </div>
+                    </td>
+                    <td class="px-6 py-4">
+                        <div class="flex flex-wrap gap-1 max-w-xs">
+                            ${manualTags.slice(0, 3).map(tag => `
+                                <span class="px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full text-xs font-medium">
+                                    ${tag}
+                                </span>
+                            `).join('')}
+                            ${manualTags.length > 3 ? `<span class="text-xs text-gray-400">+${manualTags.length - 3}</span>` : ''}
+                            ${manualTags.length === 0 ? '<span class="text-xs text-gray-400">-</span>' : ''}
+                        </div>
                     </td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm">
                         <button class="text-blue-600 hover:text-blue-800 font-medium" onclick="event.stopPropagation(); viewReportDetails(${JSON.stringify(report).replace(/"/g, '&quot;')})">
@@ -536,25 +613,7 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Handle search
     function handleSearch(event) {
-        const searchTerm = event.target.value.toLowerCase();
-        
-        if (!searchTerm) {
-            renderReportsTable(allReports);
-            return;
-        }
-        
-        const filtered = allReports.filter(report => {
-            return (
-                report.description?.toLowerCase().includes(searchTerm) ||
-                report.city?.toLowerCase().includes(searchTerm) ||
-                report.state?.toLowerCase().includes(searchTerm) ||
-                report.zip_code?.includes(searchTerm) ||
-                report.report_type?.toLowerCase().includes(searchTerm) ||
-                report.specific_type?.toLowerCase().includes(searchTerm)
-            );
-        });
-        
-        renderReportsTable(filtered);
+        applyClientSideFilters();
     }
     
     // Export data
@@ -760,6 +819,132 @@ document.addEventListener('DOMContentLoaded', function() {
                         </div>
                     </div>
                     ` : ''}
+                    
+                    <!-- Review Controls Section -->
+                    <div class="col-span-2 border-t pt-4">
+                        <label class="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-4 block">
+                            <i class="fas fa-edit mr-2 text-blue-600"></i>Review & Update
+                        </label>
+                        <div class="bg-blue-50 rounded-lg p-4 space-y-4">
+                            <!-- Status Update -->
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label class="text-xs font-semibold text-blue-800 uppercase mb-2 block">Update Status</label>
+                                    <select id="statusSelect_${report.report_id}" class="w-full px-3 py-2 border border-blue-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                                        <option value="Pending" ${report.status === 'Pending' ? 'selected' : ''}>Pending</option>
+                                        <option value="Valid - Action Required" ${report.status === 'Valid - Action Required' ? 'selected' : ''}>Valid - Action Required</option>
+                                        <option value="Valid - Monitoring" ${report.status === 'Valid - Monitoring' ? 'selected' : ''}>Valid - Monitoring</option>
+                                        <option value="Under Review" ${report.status === 'Under Review' ? 'selected' : ''}>Under Review</option>
+                                        <option value="Closed - Invalid" ${report.status === 'Closed - Invalid' ? 'selected' : ''}>Closed - Invalid</option>
+                                        <option value="Resolved" ${report.status === 'Resolved' ? 'selected' : ''}>Resolved</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="text-xs font-semibold text-blue-800 uppercase mb-2 block">Reviewer Name</label>
+                                    <input type="text" id="reviewerName_${report.report_id}" value="${report.reviewed_by || ''}" placeholder="Enter your name" class="w-full px-3 py-2 border border-blue-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                                </div>
+                            </div>
+                            
+                            <!-- Manual Tags -->
+                            <div>
+                                <label class="text-xs font-semibold text-blue-800 uppercase mb-2 block">Add Manual Tags</label>
+                                
+                                <!-- Preset Tag Buttons -->
+                                <div class="flex flex-wrap gap-2 mb-3">
+                                    <button type="button" onclick="togglePresetTag('${report.report_id}', 'follow-up-needed')" 
+                                        class="preset-tag-btn px-3 py-1 rounded-full text-xs font-medium border-2 transition-all
+                                        ${report.manual_tags && report.manual_tags.includes('follow-up-needed') ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-blue-700 border-blue-300 hover:border-blue-500'}">
+                                        <i class="fas fa-phone mr-1"></i>Follow-up Needed
+                                    </button>
+                                    <button type="button" onclick="togglePresetTag('${report.report_id}', 'high-priority')" 
+                                        class="preset-tag-btn px-3 py-1 rounded-full text-xs font-medium border-2 transition-all
+                                        ${report.manual_tags && report.manual_tags.includes('high-priority') ? 'bg-red-600 text-white border-red-600' : 'bg-white text-red-700 border-red-300 hover:border-red-500'}">
+                                        <i class="fas fa-exclamation-triangle mr-1"></i>High Priority
+                                    </button>
+                                    <button type="button" onclick="togglePresetTag('${report.report_id}', 'needs-inspection')" 
+                                        class="preset-tag-btn px-3 py-1 rounded-full text-xs font-medium border-2 transition-all
+                                        ${report.manual_tags && report.manual_tags.includes('needs-inspection') ? 'bg-yellow-600 text-white border-yellow-600' : 'bg-white text-yellow-700 border-yellow-300 hover:border-yellow-500'}">
+                                        <i class="fas fa-search mr-1"></i>Needs Inspection
+                                    </button>
+                                    <button type="button" onclick="togglePresetTag('${report.report_id}', 'awaiting-lab-results')" 
+                                        class="preset-tag-btn px-3 py-1 rounded-full text-xs font-medium border-2 transition-all
+                                        ${report.manual_tags && report.manual_tags.includes('awaiting-lab-results') ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-purple-700 border-purple-300 hover:border-purple-500'}">
+                                        <i class="fas fa-flask mr-1"></i>Awaiting Lab Results
+                                    </button>
+                                    <button type="button" onclick="togglePresetTag('${report.report_id}', 'escalated')" 
+                                        class="preset-tag-btn px-3 py-1 rounded-full text-xs font-medium border-2 transition-all
+                                        ${report.manual_tags && report.manual_tags.includes('escalated') ? 'bg-orange-600 text-white border-orange-600' : 'bg-white text-orange-700 border-orange-300 hover:border-orange-500'}">
+                                        <i class="fas fa-arrow-up mr-1"></i>Escalated
+                                    </button>
+                                    <button type="button" onclick="togglePresetTag('${report.report_id}', 'community-concern')" 
+                                        class="preset-tag-btn px-3 py-1 rounded-full text-xs font-medium border-2 transition-all
+                                        ${report.manual_tags && report.manual_tags.includes('community-concern') ? 'bg-green-600 text-white border-green-600' : 'bg-white text-green-700 border-green-300 hover:border-green-500'}">
+                                        <i class="fas fa-users mr-1"></i>Community Concern
+                                    </button>
+                                </div>
+                                
+                                <!-- Custom Tags Input (hidden storage) -->
+                                <input type="hidden" id="manualTags_${report.report_id}" value="${report.manual_tags ? parseAITags(report.manual_tags).join(', ') : ''}">
+                                
+                                <!-- Custom Tag Input -->
+                                <div>
+                                    <input type="text" id="customTag_${report.report_id}" placeholder="Add custom tag and press Enter" 
+                                        class="w-full px-3 py-2 border border-blue-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                        onkeypress="if(event.key==='Enter'){event.preventDefault();addCustomTag('${report.report_id}');}">
+                                    <p class="text-xs text-gray-500 mt-1">Select preset tags above or add custom tags</p>
+                                </div>
+                                
+                                <!-- Selected Tags Display -->
+                                <div id="selectedTags_${report.report_id}" class="mt-2 flex flex-wrap gap-1">
+                                    ${report.manual_tags ? parseAITags(report.manual_tags).map(tag => `
+                                        <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                            ${tag}
+                                            <button type="button" onclick="removeTag('${report.report_id}', '${tag}')" class="ml-1 text-blue-600 hover:text-blue-800">
+                                                <i class="fas fa-times"></i>
+                                            </button>
+                                        </span>
+                                    `).join('') : ''}
+                                </div>
+                            </div>
+                            
+                            <!-- Exclusion Controls -->
+                            <div class="border-t border-blue-200 pt-3">
+                                <label class="flex items-center space-x-2 mb-3 cursor-pointer">
+                                    <input type="checkbox" id="excludeCheckbox_${report.report_id}" ${report.exclude_from_analysis ? 'checked' : ''} class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500" onchange="toggleExclusionReason('${report.report_id}')">
+                                    <span class="text-sm font-semibold text-blue-800">Exclude from Analysis</span>
+                                </label>
+                                <div id="exclusionReasonDiv_${report.report_id}" class="${report.exclude_from_analysis ? '' : 'hidden'}">
+                                    <label class="text-xs font-semibold text-blue-800 uppercase mb-2 block">Exclusion Reason</label>
+                                    <select id="exclusionReason_${report.report_id}" class="w-full px-3 py-2 border border-blue-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                                        <option value="" ${!report.exclusion_reason ? 'selected' : ''}>Select reason...</option>
+                                        <option value="Duplicate" ${report.exclusion_reason === 'Duplicate' ? 'selected' : ''}>Duplicate</option>
+                                        <option value="Spam" ${report.exclusion_reason === 'Spam' ? 'selected' : ''}>Spam</option>
+                                        <option value="Test Entry" ${report.exclusion_reason === 'Test Entry' ? 'selected' : ''}>Test Entry</option>
+                                        <option value="Out of Scope" ${report.exclusion_reason === 'Out of Scope' ? 'selected' : ''}>Out of Scope</option>
+                                        <option value="Other" ${report.exclusion_reason === 'Other' ? 'selected' : ''}>Other</option>
+                                    </select>
+                                </div>
+                            </div>
+                            
+                            <!-- Review Info Display -->
+                            ${report.reviewed_by || report.reviewed_at ? `
+                            <div class="border-t border-blue-200 pt-3">
+                                <div class="text-xs text-gray-600">
+                                    <i class="fas fa-info-circle mr-1"></i>
+                                    Last reviewed by <strong>${report.reviewed_by || 'Unknown'}</strong>
+                                    ${report.reviewed_at ? ` on ${new Date(report.reviewed_at).toLocaleString()}` : ''}
+                                </div>
+                            </div>
+                            ` : ''}
+                            
+                            <!-- Save Button -->
+                            <div class="flex justify-end">
+                                <button onclick="saveReportUpdates('${report.report_id}')" class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-semibold text-sm shadow-md hover:shadow-lg">
+                                    <i class="fas fa-save mr-2"></i>Save Changes
+                                </button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         `;
@@ -770,6 +955,160 @@ document.addEventListener('DOMContentLoaded', function() {
     // Close modal
     window.closeReportDetailModal = function() {
         document.getElementById('reportDetailModal').classList.add('hidden');
+    };
+    
+    // Toggle exclusion reason dropdown
+    window.toggleExclusionReason = function(reportId) {
+        const checkbox = document.getElementById(`excludeCheckbox_${reportId}`);
+        const reasonDiv = document.getElementById(`exclusionReasonDiv_${reportId}`);
+        
+        if (checkbox.checked) {
+            reasonDiv.classList.remove('hidden');
+        } else {
+            reasonDiv.classList.add('hidden');
+        }
+    };
+    
+    // Toggle preset tag
+    window.togglePresetTag = function(reportId, tag) {
+        const tagsInput = document.getElementById(`manualTags_${reportId}`);
+        const currentTags = tagsInput.value ? tagsInput.value.split(',').map(t => t.trim()).filter(t => t) : [];
+        
+        if (currentTags.includes(tag)) {
+            // Remove tag
+            const index = currentTags.indexOf(tag);
+            currentTags.splice(index, 1);
+        } else {
+            // Add tag
+            currentTags.push(tag);
+        }
+        
+        tagsInput.value = currentTags.join(', ');
+        updateTagsDisplay(reportId);
+    };
+    
+    // Add custom tag
+    window.addCustomTag = function(reportId) {
+        const customInput = document.getElementById(`customTag_${reportId}`);
+        const tagsInput = document.getElementById(`manualTags_${reportId}`);
+        const newTag = customInput.value.trim().toLowerCase().replace(/\s+/g, '-');
+        
+        if (!newTag) return;
+        
+        const currentTags = tagsInput.value ? tagsInput.value.split(',').map(t => t.trim()).filter(t => t) : [];
+        
+        if (!currentTags.includes(newTag)) {
+            currentTags.push(newTag);
+            tagsInput.value = currentTags.join(', ');
+            customInput.value = '';
+            updateTagsDisplay(reportId);
+        } else {
+            showError('Tag already exists');
+        }
+    };
+    
+    // Remove tag
+    window.removeTag = function(reportId, tag) {
+        const tagsInput = document.getElementById(`manualTags_${reportId}`);
+        const currentTags = tagsInput.value ? tagsInput.value.split(',').map(t => t.trim()).filter(t => t) : [];
+        const index = currentTags.indexOf(tag);
+        
+        if (index > -1) {
+            currentTags.splice(index, 1);
+            tagsInput.value = currentTags.join(', ');
+            updateTagsDisplay(reportId);
+        }
+    };
+    
+    // Update tags display
+    function updateTagsDisplay(reportId) {
+        const tagsInput = document.getElementById(`manualTags_${reportId}`);
+        const tagsDisplay = document.getElementById(`selectedTags_${reportId}`);
+        const tags = tagsInput.value ? tagsInput.value.split(',').map(t => t.trim()).filter(t => t) : [];
+        
+        tagsDisplay.innerHTML = tags.map(tag => `
+            <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                ${tag}
+                <button type="button" onclick="removeTag('${reportId}', '${tag}')" class="ml-1 text-blue-600 hover:text-blue-800">
+                    <i class="fas fa-times"></i>
+                </button>
+            </span>
+        `).join('');
+    }
+    
+    // Save report updates
+    window.saveReportUpdates = async function(reportId) {
+        try {
+            const statusSelect = document.getElementById(`statusSelect_${reportId}`);
+            const reviewerInput = document.getElementById(`reviewerName_${reportId}`);
+            const manualTagsInput = document.getElementById(`manualTags_${reportId}`);
+            const excludeCheckbox = document.getElementById(`excludeCheckbox_${reportId}`);
+            const exclusionReasonSelect = document.getElementById(`exclusionReason_${reportId}`);
+            
+            // Validate reviewer name if status is being changed
+            const currentReport = allReports.find(r => r.report_id === reportId);
+            if (statusSelect.value !== currentReport.status && !reviewerInput.value.trim()) {
+                showError('Please enter your name when updating status');
+                reviewerInput.focus();
+                return;
+            }
+            
+            // Validate exclusion reason if excluded
+            if (excludeCheckbox.checked && !exclusionReasonSelect.value) {
+                showError('Please select an exclusion reason');
+                exclusionReasonSelect.focus();
+                return;
+            }
+            
+            // Parse manual tags
+            const manualTagsArray = manualTagsInput.value
+                .split(',')
+                .map(tag => tag.trim())
+                .filter(tag => tag.length > 0);
+            
+            const updateData = {
+                report_id: reportId,
+                status: statusSelect.value,
+                reviewed_by: reviewerInput.value.trim() || null,
+                manual_tags: manualTagsArray.length > 0 ? JSON.stringify(manualTagsArray) : null,
+                exclude_from_analysis: excludeCheckbox.checked,
+                exclusion_reason: excludeCheckbox.checked ? exclusionReasonSelect.value : null
+            };
+            
+            // Show loading state
+            const saveBtn = event.target;
+            const originalHTML = saveBtn.innerHTML;
+            saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Saving...';
+            saveBtn.disabled = true;
+            
+            const response = await fetch('/api/update-report', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(updateData)
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                showSuccess('Report updated successfully');
+                // Close modal and refresh data
+                closeReportDetailModal();
+                await loadReportsData();
+            } else {
+                throw new Error(result.error || 'Failed to update report');
+            }
+            
+        } catch (error) {
+            console.error('Update error:', error);
+            showError(error.message || 'Failed to update report');
+            // Reset button
+            if (event && event.target) {
+                event.target.innerHTML = '<i class="fas fa-save mr-2"></i>Save Changes';
+                event.target.disabled = false;
+            }
+        }
     };
     
     // Utility functions
@@ -847,7 +1186,49 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     function showError(message) {
-        alert(message); // You can replace this with a nicer toast notification
+        showToast(message, 'error');
+    }
+    
+    function showSuccess(message) {
+        showToast(message, 'success');
+    }
+    
+    function showToast(message, type = 'info') {
+        // Remove any existing toasts
+        const existingToast = document.querySelector('.toast-notification');
+        if (existingToast) {
+            existingToast.remove();
+        }
+        
+        // Create toast element
+        const toast = document.createElement('div');
+        toast.className = `toast-notification ${type}`;
+        
+        const icon = type === 'success' ? 'fa-check-circle' : type === 'error' ? 'fa-exclamation-circle' : 'fa-info-circle';
+        const bgColor = type === 'success' ? 'bg-green-500' : type === 'error' ? 'bg-red-500' : 'bg-blue-500';
+        
+        toast.innerHTML = `
+            <div class="${bgColor} text-white px-6 py-4 rounded-lg shadow-lg flex items-center space-x-3 max-w-md">
+                <i class="fas ${icon} text-2xl"></i>
+                <span class="font-medium">${message}</span>
+            </div>
+        `;
+        
+        toast.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 10000;
+            animation: slideIn 0.3s ease-out;
+        `;
+        
+        document.body.appendChild(toast);
+        
+        // Auto-remove after 3 seconds
+        setTimeout(() => {
+            toast.style.animation = 'slideOut 0.3s ease-out';
+            setTimeout(() => toast.remove(), 300);
+        }, 3000);
     }
     
     // Toggle columns between concise and all
@@ -894,6 +1275,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     <th class="px-4 py-3 text-left text-xs font-bold text-white uppercase">Contact</th>
                     <th class="px-4 py-3 text-left text-xs font-bold text-white uppercase">AI Summary</th>
                     <th class="px-4 py-3 text-left text-xs font-bold text-white uppercase">Media Summary</th>
+                    <th class="px-4 py-3 text-left text-xs font-bold text-white uppercase">AI Tags</th>
+                    <th class="px-4 py-3 text-left text-xs font-bold text-white uppercase">Manual Tags</th>
+                    <th class="px-4 py-3 text-left text-xs font-bold text-white uppercase">AI Confidence</th>
                     <th class="px-4 py-3 text-left text-xs font-bold text-white uppercase">Reviewed By</th>
                     <th class="px-4 py-3 text-left text-xs font-bold text-white uppercase">Reviewed At</th>
                     <th class="px-4 py-3 text-left text-xs font-bold text-white uppercase">Excluded</th>
@@ -908,8 +1292,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     <th class="px-6 py-4 text-left text-xs font-bold text-white uppercase tracking-wider">Date/Time</th>
                     <th class="px-6 py-4 text-left text-xs font-bold text-white uppercase tracking-wider">Location</th>
                     <th class="px-6 py-4 text-left text-xs font-bold text-white uppercase tracking-wider">Severity</th>
-                    <th class="px-6 py-4 text-left text-xs font-bold text-white uppercase tracking-wider">Description</th>
                     <th class="px-6 py-4 text-left text-xs font-bold text-white uppercase tracking-wider">Status</th>
+                    <th class="px-6 py-4 text-left text-xs font-bold text-white uppercase tracking-wider">AI Tags</th>
+                    <th class="px-6 py-4 text-left text-xs font-bold text-white uppercase tracking-wider">Manual Tags</th>
                     <th class="px-6 py-4 text-left text-xs font-bold text-white uppercase tracking-wider">Actions</th>
                 </tr>
             `;

@@ -6,6 +6,9 @@ from datetime import datetime, timedelta
 import json
 import random
 import zipcodes
+import requests
+from PIL import Image
+from io import BytesIO
 from epa_service import EPAAirQualityService
 from epa_aqs_service import EPAAQSService
 from location_service_comprehensive import ComprehensiveLocationService
@@ -190,21 +193,47 @@ def analyze_attachments_with_gemini(attachment_urls):
                 return f"{doc_count} document(s) attached (AI cannot analyze non-image files yet)"
             return "No analyzable attachments"
         
-        # Analyze first image (for now, limit to 1 to avoid API rate limits)
-        # In production, you could loop through multiple images
-        first_image = image_urls[0]
+        # Analyze first image with Gemini Vision
+        first_image_url = image_urls[0]['url']
         
-        # Note: Gemini Vision requires downloading the image or using a library like PIL
-        # For simplicity, we'll return a placeholder that indicates images are present
-        # Full implementation would download image from GCS URL and analyze it
+        # Download image from GCS
+        print(f"[AI] Downloading image from {first_image_url}")
+        response = requests.get(first_image_url, timeout=10)
+        response.raise_for_status()
         
-        return f"{len(image_urls)} image(s) attached. Visual analysis: Image shows potential environmental/health concern requiring official review."
+        image = Image.open(BytesIO(response.content))
+        print(f"[AI] Image loaded: {image.size} pixels, format: {image.format}")
+        
+        # Use Gemini Vision to analyze the image
+        model = genai.GenerativeModel('gemini-2.0-flash-exp')
+        
+        prompt = """You are an environmental and public health expert analyzing a submitted image.
+
+Analyze this image in the context of environmental health and public safety concerns. Look for:
+- Air quality issues (smoke, haze, pollution, industrial emissions)
+- Water contamination (discoloration, algae, debris, chemical spills)
+- Sanitation problems (waste, sewage, pests, improper disposal)
+- Infrastructure hazards (damaged utilities, unsafe conditions)
+- Weather-related dangers (flooding, storm damage)
+- Other health/environmental concerns
+
+Provide a concise 2-3 sentence description of what you observe in the image and whether it represents a legitimate environmental or health concern. Be specific about visible details.
+
+If the image is unrelated to health/environmental issues (e.g., selfie, random photo), state that clearly."""
+
+        response = model.generate_content([prompt, image])
+        analysis = response.text.strip()
+        
+        print(f"[AI] Vision analysis: {analysis[:200]}...")
+        
+        summary = f"{len(image_urls)} image(s) attached. Visual analysis: {analysis}"
+        return summary
         
     except Exception as e:
         print(f"[ERROR] Gemini media analysis failed: {e}")
         import traceback
         traceback.print_exc()
-        return None
+        return f"{len(attachment_urls)} attachment(s) - visual analysis unavailable"
 
 def assign_auto_status(ai_tags, ai_confidence):
     """Auto-assign status based on AI analysis"""
@@ -961,42 +990,47 @@ def get_community_reports():
             }), 500
         
         query = f"""
-        SELECT 
-            report_id,
-            report_type,
-            timestamp,
-            address,
-            zip_code,
-            city,
-            state,
-            county,
-            severity,
-            specific_type,
-            description,
-            people_affected,
-            timeframe,
-            contact_name,
-            contact_email,
-            contact_phone,
-            is_anonymous,
-            status,
-            notes,
-            latitude,
-            longitude,
-            ai_overall_summary,
-            ai_media_summary,
-            ai_tags,
-            ai_confidence,
-            ai_analyzed_at,
-            attachment_urls,
-            reviewed_by,
-            reviewed_at,
-            exclude_from_analysis,
-            exclusion_reason,
-            manual_tags,
-            media_urls
-        FROM `{project_id}.{dataset_id}.{table_id}`
-        WHERE 1=1
+        WITH LatestReports AS (
+            SELECT 
+                report_id,
+                report_type,
+                timestamp,
+                address,
+                zip_code,
+                city,
+                state,
+                county,
+                severity,
+                specific_type,
+                description,
+                people_affected,
+                timeframe,
+                contact_name,
+                contact_email,
+                contact_phone,
+                is_anonymous,
+                status,
+                notes,
+                latitude,
+                longitude,
+                ai_overall_summary,
+                ai_media_summary,
+                ai_tags,
+                ai_confidence,
+                ai_analyzed_at,
+                attachment_urls,
+                reviewed_by,
+                reviewed_at,
+                exclude_from_analysis,
+                exclusion_reason,
+                manual_tags,
+                media_urls,
+                ROW_NUMBER() OVER (PARTITION BY report_id ORDER BY timestamp DESC) as rn
+            FROM `{project_id}.{dataset_id}.{table_id}`
+        )
+        SELECT * EXCEPT(rn)
+        FROM LatestReports
+        WHERE rn = 1 AND 1=1
         """
         
         # Add filter conditions
@@ -1520,6 +1554,123 @@ def submit_report():
         
     except Exception as e:
         print(f"[ERROR] Report submission failed: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/update-report', methods=['POST'])
+def update_report():
+    """Update report status, reviewer info, exclusion flags, and manual tags"""
+    from google.cloud import bigquery
+    from datetime import datetime
+    
+    try:
+        data = request.get_json()
+        report_id = data.get('report_id')
+        
+        if not report_id:
+            return jsonify({'success': False, 'error': 'Report ID is required'}), 400
+        
+        # Get update fields
+        status = data.get('status')
+        reviewed_by = data.get('reviewed_by')
+        manual_tags = data.get('manual_tags')
+        exclude_from_analysis = data.get('exclude_from_analysis', False)
+        exclusion_reason = data.get('exclusion_reason')
+        
+        # Validate exclusion reason if excluded
+        if exclude_from_analysis and not exclusion_reason:
+            return jsonify({'success': False, 'error': 'Exclusion reason is required when excluding report'}), 400
+        
+        # Execute UPDATE in BigQuery
+        project_id = os.getenv('GOOGLE_CLOUD_PROJECT')
+        dataset_id = os.getenv('BIGQUERY_DATASET')
+        table_id = os.getenv('BIGQUERY_TABLE_REPORTS', 'CrowdSourceData')
+        
+        if not project_id or not dataset_id or project_id == 'your-actual-project-id':
+            return jsonify({'success': False, 'error': 'BigQuery not configured'}), 500
+        
+        client = bigquery.Client(project=project_id)
+        table_ref = f"{project_id}.{dataset_id}.{table_id}"
+        
+        # INSERT a new row with updated data instead of UPDATE (to avoid streaming buffer issue)
+        # This creates a duplicate row, and we'll use the latest one when querying
+        # Alternatively, we can create a separate updates table
+        
+        # For now, let's use INSERT with updated timestamp to create new version
+        # First, fetch the current row
+        select_query = f"""
+            SELECT * FROM `{table_ref}`
+            WHERE report_id = @report_id
+            ORDER BY timestamp DESC
+            LIMIT 1
+        """
+        
+        job_config = bigquery.QueryJobConfig(
+            query_parameters=[
+                bigquery.ScalarQueryParameter("report_id", "STRING", report_id)
+            ]
+        )
+        
+        query_job = client.query(select_query, job_config=job_config)
+        results = list(query_job.result())
+        
+        if not results:
+            return jsonify({'success': False, 'error': 'Report not found'}), 404
+        
+        # Get current row data
+        current_row = dict(results[0])
+        
+        # Update the fields
+        if status is not None:
+            current_row['status'] = status
+        
+        if reviewed_by is not None:
+            current_row['reviewed_by'] = reviewed_by
+            current_row['reviewed_at'] = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
+        
+        if manual_tags is not None:
+            current_row['manual_tags'] = manual_tags
+        
+        current_row['exclude_from_analysis'] = exclude_from_analysis
+        
+        if exclude_from_analysis and exclusion_reason:
+            current_row['exclusion_reason'] = exclusion_reason
+        else:
+            current_row['exclusion_reason'] = None
+        
+        # Update timestamp to mark this as newer version
+        current_row['timestamp'] = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
+        
+        # Convert any datetime objects to strings in YYYY-MM-DD HH:MM:SS format
+        for key, value in current_row.items():
+            if hasattr(value, 'strftime'):  # datetime or date object
+                current_row[key] = value.strftime('%Y-%m-%d %H:%M:%S')
+            elif value is None:
+                # Keep None as is
+                pass
+        
+        # Insert the updated row
+        errors = client.insert_rows_json(table_ref, [current_row])
+        
+        if errors:
+            print(f"[UPDATE ERROR] Failed to insert updated row: {errors}")
+            return jsonify({'success': False, 'error': f'Failed to update: {errors}'}), 500
+        
+        print(f"[UPDATE SUCCESS] Report {report_id} updated via insert")
+        print(f"[UPDATE] Status: {status}, Reviewed by: {reviewed_by}, Excluded: {exclude_from_analysis}")
+        
+        return jsonify({
+            'success': True,
+            'message': 'Report updated successfully',
+            'report_id': report_id
+        })
+        
+    except Exception as e:
+        print(f"[UPDATE ERROR] {str(e)}")
         import traceback
         traceback.print_exc()
         return jsonify({
