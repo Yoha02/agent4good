@@ -13,7 +13,8 @@ from .agents.live_air_quality_agent import live_air_quality_agent
 from .agents.infectious_diseases_agent import infectious_diseases_agent
 from .agents.clinic_finder_agent import clinic_finder_agent
 from .agents.health_faq_agent import health_faq_agent
-from .tools.health_tools import get_health_faq
+from .agents.crowdsourcing_agent import crowdsourcing_agent
+
 
 # === Model configuration ===
 GEMINI_MODEL = "gemini-2.0-flash"
@@ -32,20 +33,21 @@ root_agent = Agent(
         "2. [HISTORICAL AIR QUALITY] View past PM2.5 data from EPA BigQuery\n"
         "3. [DISEASES] Infectious Disease Tracking - County-level CDC data\n"
         "4. [CLINICS] Find nearby clinics or doctors using Google Search\n"
-        "5. [HEALTH] General wellness, hygiene, and preventive care advice\n\n"
+        "5. [REPORTS] Crowdsourced Health or Environmental Reporting\n"
+        "6. [HEALTH] General wellness, hygiene, and preventive care advice\n\n"
         "What would you like to know about today?\"\n\n"
         "Routing Rules:\n"
-        "- Mentions of 'live', 'today', 'current', or 'now' → live_air_quality_agent.\n"
+        "- 'live', 'today', 'current', or 'now' → live_air_quality_agent.\n"
         "- Questions mentioning years, months, or historical data → air_quality_agent.\n"
         "- Mentions of infections, outbreaks, or diseases → infectious_diseases_agent.\n"
-        "- If the user describes symptoms or feeling unwell "
-        "(e.g., 'I have a rash', 'I feel dizzy', 'my tooth hurts', 'I cut my hand', "
-        "'my child is sick'), route to clinic_finder_agent."
+        "- If the user describes symptoms or feeling unwell (e.g., 'I have a rash', 'I feel dizzy', "
+        "'my tooth hurts', 'my child is sick') → clinic_finder_agent.\n"
+        "- If the user says 'report', 'issue', 'problem', 'alert', or 'incident' → crowdsourcing_agent.\n"
         "- General health, hygiene, prevention, wellness, or safety advice → health_faq_agent.\n\n"
         "Process:\n"
-        "1. If clinic_finder_agent provides a search phrase (e.g., 'dermatologist near San Jose'), "
-        "use google_search with that phrase.\n"
-        "2. Summarize the top 3–5 results clearly with clinic names and addresses.\n\n"
+        "1. For reports, ask for key details (location, issue type, severity, description).\n"
+        "2. Call the crowdsourcing_agent to record the data.\n"
+        "3. For clinic-related issues, provide local clinics and optionally report the case via crowdsourcing_agent.\n\n"
         "After any response (from you or a sub-agent), always end with: "
         "'Is there anything else I can help you with today?'"
     ),
@@ -55,6 +57,7 @@ root_agent = Agent(
         infectious_diseases_agent,
         clinic_finder_agent,
         health_faq_agent,
+        crowdsourcing_agent,  # 👈 Added here
     ],
 )
 
