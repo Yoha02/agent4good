@@ -13,10 +13,14 @@ from .agents.live_air_quality_agent import live_air_quality_agent
 from .agents.infectious_diseases_agent import infectious_diseases_agent
 from .agents.clinic_finder_agent import clinic_finder_agent
 from .agents.health_faq_agent import health_faq_agent
+from .agents.psa_video import create_psa_video_agents
 from .tools.health_tools import get_health_faq
 
 # === Model configuration ===
 GEMINI_MODEL = "gemini-2.0-flash"
+
+# === Create PSA Video Agents ===
+psa_agents = create_psa_video_agents(model=GEMINI_MODEL, tools_module=None)
 
 # === Root Agent Definition ===
 root_agent = Agent(
@@ -32,7 +36,8 @@ root_agent = Agent(
         "2. [HISTORICAL AIR QUALITY] View past PM2.5 data from EPA BigQuery\n"
         "3. [DISEASES] Infectious Disease Tracking - County-level CDC data\n"
         "4. [CLINICS] Find nearby clinics or doctors using Google Search\n"
-        "5. [HEALTH] General wellness, hygiene, and preventive care advice\n\n"
+        "5. [HEALTH] General wellness, hygiene, and preventive care advice\n"
+        "6. [PSA VIDEOS] Generate and share public health announcement videos\n\n"
         "What would you like to know about today?\"\n\n"
         "Routing Rules:\n"
         "- Mentions of 'live', 'today', 'current', or 'now' → live_air_quality_agent.\n"
@@ -41,7 +46,8 @@ root_agent = Agent(
         "- If the user describes symptoms or feeling unwell "
         "(e.g., 'I have a rash', 'I feel dizzy', 'my tooth hurts', 'I cut my hand', "
         "'my child is sick'), route to clinic_finder_agent."
-        "- General health, hygiene, prevention, wellness, or safety advice → health_faq_agent.\n\n"
+        "- General health, hygiene, prevention, wellness, or safety advice → health_faq_agent.\n"
+        "- Requests to create PSA videos, announcements, or post to social media → PSA video agents.\n\n"
         "Process:\n"
         "1. If clinic_finder_agent provides a search phrase (e.g., 'dermatologist near San Jose'), "
         "use google_search with that phrase.\n"
@@ -55,7 +61,7 @@ root_agent = Agent(
         infectious_diseases_agent,
         clinic_finder_agent,
         health_faq_agent,
-    ],
+    ] + psa_agents,  # Add PSA video agents (ActionLine, VeoPrompt, Twitter)
 )
 
 # === Runner & Session Setup ===
