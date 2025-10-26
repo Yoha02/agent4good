@@ -44,6 +44,13 @@
     <!-- D3.js -->
     <script src="https://d3js.org/d3.v7.min.js"></script>
     
+    <!-- CesiumJS for Photorealistic 3D Tiles -->
+    <script src="https://ajax.googleapis.com/ajax/libs/cesiumjs/1.105/Build/Cesium/Cesium.js"></script>
+    <link href="https://ajax.googleapis.com/ajax/libs/cesiumjs/1.105/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
+    
+    <!-- Google Maps API with Visualization & Places Libraries -->
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyALQGawG7iVNjJhG8v5w3Z_eyt5oRdMCvk&libraries=visualization,places" defer></script>
+    
     <!-- Three.js -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     
@@ -54,11 +61,6 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
-    
-    <!-- Google Maps API (for Places Autocomplete & Geocoding) -->
-    {% if google_maps_key %}
-    <script src="https://maps.googleapis.com/maps/api/js?key={{ google_maps_key }}&libraries=places&callback=Function.prototype" async defer></script>
-    {% endif %}
     
     <style>
         body {
@@ -410,7 +412,7 @@
                     </div>
                 </div>
                 
-                <!-- Interactive Chart -->
+                <!-- Air Quality Heatmap -->
                 <div class="bg-white rounded-3xl shadow-2xl p-8 border border-gray-200">
                     <div class="flex justify-between items-center mb-4">
                         <h3 class="text-2xl font-bold text-navy-700">Trend Analysis</h3>
@@ -448,6 +450,50 @@
                     <div class="h-96">
                         <canvas id="aqiChart" class="w-full h-full"></canvas>
                     </div>
+                </div>
+            </div>
+            
+            <!-- Air Quality Heatmap - Full Width Below -->
+            <div class="mt-8 bg-white rounded-3xl shadow-2xl p-8 border border-gray-200">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-2xl font-bold text-navy-700">Air Quality Heatmap</h3>
+                    <div class="flex space-x-2">
+                        <button onclick="toggleHeatmapType('aqi')" id="btnAQI" class="px-4 py-2 bg-navy-600 text-white rounded-lg hover:bg-navy-700 transition-colors font-medium text-sm">AQI</button>
+                        <button onclick="toggleHeatmapType('intensity')" id="btnIntensity" class="px-4 py-2 bg-gray-200 text-navy-700 rounded-lg hover:bg-gray-300 transition-colors font-medium text-sm">Intensity</button>
+                    </div>
+                </div>
+                <div class="flex justify-between items-center mb-4">
+                    <p class="text-sm text-gray-600">
+                        <i class="fas fa-info-circle mr-1"></i>
+                        <span class="hidden sm:inline">Pan to explore • Zoom for details • </span>
+                        <button onclick="resetMapView()" class="text-emerald-600 hover:text-emerald-700 font-medium underline">Reset View</button>
+                    </p>
+                    <div class="flex items-center space-x-3 text-xs">
+                        <div class="flex items-center">
+                            <div class="w-3 h-3 rounded-full bg-green-500 mr-1"></div>
+                            <span>Good</span>
+                        </div>
+                        <div class="flex items-center">
+                            <div class="w-3 h-3 rounded-full bg-yellow-400 mr-1"></div>
+                            <span>Moderate</span>
+                        </div>
+                        <div class="flex items-center">
+                            <div class="w-3 h-3 rounded-full bg-orange-500 mr-1"></div>
+                            <span>Unhealthy</span>
+                        </div>
+                        <div class="flex items-center">
+                            <div class="w-3 h-3 rounded-full bg-red-600 mr-1"></div>
+                            <span>Hazardous</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="h-[600px] rounded-xl overflow-hidden border border-gray-300">
+                    <div id="airQualityMap" class="w-full h-full"></div>
+                </div>
+                <div class="mt-4 text-center">
+                    <span id="mapStatus" class="text-sm text-gray-600">
+                        <i class="fas fa-spinner fa-spin mr-2"></i>Loading map data...
+                    </span>
                 </div>
             </div>
             
@@ -799,6 +845,7 @@
 
     <!-- Scripts -->
     <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/air-quality-map.js') }}"></script>
     <script src="{{ url_for('static', filename='js/pollutant-charts.js') }}"></script>
     <script src="{{ url_for('static', filename='js/three-bg.js') }}"></script>
     <script src="{{ url_for('static', filename='js/d3-viz.js') }}"></script>

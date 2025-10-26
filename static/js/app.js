@@ -117,6 +117,18 @@ function onPlaceSelected() {
     loadWeatherData();  // NEW: Load weather
     loadPollenData();   // NEW: Load pollen
     
+    // Update heatmap and zoom to location
+    if (typeof loadHeatmapData === 'function') {
+        loadHeatmapData(state);
+    }
+    // Zoom to the specific searched location
+    if (place.geometry && place.geometry.location && typeof flyToCoordinates === 'function') {
+        const lat = place.geometry.location.lat();
+        const lng = place.geometry.location.lng();
+        console.log('[Location Search] Flying to coordinates:', lat, lng);
+        flyToCoordinates(lat, lng, zipCode ? 50000 : 200000); // Closer for ZIP, further for city
+    }
+    
     // Show success message
     const locationText = [city, county, state, zipCode].filter(Boolean).join(', ');
     updateAPIStatus('success', 'Location Set', locationText);
@@ -202,6 +214,15 @@ function getAutoLocation() {
                             loadWeatherData();
                             loadPollenData();
                             
+                            // Update heatmap - fly to specific location instead of just state
+                            if (typeof loadHeatmapData === 'function') {
+                                loadHeatmapData(state);
+                            }
+                            // Zoom to specific coordinates (city level)
+                            if (typeof flyToCoordinates === 'function') {
+                                flyToCoordinates(position.coords.latitude, position.coords.longitude, 50000); // 50km height for city view
+                            }
+                            
                             updateAPIStatus('success', 'Location Detected', `${city}, ${state} (${zipCode})`);
                         } else {
                             alert('Could not determine ZIP code from your location. Please search manually.');
@@ -252,9 +273,8 @@ function getAutoLocation() {
 
 // Initialize the application
 function initializeApp() {
-    // Set default to California with ZIP code
-    currentState = 'CA';
-    currentZip = '90210';  // Beverly Hills, CA - reliable EPA monitoring station
+    // Set default to California
+    currentState = 'California';
     updateAPIStatus('loading', 'Initializing...', 'Loading default location data');
     
     // Load cities for California on startup
@@ -477,6 +497,21 @@ function applyLocationFilter() {
     console.log('Applying filter - State:', currentState, 'City:', currentCity, 'ZIP:', currentZip);
     loadAirQualityData();
     loadHealthRecommendations();
+    
+    // Update heatmap - zoom to state level
+    if (typeof loadHeatmapData === 'function') {
+        loadHeatmapData(currentState);
+    }
+    // If we have city data, try to get coordinates and zoom closer
+    if (currentCity && currentState && typeof geocoder !== 'undefined') {
+        const address = currentCity + ', ' + currentState;
+        geocoder.geocode({ address: address }, (results, status) => {
+            if (status === 'OK' && results[0] && typeof flyToCoordinates === 'function') {
+                const location = results[0].geometry.location;
+                flyToCoordinates(location.lat(), location.lng(), currentZip ? 50000 : 200000);
+            }
+        });
+    }
 }
 
 // Clear location filter
@@ -501,6 +536,11 @@ function clearLocationFilter() {
     updateLocationDisplay('California');
     loadAirQualityData();
     loadHealthRecommendations();
+    
+    // Update heatmap if it exists
+    if (typeof loadHeatmapData === 'function') {
+        loadHeatmapData('California');
+    }
 }
 
 // Update location display text
@@ -1611,12 +1651,4 @@ function getPollenIcon(upi) {
     if (upi == 3) return '🌺';
     if (upi == 4) return '🌼';
     return '🌻';
-}
-
-// Mobile menu toggle function
-function toggleMobileMenu() {
-    const mobileMenu = document.getElementById('mobileMenu');
-    if (mobileMenu) {
-        mobileMenu.classList.toggle('hidden');
-    }
 }
