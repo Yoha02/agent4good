@@ -595,6 +595,10 @@ def post_to_twitter():
             'success': False,
             'error': str(e)
         }), 500
+@app.route('/acknowledgements')
+def acknowledgements():
+    """Acknowledgements page"""
+    return render_template('acknowledgements.html')
 
 
 @app.route('/health')

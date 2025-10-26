@@ -2010,6 +2010,12 @@ def get_pollen():
         traceback.print_exc()
         return jsonify({'success': False, 'error': str(e)}), 500
 
+@app.route('/acknowledgements')
+def acknowledgements():
+    """Acknowledgements page"""
+    return render_template('acknowledgements.html')
+
+
 @app.route('/health')
 def health_check():
     """Health check endpoint"""
