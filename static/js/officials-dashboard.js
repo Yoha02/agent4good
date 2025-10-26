@@ -669,6 +669,56 @@ document.addEventListener('DOMContentLoaded', function() {
                         <p class="mt-1 text-gray-900">${report.when_happened || report.timeframe ? formatTimeframe(report.when_happened || report.timeframe) : 'Not specified'}</p>
                     </div>
                     
+                    ${(report.ai_overall_summary || report.ai_tags || report.ai_confidence) ? `
+                    <div class="col-span-2 border-t pt-4">
+                        <label class="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-3 block">
+                            <i class="fas fa-robot mr-2 text-purple-600"></i>AI Analysis
+                        </label>
+                        <div class="bg-purple-50 rounded-lg p-4 space-y-3">
+                            ${report.ai_overall_summary ? `
+                            <div>
+                                <div class="text-xs font-semibold text-purple-700 uppercase mb-1">Summary</div>
+                                <p class="text-sm text-gray-800">${report.ai_overall_summary}</p>
+                            </div>
+                            ` : ''}
+                            ${report.ai_tags ? `
+                            <div>
+                                <div class="text-xs font-semibold text-purple-700 uppercase mb-2">Tags</div>
+                                <div class="flex flex-wrap gap-1">
+                                    ${parseAITags(report.ai_tags).map(tag => `
+                                        <span class="px-2 py-1 bg-purple-200 text-purple-800 rounded-full text-xs font-medium">
+                                            ${tag}
+                                        </span>
+                                    `).join('')}
+                                </div>
+                            </div>
+                            ` : ''}
+                            ${report.ai_confidence !== null && report.ai_confidence !== undefined ? `
+                            <div>
+                                <div class="text-xs font-semibold text-purple-700 uppercase mb-1">Confidence Score</div>
+                                <div class="flex items-center gap-2">
+                                    <div class="flex-1 bg-gray-200 rounded-full h-2">
+                                        <div class="bg-purple-600 h-2 rounded-full" style="width: ${(report.ai_confidence * 100)}%"></div>
+                                    </div>
+                                    <span class="text-sm font-bold text-purple-800">${(report.ai_confidence * 100).toFixed(0)}%</span>
+                                </div>
+                            </div>
+                            ` : ''}
+                            ${report.ai_media_summary ? `
+                            <div>
+                                <div class="text-xs font-semibold text-purple-700 uppercase mb-1">Media Analysis</div>
+                                <p class="text-sm text-gray-800">${report.ai_media_summary}</p>
+                            </div>
+                            ` : ''}
+                            ${report.ai_analyzed_at ? `
+                            <div class="text-xs text-gray-500 italic">
+                                Analyzed: ${new Date(report.ai_analyzed_at).toLocaleString()}
+                            </div>
+                            ` : ''}
+                        </div>
+                    </div>
+                    ` : ''}
+                    
                     ${attachmentUrls.length > 0 ? `
                     <div class="col-span-2 border-t pt-4">
                         <label class="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-3 block">
@@ -728,6 +778,26 @@ document.addEventListener('DOMContentLoaded', function() {
         return str.charAt(0).toUpperCase() + str.slice(1);
     }
     
+    function parseAITags(tagsData) {
+        if (!tagsData) return [];
+        
+        // If it's already an array, return it
+        if (Array.isArray(tagsData)) return tagsData;
+        
+        // If it's a string, try to parse it as JSON
+        if (typeof tagsData === 'string') {
+            try {
+                const parsed = JSON.parse(tagsData);
+                return Array.isArray(parsed) ? parsed : [];
+            } catch (e) {
+                // If parsing fails, try splitting by comma
+                return tagsData.split(',').map(t => t.trim()).filter(t => t);
+            }
+        }
+        
+        return [];
+    }
+    
     function formatTimeframe(timeframe) {
         const mapping = {
             'now': 'Happening Now',
@@ -755,9 +825,13 @@ document.addEventListener('DOMContentLoaded', function() {
             'pending': 'bg-blue-100 text-blue-800',
             'reviewed': 'bg-purple-100 text-purple-800',
             'resolved': 'bg-green-100 text-green-800',
-            'closed': 'bg-gray-100 text-gray-800'
+            'closed': 'bg-gray-100 text-gray-800',
+            'valid - action required': 'bg-red-100 text-red-800',
+            'valid - monitoring': 'bg-green-100 text-green-800',
+            'under review': 'bg-yellow-100 text-yellow-800',
+            'closed - invalid': 'bg-gray-100 text-gray-800'
         };
-        return colors[status] || 'bg-gray-100 text-gray-800';
+        return colors[status.toLowerCase()] || 'bg-gray-100 text-gray-800';
     }
     
     function debounce(func, wait) {
