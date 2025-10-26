@@ -1,0 +1,86 @@
+[
+  {
+    "name": "incident_id",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Unique identifier for the wildfire incident"
+  },
+  {
+    "name": "incident_name",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Name of the wildfire incident"
+  },
+  {
+    "name": "location",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Location description of the incident"
+  },
+  {
+    "name": "state",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "State where incident is occurring"
+  },
+  {
+    "name": "latitude",
+    "type": "FLOAT64",
+    "mode": "NULLABLE",
+    "description": "Latitude coordinate"
+  },
+  {
+    "name": "longitude",
+    "type": "FLOAT64",
+    "mode": "NULLABLE",
+    "description": "Longitude coordinate"
+  },
+  {
+    "name": "acres_burned",
+    "type": "INTEGER",
+    "mode": "NULLABLE",
+    "description": "Acres burned by the fire"
+  },
+  {
+    "name": "containment_percent",
+    "type": "INTEGER",
+    "mode": "NULLABLE",
+    "description": "Percentage of fire contained"
+  },
+  {
+    "name": "start_date",
+    "type": "TIMESTAMP",
+    "mode": "NULLABLE",
+    "description": "When the fire started"
+  },
+  {
+    "name": "updated_date",
+    "type": "TIMESTAMP",
+    "mode": "REQUIRED",
+    "description": "Last update timestamp"
+  },
+  {
+    "name": "status",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Current status (Active, Contained, etc.)"
+  },
+  {
+    "name": "cause",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Cause of the fire if known"
+  },
+  {
+    "name": "url",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "InciWeb URL for more details"
+  },
+  {
+    "name": "created_at",
+    "type": "TIMESTAMP",
+    "mode": "REQUIRED",
+    "description": "When this record was added to BigQuery"
+  }
+]
