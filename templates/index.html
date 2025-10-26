@@ -731,6 +731,11 @@
                 
                 <!-- Chat Input -->
                 <div class="p-6 bg-white border-t border-gray-200">
+                    <!-- Location Context Indicator -->
+                    <div id="chatLocationContext" class="mb-3 text-sm text-gray-600 hidden">
+                        <i class="fas fa-map-marker-alt text-emerald-500 mr-1"></i>
+                        <span>Asking about: <span id="chatLocationText" class="font-medium text-emerald-600"></span></span>
+                    </div>
                     <div class="flex space-x-4">
                         <input 
                             type="text" 

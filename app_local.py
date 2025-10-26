@@ -14,7 +14,7 @@ from epa_aqs_service import EPAAQSService
 from location_service_comprehensive import ComprehensiveLocationService
 from google_weather_service import GoogleWeatherService
 from google_pollen_service import GooglePollenService
-from google.cloud import storage
+from google.cloud import storage, bigquery
 import google.generativeai as genai
 
 # Load environment variables
@@ -52,6 +52,26 @@ except Exception as e:
     storage_client = None
     bucket = None
 
+# Initialize BigQuery client
+try:
+    bq_client = bigquery.Client(project=GCP_PROJECT_ID)
+    print(f"[OK] BigQuery client initialized for project: {GCP_PROJECT_ID}")
+except Exception as e:
+    print(f"[WARNING] BigQuery initialization failed: {e}")
+    bq_client = None
+
+# Initialize Gemini AI model
+try:
+    if GEMINI_API_KEY:
+        model = genai.GenerativeModel('gemini-pro')
+        print("[OK] Gemini AI model initialized")
+    else:
+        model = None
+        print("[WARNING] No Gemini API key, AI features will be limited")
+except Exception as e:
+    print(f"[WARNING] Gemini model initialization failed: {e}")
+    model = None
+
 # Initialize services
 try:
     epa_service = EPAAirQualityService()
@@ -71,6 +91,15 @@ except Exception as e:
     location_service = ComprehensiveLocationService()  # Location service can work independently
     weather_service = None
     pollen_service = None
+
+# Import ADK agent (optional, for backwards compatibility)
+try:
+    from multi_tool_agent_bquery_tools.agent import call_agent as call_adk_agent
+    ADK_AGENT_AVAILABLE = True
+    print("[OK] ADK Agent loaded successfully!")
+except Exception as e:
+    print(f"[INFO] ADK Agent not available (optional): {e}")
+    ADK_AGENT_AVAILABLE = False
 
 # ===== FILE UPLOAD & AI ANALYSIS HELPERS =====
 
@@ -254,12 +283,62 @@ def assign_auto_status(ai_tags, ai_confidence):
 
 # ===== END FILE UPLOAD & AI HELPERS =====
 
-# Mock data for fallback when EPA is unavailable
-class MockAirQualityAgent:
-    """Mock agent for local testing"""
+
+class AirQualityAgent:
+    """Google SDK Agent for Air Quality Analysis with BigQuery + Gemini AI"""
+    
+    def __init__(self, bq_client, genai_model):
+        self.bq_client = bq_client
+        self.model = genai_model
     
     def query_air_quality_data(self, state=None, days=7):
-        """Generate mock air quality data"""
+        """Query air quality data from public BigQuery EPA dataset"""
+        if not self.bq_client:
+            print("[BQ] No BigQuery client, using demo data")
+            return self._generate_demo_data(state, days)
+            
+        try:
+            # Use public EPA dataset
+            query = f"""
+            SELECT 
+                date_local as date,
+                state_name,
+                county_name,
+                CAST(aqi AS INT64) as aqi,
+                parameter_name,
+                local_site_name as site_name,
+                arithmetic_mean as pm25_mean
+            FROM `bigquery-public-data.epa_historical_air_quality.pm25_frm_daily_summary`
+            WHERE date_local >= DATE_SUB(DATE('2021-11-08'), INTERVAL {days} DAY)
+            AND aqi IS NOT NULL
+            """
+            
+            if state:
+                query += f" AND UPPER(state_name) = UPPER('{state}')"
+            
+            query += " ORDER BY date_local DESC LIMIT 1000"
+            
+            print(f"[BQ] Querying public EPA dataset for {state or 'all states'}, last {days} days")
+            query_job = self.bq_client.query(query)
+            results = query_job.result()
+            
+            data = [dict(row) for row in results]
+            
+            if data:
+                print(f"[BQ] Retrieved {len(data)} records from public EPA dataset")
+                return data
+            else:
+                print(f"[BQ] No data found, using demo data")
+                return self._generate_demo_data(state, days)
+                
+        except Exception as e:
+            print(f"[BQ ERROR] {e}")
+            print("[BQ] Falling back to demo data")
+            return self._generate_demo_data(state, days)
+    
+    def _generate_demo_data(self, state=None, days=7):
+        """Generate demo data when BigQuery is unavailable"""
+        import random
         data = []
         states = ['California', 'Texas', 'New York', 'Florida', 'Illinois']
         counties = {
@@ -270,7 +349,7 @@ class MockAirQualityAgent:
             'Illinois': ['Cook', 'DuPage', 'Lake']
         }
         
-        selected_states = [state] if state and state in states else states[:3]
+        selected_states = [state] if state else states[:3]
         
         for day in range(days):
             date = datetime.now() - timedelta(days=day)
@@ -290,20 +369,37 @@ class MockAirQualityAgent:
         return data
     
     def analyze_with_ai(self, data, question):
-        """Mock AI analysis"""
-        df = pd.DataFrame(data)
-        avg_aqi = df['aqi'].mean() if not df.empty else 50
-        
-        responses = [
-            f"Based on the air quality data, the average AQI is {avg_aqi:.1f}. This indicates moderate air quality.",
-            f"The PM2.5 levels in your area are within acceptable ranges. Consider outdoor activities during morning hours.",
-            f"Air quality monitoring shows seasonal variations. Stay informed about daily AQI levels for better health planning.",
-        ]
-        
-        return random.choice(responses)
+        """Use Gemini AI to analyze air quality data"""
+        try:
+            if not self.model or not data:
+                return "AI analysis unavailable at the moment."
+            
+            # Prepare data summary for AI
+            df = pd.DataFrame(data)
+            data_summary = df.describe().to_string() if not df.empty else "No data available"
+            
+            prompt = f"""
+            You are an air quality health advisor. Analyze this air quality data and answer the question.
+            
+            Data Summary:
+            {data_summary}
+            
+            Recent Records:
+            {df.head(10).to_string() if not df.empty else "No recent data"}
+            
+            Question: {question}
+            
+            Provide a helpful, actionable response focused on community health and wellness.
+            """
+            
+            response = self.model.generate_content(prompt)
+            return response.text
+        except Exception as e:
+            print(f"Error with AI analysis: {e}")
+            return "Unable to generate AI analysis at this time."
     
     def get_statistics(self, data):
-        """Calculate statistics from mock data"""
+        """Calculate statistics from air quality data"""
         if not data:
             return {}
         
@@ -319,9 +415,10 @@ class MockAirQualityAgent:
         
         return stats
 
-# Initialize the mock agent
-agent = MockAirQualityAgent()
-ADK_AGENT_AVAILABLE = False  # Set to False for local testing
+
+# Initialize the AI agent
+agent = AirQualityAgent(bq_client, model)
+
 
 @app.route('/')
 def index():
@@ -850,7 +947,7 @@ def health_recommendations():
 
 @app.route('/api/agent-chat', methods=['POST'])
 def agent_chat():
-    """API endpoint for agent chat - fallback mode"""
+    """API endpoint for ADK agent chat with fallback to Gemini AI"""
     try:
         request_data = request.get_json()
         question = request_data.get('question', '')
@@ -861,17 +958,64 @@ def agent_chat():
                 'error': 'No question provided'
             }), 400
         
-        # Use mock AI since ADK agent is not available
+        # Get location context from request
         state = request_data.get('state', None)
+        city = request_data.get('city', None)
+        zipcode = request_data.get('zipcode', None)
         days = int(request_data.get('days', 7))
+        
+        # Build location context string for AI
+        location_context = ""
+        if zipcode:
+            location_context = f"ZIP code {zipcode}"
+            if city and state:
+                location_context = f"{city}, {state} (ZIP: {zipcode})"
+        elif city and state:
+            location_context = f"{city}, {state}"
+        elif state:
+            location_context = state
+        
+        # Try ADK agent first if available (only if model is working)
+        if ADK_AGENT_AVAILABLE and model:
+            try:
+                # Enhance question with location context if not already mentioned
+                enhanced_question = question
+                if location_context and location_context.lower() not in question.lower():
+                    enhanced_question = f"For {location_context}: {question}"
+                
+                response = call_adk_agent(enhanced_question)
+                
+                # Check if response indicates an API key error
+                if "API key is not set up" in response or "cannot fulfill this request" in response:
+                    print(f"[WARNING] ADK agent has API key issue, falling back to Gemini AI")
+                    raise Exception("ADK agent API key error")
+                
+                return jsonify({
+                    'success': True,
+                    'response': response,
+                    'agent': 'ADK Multi-Agent System',
+                    'location': location_context
+                })
+            except Exception as adk_error:
+                print(f"[WARNING] ADK agent failed: {adk_error}, falling back to Gemini AI")
+        
+        # Fallback to Gemini AI with location-aware analysis
+        # Get air quality data for the specific location
         data = agent.query_air_quality_data(state=state, days=days)
-        analysis = agent.analyze_with_ai(data, question)
+        
+        # Enhance question with location context for better AI responses
+        enhanced_question = question
+        if location_context:
+            enhanced_question = f"User is asking about {location_context}. Question: {question}"
+        
+        analysis = agent.analyze_with_ai(data, enhanced_question)
         
         return jsonify({
             'success': True,
             'response': analysis,
-            'agent': 'Mock AI (Local Development Mode)',
-            'data_points': len(data)
+            'agent': 'Gemini AI with BigQuery Data',
+            'data_points': len(data),
+            'location': location_context
         })
         
     except Exception as e:

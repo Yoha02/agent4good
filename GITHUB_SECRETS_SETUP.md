@@ -66,12 +66,15 @@ python -c "import secrets; print(secrets.token_hex(32))"
 | Secret Name | Description | Example Value |
 |------------|-------------|---------------|
 | `EPA_API_KEY` | EPA AirNow API key | `87FB7DB4-DDE6-4FDB-B214-3948D35ADE59` |
+| `AIRNOW_API_KEY` | AirNow API key (same as EPA_API_KEY) | `87FB7DB4-DDE6-4FDB-B214-3948D35ADE59` |
 | `AQS_API_KEY` | EPA Air Quality System API key | `ochregazelle35` |
 | `AQS_EMAIL` | Email for AQS API | `your.email@example.com` |
 
 **Get EPA API keys:**
 - AirNow API: https://docs.airnowapi.org/account/request/
 - AQS API: https://aqs.epa.gov/aqsweb/documents/data_api.html
+
+**Note:** `EPA_API_KEY` and `AIRNOW_API_KEY` should have the same value (for compatibility with different services).
 
 ---
 
