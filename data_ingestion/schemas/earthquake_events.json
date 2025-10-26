@@ -1,0 +1,92 @@
+[
+  {
+    "name": "event_id",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "USGS earthquake event ID"
+  },
+  {
+    "name": "magnitude",
+    "type": "FLOAT64",
+    "mode": "REQUIRED",
+    "description": "Earthquake magnitude"
+  },
+  {
+    "name": "magnitude_type",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Type of magnitude (Mw, ML, etc.)"
+  },
+  {
+    "name": "location",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Location description"
+  },
+  {
+    "name": "latitude",
+    "type": "FLOAT64",
+    "mode": "REQUIRED",
+    "description": "Latitude coordinate"
+  },
+  {
+    "name": "longitude",
+    "type": "FLOAT64",
+    "mode": "REQUIRED",
+    "description": "Longitude coordinate"
+  },
+  {
+    "name": "depth_km",
+    "type": "FLOAT64",
+    "mode": "NULLABLE",
+    "description": "Depth in kilometers"
+  },
+  {
+    "name": "event_time",
+    "type": "TIMESTAMP",
+    "mode": "REQUIRED",
+    "description": "When the earthquake occurred"
+  },
+  {
+    "name": "updated_time",
+    "type": "TIMESTAMP",
+    "mode": "NULLABLE",
+    "description": "Last update from USGS"
+  },
+  {
+    "name": "significance",
+    "type": "INTEGER",
+    "mode": "NULLABLE",
+    "description": "USGS significance score"
+  },
+  {
+    "name": "alert_level",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Alert level (green, yellow, orange, red)"
+  },
+  {
+    "name": "tsunami_warning",
+    "type": "BOOLEAN",
+    "mode": "NULLABLE",
+    "description": "Whether tsunami warning was issued"
+  },
+  {
+    "name": "felt_reports",
+    "type": "INTEGER",
+    "mode": "NULLABLE",
+    "description": "Number of felt reports submitted"
+  },
+  {
+    "name": "url",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "USGS URL for details"
+  },
+  {
+    "name": "created_at",
+    "type": "TIMESTAMP",
+    "mode": "REQUIRED",
+    "description": "When this record was added to BigQuery"
+  }
+]
