@@ -71,6 +71,15 @@ except Exception as e:
     weather_service = None
     pollen_service = None
 
+# Initialize BigQuery client (for AirQualityAgent fallback)
+try:
+    bq_client = bigquery.Client(project=GCP_PROJECT_ID)
+    model = genai.GenerativeModel('gemini-pro') if GEMINI_API_KEY else None
+except Exception as e:
+    print(f"[WARNING] BigQuery/Gemini initialization failed: {e}")
+    bq_client = None
+    model = None
+
 # Import ADK agent (optional, for backwards compatibility)
 try:
     from multi_tool_agent_bquery_tools.agent import call_agent as call_adk_agent
