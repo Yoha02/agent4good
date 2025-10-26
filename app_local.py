@@ -743,6 +743,389 @@ def officials_dashboard():
     """Public Health Officials dashboard - requires authentication in production"""
     return render_template('officials_dashboard.html')
 
+@app.route('/api/community-reports', methods=['GET'])
+def get_community_reports():
+    """API endpoint to fetch community reports from BigQuery with filters"""
+    from google.cloud import bigquery
+    
+    try:
+        # Get filter parameters
+        state = request.args.get('state', '')
+        city = request.args.get('city', '')
+        county = request.args.get('county', '')
+        zipcode = request.args.get('zipcode', '')
+        report_type = request.args.get('report_type', '')
+        severity = request.args.get('severity', '')
+        status = request.args.get('status', '')
+        start_date = request.args.get('start_date', '')
+        end_date = request.args.get('end_date', '')
+        timeframe = request.args.get('timeframe', '')
+        limit = int(request.args.get('limit', 1000))
+        offset = int(request.args.get('offset', 0))
+        
+        # Build BigQuery query
+        project_id = os.getenv('GOOGLE_CLOUD_PROJECT')
+        dataset_id = os.getenv('BIGQUERY_DATASET')
+        table_id = os.getenv('BIGQUERY_TABLE_REPORTS')
+        
+        if not all([project_id, dataset_id, table_id]):
+            print("[ERROR] Missing BigQuery configuration in environment variables")
+            return jsonify({
+                'success': False,
+                'error': 'BigQuery configuration not found'
+            }), 500
+        
+        query = f"""
+        SELECT 
+            report_id,
+            report_type,
+            timestamp,
+            address,
+            zip_code,
+            city,
+            state,
+            county,
+            severity,
+            specific_type,
+            description,
+            people_affected,
+            timeframe,
+            contact_name,
+            contact_email,
+            contact_phone,
+            is_anonymous,
+            status,
+            notes,
+            latitude,
+            longitude,
+            ai_overall_summary,
+            ai_media_summary
+        FROM `{project_id}.{dataset_id}.{table_id}`
+        WHERE 1=1
+        """
+        
+        # Add filter conditions
+        if state:
+            query += f" AND state = '{state}'"
+        if city:
+            query += f" AND city = '{city}'"
+        if county:
+            query += f" AND county = '{county}'"
+        if zipcode:
+            query += f" AND zip_code = '{zipcode}'"
+        if report_type:
+            query += f" AND report_type = '{report_type}'"
+        if severity:
+            query += f" AND severity = '{severity}'"
+        if status:
+            query += f" AND status = '{status}'"
+        if start_date:
+            query += f" AND timestamp >= TIMESTAMP('{start_date}')"
+        if end_date:
+            query += f" AND timestamp <= TIMESTAMP('{end_date}')"
+        if timeframe:
+            query += f" AND timeframe = '{timeframe}'"
+        
+        # Add ordering and pagination
+        query += " ORDER BY timestamp DESC"
+        query += f" LIMIT {limit} OFFSET {offset}"
+        
+        print(f"[QUERY] Fetching community reports (limit={limit}, offset={offset})")
+        print(f"[QUERY] Filters: state={state}, city={city}, zipcode={zipcode}")
+        
+        # Execute query
+        client = bigquery.Client(project=project_id)
+        query_job = client.query(query)
+        results = query_job.result()
+        
+        # Convert results to list of dictionaries
+        reports = []
+        for row in results:
+            report = {
+                'report_id': row.report_id,
+                'report_type': row.report_type,
+                'timestamp': row.timestamp.isoformat() if row.timestamp else None,
+                'street_address': row.address,
+                'zip_code': row.zip_code,
+                'city': row.city,
+                'state': row.state,
+                'county': row.county,
+                'severity': row.severity,
+                'specific_type': row.specific_type,
+                'description': row.description,
+                'affected_count': row.people_affected,
+                'when_happened': row.timeframe,
+                'reporter_name': row.contact_name if not row.is_anonymous else 'Anonymous',
+                'reporter_contact': row.contact_email if not row.is_anonymous else None,
+                'is_anonymous': row.is_anonymous,
+                'status': row.status,
+                'reviewed_by': None,  # Will be added in Phase 2
+                'reviewed_at': None,  # Will be added in Phase 2
+                'exclude_from_analysis': None,  # Will be added in Phase 2
+                'exclusion_reason': None,  # Will be added in Phase 2
+                'notes': row.notes,
+                'latitude': row.latitude,
+                'longitude': row.longitude,
+                'ai_overall_summary': row.ai_overall_summary if hasattr(row, 'ai_overall_summary') else None,
+                'ai_media_summary': row.ai_media_summary if hasattr(row, 'ai_media_summary') else None
+            }
+            reports.append(report)
+        
+        # Get total count for pagination
+        count_query = f"""
+        SELECT COUNT(*) as total
+        FROM `{project_id}.{dataset_id}.{table_id}`
+        WHERE 1=1
+        """
+        if state:
+            count_query += f" AND state = '{state}'"
+        if city:
+            count_query += f" AND city = '{city}'"
+        if county:
+            count_query += f" AND county = '{county}'"
+        if zipcode:
+            count_query += f" AND zip_code = '{zipcode}'"
+        if report_type:
+            count_query += f" AND report_type = '{report_type}'"
+        if severity:
+            count_query += f" AND severity = '{severity}'"
+        if status:
+            count_query += f" AND status = '{status}'"
+        
+        count_job = client.query(count_query)
+        count_result = list(count_job.result())[0]
+        total_count = count_result.total
+        
+        print(f"[SUCCESS] Retrieved {len(reports)} reports (total: {total_count})")
+        
+        return jsonify({
+            'success': True,
+            'reports': reports,
+            'total': total_count,
+            'limit': limit,
+            'offset': offset
+        })
+        
+    except Exception as e:
+        print(f"[ERROR] Failed to fetch community reports: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/export-reports/<format>', methods=['GET'])
+def export_reports(format):
+    """Export community reports in various formats (CSV, XLS, PDF, PNG)"""
+    from google.cloud import bigquery
+    import pandas as pd
+    from io import BytesIO
+    from flask import send_file
+    
+    try:
+        # Get same filters as regular reports endpoint
+        state = request.args.get('state', '')
+        city = request.args.get('city', '')
+        county = request.args.get('county', '')
+        zipcode = request.args.get('zipcode', '')
+        report_type = request.args.get('report_type', '')
+        severity = request.args.get('severity', '')
+        status = request.args.get('status', '')
+        
+        # Build query (same as above but without pagination)
+        project_id = os.getenv('GOOGLE_CLOUD_PROJECT')
+        dataset_id = os.getenv('BIGQUERY_DATASET')
+        table_id = os.getenv('BIGQUERY_TABLE_REPORTS')
+        
+        query = f"""
+        SELECT *
+        FROM `{project_id}.{dataset_id}.{table_id}`
+        WHERE 1=1
+        """
+        
+        if state:
+            query += f" AND state = '{state}'"
+        if city:
+            query += f" AND city = '{city}'"
+        if county:
+            query += f" AND county = '{county}'"
+        if zipcode:
+            query += f" AND zip_code = '{zipcode}'"
+        if report_type:
+            query += f" AND report_type = '{report_type}'"
+        if severity:
+            query += f" AND severity = '{severity}'"
+        if status:
+            query += f" AND status = '{status}'"
+        
+        query += " ORDER BY timestamp DESC LIMIT 10000"  # Max export limit
+        
+        print(f"[EXPORT] Exporting reports as {format.upper()}")
+        
+        # Execute query
+        client = bigquery.Client(project=project_id)
+        df = client.query(query).to_dataframe()
+        
+        if df.empty:
+            return jsonify({
+                'success': False,
+                'error': 'No data to export with current filters'
+            }), 404
+        
+        # Generate filename
+        from datetime import datetime
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f"community_reports_{timestamp}"
+        
+        # Export based on format
+        if format == 'csv':
+            output = BytesIO()
+            df.to_csv(output, index=False, encoding='utf-8')
+            output.seek(0)
+            return send_file(
+                output,
+                mimetype='text/csv',
+                as_attachment=True,
+                download_name=f'{filename}.csv'
+            )
+        
+        elif format == 'xlsx' or format == 'xls':
+            output = BytesIO()
+            with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                df.to_excel(writer, index=False, sheet_name='Community Reports')
+            output.seek(0)
+            return send_file(
+                output,
+                mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                as_attachment=True,
+                download_name=f'{filename}.xlsx'
+            )
+        
+        elif format == 'pdf':
+            # For PDF, we'll create a simple table view
+            from reportlab.lib.pagesizes import letter, landscape
+            from reportlab.lib import colors
+            from reportlab.lib.units import inch
+            from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+            from reportlab.lib.styles import getSampleStyleSheet
+            
+            output = BytesIO()
+            doc = SimpleDocTemplate(output, pagesize=landscape(letter))
+            elements = []
+            
+            # Add title
+            styles = getSampleStyleSheet()
+            title = Paragraph(f"<b>Community Health Reports - {datetime.now().strftime('%Y-%m-%d %H:%M')}</b>", styles['Title'])
+            elements.append(title)
+            elements.append(Spacer(1, 0.25 * inch))
+            
+            # Prepare table data (ALL columns)
+            # Get column headers
+            table_data = [list(df.columns)]
+            
+            for _, row in df.head(100).iterrows():  # Limit to 100 rows for PDF
+                row_data = []
+                for col in df.columns:
+                    value = str(row[col]) if pd.notna(row[col]) else ''
+                    # Truncate long values for better formatting
+                    if len(value) > 50:
+                        value = value[:50] + '...'
+                    row_data.append(value)
+                table_data.append(row_data)
+            
+            # Create table with dynamic column widths
+            num_cols = len(df.columns)
+            col_width = 10 / num_cols  # Distribute width across landscape page
+            table = Table(table_data, colWidths=[col_width*inch] * num_cols)
+            table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 8),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+                ('GRID', (0, 0), (-1, -1), 1, colors.black),
+                ('FONTSIZE', (0, 1), (-1, -1), 7),
+            ]))
+            
+            elements.append(table)
+            doc.build(elements)
+            output.seek(0)
+            
+            return send_file(
+                output,
+                mimetype='application/pdf',
+                as_attachment=True,
+                download_name=f'{filename}.pdf'
+            )
+        
+        elif format == 'png':
+            # For PNG, create a matplotlib table image with ALL columns
+            import matplotlib.pyplot as plt
+            import matplotlib
+            matplotlib.use('Agg')  # Use non-interactive backend
+            
+            fig, ax = plt.subplots(figsize=(16, 12))
+            ax.axis('tight')
+            ax.axis('off')
+            
+            # Use all columns but limit rows
+            display_df = df.head(20).copy()
+            
+            # Truncate long text values for display
+            for col in display_df.columns:
+                if display_df[col].dtype == 'object':  # String columns
+                    display_df[col] = display_df[col].astype(str).str[:40]
+                else:
+                    display_df[col] = display_df[col].astype(str)
+            
+            table = ax.table(cellText=display_df.values,
+                           colLabels=display_df.columns,
+                           cellLoc='left',
+                           loc='center')
+            
+            table.auto_set_font_size(False)
+            table.set_fontsize(7)
+            table.scale(1, 2)
+            
+            # Style header
+            for i in range(len(display_df.columns)):
+                table[(0, i)].set_facecolor('#10b981')
+                table[(0, i)].set_text_props(weight='bold', color='white')
+            
+            plt.title(f'Community Health Reports - {datetime.now().strftime("%Y-%m-%d")}', 
+                     fontsize=16, fontweight='bold', pad=20)
+            
+            output = BytesIO()
+            plt.savefig(output, format='png', bbox_inches='tight', dpi=150)
+            plt.close()
+            output.seek(0)
+            
+            return send_file(
+                output,
+                mimetype='image/png',
+                as_attachment=True,
+                download_name=f'{filename}.png'
+            )
+        
+        else:
+            return jsonify({
+                'success': False,
+                'error': f'Unsupported format: {format}'
+            }), 400
+            
+    except Exception as e:
+        print(f"[ERROR] Failed to export reports: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
 @app.route('/report')
 def report():
     """Community report page"""
