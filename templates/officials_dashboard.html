@@ -88,6 +88,21 @@
             border-color: #9ca3af;
         }
         
+        .location-grouping-btn.active {
+            background-color: #10b981 !important;
+            color: white !important;
+            border-color: #10b981 !important;
+        }
+        .location-grouping-btn:not(.active) {
+            background-color: white;
+            color: #374151;
+            border-color: #d1d5db;
+        }
+        .location-grouping-btn:hover:not(.active) {
+            background-color: #f3f4f6;
+            border-color: #9ca3af;
+        }
+        
         /* Toast notifications */
         @keyframes slideIn {
             from {
@@ -471,17 +486,23 @@
             <div class="mt-8 grid grid-cols-1 lg:grid-cols-3 gap-8">
                 <!-- Reports Count Chart -->
                 <div class="bg-white rounded-2xl shadow-lg p-6">
-                    <div class="flex items-center justify-between mb-6">
-                        <h3 class="text-xl font-bold text-navy-800">Community Reports Over Time</h3>
-                        <div class="flex gap-2">
-                            <button onclick="updateChartGranularity('hour')" id="hourBtn" class="chart-granularity-btn px-3 py-1 text-sm rounded-lg border transition-all">
+                    <div class="mb-6">
+                        <h3 class="text-xl font-bold text-navy-800 mb-3">Community Reports Over Time</h3>
+                        <div class="flex flex-wrap gap-2">
+                            <button onclick="updateChartGranularity('hour')" id="hourBtn" class="chart-granularity-btn px-3 py-1.5 text-xs sm:text-sm rounded-lg border transition-all whitespace-nowrap">
                                 By Hour
                             </button>
-                            <button onclick="updateChartGranularity('day')" id="dayBtn" class="chart-granularity-btn active px-3 py-1 text-sm rounded-lg border transition-all">
+                            <button onclick="updateChartGranularity('day')" id="dayBtn" class="chart-granularity-btn active px-3 py-1.5 text-xs sm:text-sm rounded-lg border transition-all whitespace-nowrap">
                                 By Day
                             </button>
-                            <button onclick="resetChartZoom()" class="px-3 py-1 text-sm rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 transition-all">
-                                <i class="fas fa-search-minus mr-1"></i> Reset Zoom
+                            <button onclick="updateChartGranularity('week')" id="weekBtn" class="chart-granularity-btn px-3 py-1.5 text-xs sm:text-sm rounded-lg border transition-all whitespace-nowrap">
+                                By Week
+                            </button>
+                            <button onclick="updateChartGranularity('month')" id="monthBtn" class="chart-granularity-btn px-3 py-1.5 text-xs sm:text-sm rounded-lg border transition-all whitespace-nowrap">
+                                By Month
+                            </button>
+                            <button onclick="resetChartZoom()" class="px-3 py-1.5 text-xs sm:text-sm rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 transition-all whitespace-nowrap">
+                                <i class="fas fa-search-minus mr-1"></i> Reset
                             </button>
                         </div>
                     </div>
@@ -503,7 +524,23 @@
                 
                 <!-- ZIP Codes Chart -->
                 <div class="bg-white rounded-2xl shadow-lg p-6">
-                    <h3 class="text-xl font-bold text-navy-800 mb-6">Top ZIP Codes</h3>
+                    <div class="mb-4">
+                        <h3 class="text-xl font-bold text-navy-800 mb-3">Top Locations</h3>
+                        <div class="flex flex-wrap gap-2">
+                            <button onclick="updateLocationGrouping('zipcode')" id="zipcodeBtn" class="location-grouping-btn active px-3 py-1.5 text-xs sm:text-sm rounded-lg border transition-all whitespace-nowrap">
+                                ZIP Code
+                            </button>
+                            <button onclick="updateLocationGrouping('city')" id="cityBtn" class="location-grouping-btn px-3 py-1.5 text-xs sm:text-sm rounded-lg border transition-all whitespace-nowrap">
+                                City
+                            </button>
+                            <button onclick="updateLocationGrouping('county')" id="countyBtn" class="location-grouping-btn px-3 py-1.5 text-xs sm:text-sm rounded-lg border transition-all whitespace-nowrap">
+                                County
+                            </button>
+                            <button onclick="updateLocationGrouping('state')" id="stateBtn" class="location-grouping-btn px-3 py-1.5 text-xs sm:text-sm rounded-lg border transition-all whitespace-nowrap">
+                                State
+                            </button>
+                        </div>
+                    </div>
                     <div class="h-80">
                         <canvas id="zipCodesChart" class="w-full h-full"></canvas>
                     </div>
