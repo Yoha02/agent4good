@@ -1,8 +1,0 @@
-source_id,source_name,source_type,url,data_format,category,refresh_minutes,active,geocoded,state_filter,description,created_at
-1,InciWeb Wildfire Incidents,rss,https://inciweb.wildfire.gov/incidents/rss.xml,xml,wildfire,30,TRUE,TRUE,NULL,Active wildfire incidents across US,2025-10-25 00:00:00
-2,USGS Earthquakes (Last Hour),atom,https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_hour.atom,xml,earthquake,15,TRUE,TRUE,NULL,Real-time earthquake data from USGS,2025-10-25 00:00:00
-3,NOAA Storm Prediction Center,rss,https://www.spc.noaa.gov/products/spcrss.xml,xml,severe_weather,20,TRUE,TRUE,NULL,Severe weather alerts and forecasts,2025-10-25 00:00:00
-4,NY State Health Data,xml,https://health.data.ny.gov/api/views/jvfi-ffup/rows.xml?accessType=DOWNLOAD,xml,health,60,TRUE,TRUE,NY,New York health statistics,2025-10-25 00:00:00
-5,CDC COVID-19 Data,xml,https://data.cdc.gov/api/views/gvsb-yw6g/rows.xml?accessType=DOWNLOAD,xml,health,60,TRUE,FALSE,NULL,CDC COVID-19 positivity rates,2025-10-25 00:00:00
-6,US Drug Availability,geojson,https://healthdata.gov/resource/879u-23sm.geojson,geojson,health,1440,TRUE,TRUE,NULL,Drug availability by location,2025-10-25 00:00:00
-7,Colorado Respiratory Infections,geojson,https://services3.arcgis.com/66aUo8zsujfVXRIT/arcgis/rest/services/CDPHE_Viral_Respiratory_Emerging_Infections_/FeatureServer/0/query?outFields=*&where=1%3D1&f=geojson,geojson,health,60,TRUE,TRUE,CO,Colorado viral respiratory data,2025-10-25 00:00:00
