@@ -14,8 +14,9 @@ from epa_aqs_service import EPAAQSService
 from location_service_comprehensive import ComprehensiveLocationService
 from google_weather_service import GoogleWeatherService
 from google_pollen_service import GooglePollenService
-from google.cloud import storage, bigquery
+from google.cloud import storage, bigquery, texttospeech
 import google.generativeai as genai
+import base64
 
 # Load environment variables
 load_dotenv()
@@ -71,6 +72,16 @@ try:
 except Exception as e:
     print(f"[WARNING] Gemini model initialization failed: {e}")
     model = None
+
+# Initialize Google Text-to-Speech client
+try:
+    tts_client = texttospeech.TextToSpeechClient()
+    TTS_AVAILABLE = True
+    print("[OK] Google Text-to-Speech client initialized")
+except Exception as e:
+    print(f"[WARNING] Text-to-Speech initialization failed: {e}")
+    TTS_AVAILABLE = False
+    tts_client = None
 
 # Initialize services
 try:
@@ -999,26 +1010,192 @@ def agent_chat():
             except Exception as adk_error:
                 print(f"[WARNING] ADK agent failed: {adk_error}, falling back to Gemini AI")
         
-        # Fallback to Gemini AI with location-aware analysis
-        # Get air quality data for the specific location
-        data = agent.query_air_quality_data(state=state, days=days)
+        # Fallback to Gemini AI with comprehensive environmental data
+        # Gather all available environmental data for the location
+        environmental_data = {
+            'air_quality': None,
+            'weather': None,
+            'pollen': None,
+            'detailed_pollutants': None
+        }
         
-        # Enhance question with location context for better AI responses
-        enhanced_question = question
-        if location_context:
-            enhanced_question = f"User is asking about {location_context}. Question: {question}"
+        # 1. Get air quality data
+        try:
+            if EPA_AVAILABLE and epa_service:
+                if zipcode:
+                    environmental_data['air_quality'] = epa_service.get_current_aqi(zipcode=zipcode)
+                elif state:
+                    # Get representative city for state
+                    cities = location_service.get_cities_by_state(location_service.get_state_code_from_name(state))
+                    if cities:
+                        zip_data = location_service.get_zipcode_info(cities[0].get('zipcode'))
+                        if zip_data:
+                            environmental_data['air_quality'] = epa_service.get_current_aqi(zipcode=zip_data['zipcode'])
+        except Exception as e:
+            print(f"[CHATBOT] Error fetching air quality: {e}")
         
-        analysis = agent.analyze_with_ai(data, enhanced_question)
+        # 2. Get weather data
+        try:
+            if weather_service and zipcode:
+                weather_result = weather_service.get_weather(zipcode=zipcode)
+                if weather_result and weather_result.get('current'):
+                    environmental_data['weather'] = weather_result['current']
+        except Exception as e:
+            print(f"[CHATBOT] Error fetching weather: {e}")
+        
+        # 3. Get pollen data
+        try:
+            if pollen_service and zipcode:
+                pollen_result = pollen_service.get_pollen(zipcode=zipcode)
+                if pollen_result and pollen_result.get('current'):
+                    environmental_data['pollen'] = pollen_result['current']
+        except Exception as e:
+            print(f"[CHATBOT] Error fetching pollen: {e}")
+        
+        # 4. Get detailed pollutant data
+        try:
+            if EPA_AVAILABLE and epa_aqs_service and zipcode:
+                detailed_result = epa_aqs_service.get_detailed_pollutants(zipcode=zipcode, days=days)
+                if detailed_result:
+                    environmental_data['detailed_pollutants'] = detailed_result
+        except Exception as e:
+            print(f"[CHATBOT] Error fetching detailed pollutants: {e}")
+        
+        # Get historical air quality data from BigQuery
+        historical_data = agent.query_air_quality_data(state=state, days=days)
+        
+        # Build comprehensive context for AI
+        context_parts = [f"User is asking about {location_context}." if location_context else ""]
+        
+        # Add current air quality info
+        if environmental_data['air_quality']:
+            aqi_data = environmental_data['air_quality']
+            if isinstance(aqi_data, list) and len(aqi_data) > 0:
+                aqi = aqi_data[0].get('AQI', 'N/A')
+                category = aqi_data[0].get('Category', {}).get('Name', 'Unknown')
+                context_parts.append(f"Current AQI: {aqi} ({category})")
+        
+        # Add weather info
+        if environmental_data['weather']:
+            weather = environmental_data['weather']
+            temp = weather.get('temperature', {})
+            if temp:
+                temp_f = temp.get('value', 'N/A')
+                context_parts.append(f"Temperature: {temp_f}°F")
+            humidity = weather.get('relativeHumidity', 'N/A')
+            if humidity != 'N/A':
+                context_parts.append(f"Humidity: {humidity}%")
+        
+        # Add pollen info
+        if environmental_data['pollen']:
+            pollen = environmental_data['pollen']
+            pollen_index = pollen.get('index', {}).get('value', 'N/A')
+            if pollen_index != 'N/A':
+                context_parts.append(f"Pollen Index: {pollen_index}")
+            # Add specific pollen types
+            types = pollen.get('types', [])
+            if types:
+                high_pollen = [t['name'] for t in types if t.get('index', {}).get('value', 0) >= 4]
+                if high_pollen:
+                    context_parts.append(f"High pollen: {', '.join(high_pollen)}")
+        
+        # Add detailed pollutants
+        if environmental_data['detailed_pollutants']:
+            pollutants = environmental_data['detailed_pollutants']
+            pollutant_summary = []
+            for pollutant in pollutants:
+                param = pollutant.get('parameter', 'Unknown')
+                value = pollutant.get('value', 'N/A')
+                unit = pollutant.get('unit', '')
+                pollutant_summary.append(f"{param}: {value} {unit}")
+            if pollutant_summary:
+                context_parts.append(f"Pollutants: {', '.join(pollutant_summary[:5])}")  # First 5
+        
+        # Combine all context
+        environmental_context = " | ".join([p for p in context_parts if p])
+        enhanced_question = f"{environmental_context}\n\nQuestion: {question}"
+        
+        print(f"[CHATBOT] Enhanced context: {environmental_context}")
+        
+        analysis = agent.analyze_with_ai(historical_data, enhanced_question)
         
         return jsonify({
             'success': True,
             'response': analysis,
-            'agent': 'Gemini AI with BigQuery Data',
-            'data_points': len(data),
-            'location': location_context
+            'agent': 'Gemini AI with Comprehensive Environmental Data',
+            'data_points': len(historical_data),
+            'location': location_context,
+            'environmental_data': environmental_data  # Include for debugging/frontend use
         })
         
     except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/text-to-speech', methods=['POST'])
+def text_to_speech():
+    """Convert text to speech using Google Cloud Text-to-Speech"""
+    if not TTS_AVAILABLE or not tts_client:
+        return jsonify({
+            'success': False,
+            'error': 'Text-to-Speech service not available'
+        }), 503
+    
+    try:
+        data = request.json
+        text = data.get('text', '')
+        
+        if not text:
+            return jsonify({'success': False, 'error': 'No text provided'}), 400
+        
+        # Clean text - remove HTML tags
+        import re
+        clean_text = re.sub('<[^<]+?>', '', text)
+        clean_text = clean_text.replace('via Gemini AI', '').replace('via ADK Multi-Agent System', '').strip()
+        
+        # Configure voice parameters
+        # Using Neural2 voices for most natural sound
+        voice_name = data.get('voice', 'en-US-Neural2-F')  # Default: Female Neural2
+        
+        # Available premium voices:
+        # en-US-Neural2-A (Male), en-US-Neural2-C (Female), en-US-Neural2-D (Male)
+        # en-US-Neural2-E (Female), en-US-Neural2-F (Female), en-US-Neural2-G (Female)
+        # en-US-Neural2-H (Female), en-US-Neural2-I (Male), en-US-Neural2-J (Male)
+        
+        synthesis_input = texttospeech.SynthesisInput(text=clean_text)
+        
+        voice = texttospeech.VoiceSelectionParams(
+            language_code="en-US",
+            name=voice_name
+        )
+        
+        audio_config = texttospeech.AudioConfig(
+            audio_encoding=texttospeech.AudioEncoding.MP3,
+            speaking_rate=0.95,  # Slightly slower for clarity
+            pitch=0.0,
+            volume_gain_db=0.0
+        )
+        
+        # Perform the text-to-speech request
+        response = tts_client.synthesize_speech(
+            input=synthesis_input,
+            voice=voice,
+            audio_config=audio_config
+        )
+        
+        # Convert audio to base64 for transmission
+        audio_base64 = base64.b64encode(response.audio_content).decode('utf-8')
+        
+        return jsonify({
+            'success': True,
+            'audio': audio_base64,
+            'voice': voice_name
+        })
+        
+    except Exception as e:
+        print(f"[ERROR] Text-to-Speech error: {e}")
         return jsonify({
             'success': False,
             'error': str(e)

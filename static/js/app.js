@@ -3,6 +3,211 @@ let aqiChart = null;
 let currentState = '';
 let currentCity = '';
 let currentZip = '';
+
+// Voice control variables
+let recognition = null;
+let isListening = false;
+let speechEnabled = false;
+let currentUtterance = null;
+let selectedVoice = 'en-US-Neural2-F'; // Google Cloud TTS voice (Female Neural2)
+let currentAudio = null;
+
+// Initialize speech recognition
+function initializeSpeechRecognition() {
+    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        recognition = new SpeechRecognition();
+        recognition.continuous = false;
+        recognition.interimResults = false;
+        recognition.lang = 'en-US';
+
+        recognition.onstart = function() {
+            isListening = true;
+            updateMicrophoneButton();
+            console.log('[VOICE] Speech recognition started');
+        };
+
+        recognition.onresult = function(event) {
+            const transcript = event.results[0][0].transcript;
+            console.log('[VOICE] Recognized:', transcript);
+            document.getElementById('questionInput').value = transcript;
+            // Automatically ask the question
+            setTimeout(() => askAI(), 500);
+        };
+
+        recognition.onerror = function(event) {
+            console.error('[VOICE] Speech recognition error:', event.error);
+            isListening = false;
+            updateMicrophoneButton();
+            if (event.error === 'not-allowed') {
+                alert('Microphone access denied. Please enable microphone permissions.');
+            }
+        };
+
+        recognition.onend = function() {
+            isListening = false;
+            updateMicrophoneButton();
+            console.log('[VOICE] Speech recognition ended');
+        };
+
+        return true;
+    } else {
+        console.warn('[VOICE] Speech recognition not supported');
+        return false;
+    }
+}
+
+// Toggle voice input
+function toggleVoiceInput() {
+    if (!recognition) {
+        if (!initializeSpeechRecognition()) {
+            alert('Voice input is not supported in your browser. Please use Chrome, Edge, or Safari.');
+            return;
+        }
+    }
+
+    if (isListening) {
+        recognition.stop();
+    } else {
+        recognition.start();
+    }
+}
+
+// Update microphone button state
+function updateMicrophoneButton() {
+    const micButton = document.getElementById('micButton');
+    if (micButton) {
+        if (isListening) {
+            micButton.classList.add('bg-red-500', 'hover:bg-red-600');
+            micButton.classList.remove('bg-gray-500', 'hover:bg-gray-600');
+            micButton.innerHTML = '<i class="fas fa-microphone-slash"></i>';
+        } else {
+            micButton.classList.add('bg-gray-500', 'hover:bg-gray-600');
+            micButton.classList.remove('bg-red-500', 'hover:bg-red-600');
+            micButton.innerHTML = '<i class="fas fa-microphone"></i>';
+        }
+    }
+}
+
+// Toggle speech output
+function toggleSpeechOutput() {
+    speechEnabled = !speechEnabled;
+    
+    // Stop any current speech
+    if (!speechEnabled && currentAudio) {
+        currentAudio.pause();
+        currentAudio = null;
+    }
+    
+    // Update button state
+    const speakerButton = document.getElementById('speakerButton');
+    if (speakerButton) {
+        if (speechEnabled) {
+            speakerButton.classList.add('bg-emerald-500', 'hover:bg-emerald-600');
+            speakerButton.classList.remove('bg-gray-500', 'hover:bg-gray-600');
+            speakerButton.innerHTML = '<i class="fas fa-volume-up"></i>';
+        } else {
+            speakerButton.classList.add('bg-gray-500', 'hover:bg-gray-600');
+            speakerButton.classList.remove('bg-emerald-500', 'hover:bg-emerald-600');
+            speakerButton.innerHTML = '<i class="fas fa-volume-mute"></i>';
+        }
+    }
+    
+    console.log('[VOICE] Speech output:', speechEnabled ? 'enabled (Google Cloud TTS)' : 'disabled');
+}
+
+// Change voice selection
+function changeVoice(voiceName) {
+    selectedVoice = voiceName;
+    console.log('[VOICE] Voice changed to:', voiceName);
+}
+
+// Preview the selected voice
+async function previewVoice() {
+    const previewText = "Hello! I'm your AI health advisor. This is how I sound with the selected voice.";
+    
+    // Temporarily enable speech for preview if disabled
+    const wasEnabled = speechEnabled;
+    speechEnabled = true;
+    
+    await speakText(previewText);
+    
+    // Restore original state
+    speechEnabled = wasEnabled;
+}
+
+// Speak text using Google Cloud Text-to-Speech
+async function speakText(text) {
+    if (!speechEnabled) return;
+    
+    // Stop any ongoing speech
+    if (currentAudio) {
+        currentAudio.pause();
+        currentAudio = null;
+    }
+    
+    // Remove HTML tags for clean text
+    const cleanText = text.replace(/<[^>]*>/g, '').replace(/via.*$/, '').trim();
+    
+    if (!cleanText) return;
+    
+    try {
+        console.log('[VOICE] Requesting Google TTS for:', cleanText.substring(0, 50) + '...');
+        
+        // Call backend API for Google TTS
+        const response = await fetch('/api/text-to-speech', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                text: cleanText,
+                voice: selectedVoice
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success && data.audio) {
+            // Convert base64 to audio blob
+            const audioBlob = base64ToBlob(data.audio, 'audio/mp3');
+            const audioUrl = URL.createObjectURL(audioBlob);
+            
+            // Create and play audio
+            currentAudio = new Audio(audioUrl);
+            currentAudio.onended = () => {
+                URL.revokeObjectURL(audioUrl);
+                currentAudio = null;
+            };
+            
+            currentAudio.onerror = (error) => {
+                console.error('[VOICE] Audio playback error:', error);
+                URL.revokeObjectURL(audioUrl);
+                currentAudio = null;
+            };
+            
+            await currentAudio.play();
+            console.log('[VOICE] Playing Google TTS audio with voice:', data.voice);
+        } else {
+            console.error('[VOICE] TTS failed:', data.error);
+        }
+    } catch (error) {
+        console.error('[VOICE] Text-to-Speech error:', error);
+    }
+}
+
+// Helper function to convert base64 to blob
+function base64ToBlob(base64, mimeType) {
+    const byteCharacters = atob(base64);
+    const byteNumbers = new Array(byteCharacters.length);
+    
+    for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
+    }
+    
+    const byteArray = new Uint8Array(byteNumbers);
+    return new Blob([byteArray], { type: mimeType });
+}
 let currentDays = 7;
 let locationData = {}; // Cache location data
 let autocomplete = null; // Google Places Autocomplete
@@ -1220,6 +1425,36 @@ async function askAI() {
     }
 }
 
+// Clear chat history
+function clearChat() {
+    const chatMessages = document.getElementById('chatMessages');
+    if (!chatMessages) return;
+    
+    // Stop any ongoing speech
+    if (currentAudio) {
+        currentAudio.pause();
+        currentAudio = null;
+    }
+    
+    // Clear all messages
+    chatMessages.innerHTML = '';
+    
+    // Add welcome message back
+    const welcomeDiv = document.createElement('div');
+    welcomeDiv.className = 'flex items-start space-x-3';
+    welcomeDiv.innerHTML = `
+        <div class="w-10 h-10 bg-emerald-500 rounded-full flex items-center justify-center flex-shrink-0">
+            <i class="fas fa-robot text-white"></i>
+        </div>
+        <div class="bg-white rounded-2xl rounded-tl-none p-4 shadow-md max-w-lg">
+            <p class="text-gray-700">Hello! I'm your AI health advisor. Ask me anything about air quality, disease risks, or health recommendations for your community.</p>
+        </div>
+    `;
+    chatMessages.appendChild(welcomeDiv);
+    
+    console.log('[CHAT] Chat history cleared');
+}
+
 
 // Add message to chat with Tailwind styling
 function addMessage(text, type) {
@@ -1238,6 +1473,11 @@ function addMessage(text, type) {
                 <p class="text-gray-700 leading-relaxed">${text}</p>
             </div>
         `;
+        
+        // Speak the bot's response if speech is enabled
+        if (speechEnabled) {
+            speakText(text);
+        }
     } else {
         messageDiv.innerHTML = `
             <div class="bg-navy-700 text-white rounded-2xl rounded-tr-none p-4 shadow-md max-w-lg">

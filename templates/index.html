@@ -718,13 +718,24 @@
                 </div>
                 
                 <!-- Chat Messages -->
-                <div id="chatMessages" class="h-96 overflow-y-auto p-6 bg-gray-50 space-y-4">
-                    <div class="flex items-start space-x-3">
-                        <div class="w-10 h-10 bg-emerald-500 rounded-full flex items-center justify-center flex-shrink-0">
-                            <i class="fas fa-robot text-white"></i>
-                        </div>
-                        <div class="bg-white rounded-2xl rounded-tl-none p-4 shadow-md max-w-lg">
-                            <p class="text-gray-700">Hello! I'm your AI health advisor. Ask me anything about air quality, disease risks, or health recommendations for your community.</p>
+                <div class="relative">
+                    <!-- Clear Chat Button -->
+                    <button 
+                        onclick="clearChat()" 
+                        class="absolute top-2 right-2 z-10 px-3 py-2 bg-red-100 hover:bg-red-200 text-red-700 rounded-lg text-sm transition-colors shadow-md"
+                        title="Clear chat history"
+                    >
+                        <i class="fas fa-trash-alt mr-1"></i> Clear Chat
+                    </button>
+                    
+                    <div id="chatMessages" class="h-96 overflow-y-auto p-6 bg-gray-50 space-y-4">
+                        <div class="flex items-start space-x-3">
+                            <div class="w-10 h-10 bg-emerald-500 rounded-full flex items-center justify-center flex-shrink-0">
+                                <i class="fas fa-robot text-white"></i>
+                            </div>
+                            <div class="bg-white rounded-2xl rounded-tl-none p-4 shadow-md max-w-lg">
+                                <p class="text-gray-700">Hello! I'm your AI health advisor. Ask me anything about air quality, disease risks, or health recommendations for your community.</p>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -736,13 +747,79 @@
                         <i class="fas fa-map-marker-alt text-emerald-500 mr-1"></i>
                         <span>Asking about: <span id="chatLocationText" class="font-medium text-emerald-600"></span></span>
                     </div>
-                    <div class="flex space-x-4">
+                    
+                    <!-- Voice Selection Dropdown -->
+                    <div id="voiceSelectionContainer" class="mb-3">
+                        <label for="voiceSelect" class="text-sm text-gray-600 mr-2">
+                            <i class="fas fa-user-circle text-emerald-500"></i> AI Voice:
+                        </label>
+                        <select 
+                            id="voiceSelect" 
+                            onchange="changeVoice(this.value)"
+                            class="px-4 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-emerald-500 text-sm"
+                        >
+                            <optgroup label="Premium Female Voices (Neural2)">
+                                <option value="en-US-Neural2-F" selected>Emma - Natural Female (Recommended)</option>
+                                <option value="en-US-Neural2-C">Sophie - Warm Female</option>
+                                <option value="en-US-Neural2-E">Grace - Professional Female</option>
+                                <option value="en-US-Neural2-G">Olivia - Friendly Female</option>
+                                <option value="en-US-Neural2-H">Ava - Clear Female</option>
+                            </optgroup>
+                            <optgroup label="Premium Male Voices (Neural2)">
+                                <option value="en-US-Neural2-D">James - Natural Male</option>
+                                <option value="en-US-Neural2-A">David - Professional Male</option>
+                                <option value="en-US-Neural2-I">Michael - Warm Male</option>
+                                <option value="en-US-Neural2-J">Daniel - Clear Male</option>
+                            </optgroup>
+                            <optgroup label="Studio Quality Voices">
+                                <option value="en-US-Studio-O">Studio Female (Premium)</option>
+                                <option value="en-US-Studio-Q">Studio Male (Premium)</option>
+                            </optgroup>
+                            <optgroup label="WaveNet Voices (High Quality)">
+                                <option value="en-US-Wavenet-F">WaveNet Female</option>
+                                <option value="en-US-Wavenet-D">WaveNet Male</option>
+                            </optgroup>
+                        </select>
+                        <button 
+                            onclick="previewVoice()" 
+                            class="ml-2 px-3 py-2 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-lg text-sm transition-colors"
+                            title="Preview selected voice"
+                        >
+                            <i class="fas fa-play"></i> Preview
+                        </button>
+                    </div>
+                    
+                    <div class="flex space-x-3">
+                        <!-- Voice Input Button (Microphone) -->
+                        <button 
+                            id="micButton"
+                            onclick="toggleVoiceInput()" 
+                            class="bg-gray-500 hover:bg-gray-600 text-white px-4 py-4 rounded-xl font-semibold transition-all duration-300 transform hover:scale-105"
+                            title="Voice input"
+                        >
+                            <i class="fas fa-microphone"></i>
+                        </button>
+                        
+                        <!-- Text Input -->
                         <input 
                             type="text" 
                             id="questionInput" 
                             placeholder="Ask about health risks, symptoms, or recommendations..." 
                             class="flex-1 px-6 py-4 border-2 border-gray-300 rounded-xl focus:outline-none focus:border-emerald-500 transition-colors text-lg"
+                            onkeypress="if(event.key === 'Enter') askAI()"
                         />
+                        
+                        <!-- Voice Output Button (Speaker) -->
+                        <button 
+                            id="speakerButton"
+                            onclick="toggleSpeechOutput()" 
+                            class="bg-gray-500 hover:bg-gray-600 text-white px-4 py-4 rounded-xl font-semibold transition-all duration-300 transform hover:scale-105"
+                            title="Toggle voice responses"
+                        >
+                            <i class="fas fa-volume-mute"></i>
+                        </button>
+                        
+                        <!-- Send Button -->
                         <button 
                             onclick="askAI()" 
                             class="bg-emerald-500 hover:bg-emerald-600 text-white px-8 py-4 rounded-xl font-semibold transition-all duration-300 transform hover:scale-105 flex items-center space-x-2"
