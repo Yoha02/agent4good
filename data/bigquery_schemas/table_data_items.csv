@@ -1,0 +1,1 @@
+item_id,source_id,title,description,published_date,updated_date,url,latitude,longitude,location_geography,location_name,city,state_code,county,zipcode,event_type,severity,magnitude,aqi_value,health_value,health_metric_type,affected_population,drug_name,availability_status,facility_name,is_active,is_archived,raw_data,tags,created_at

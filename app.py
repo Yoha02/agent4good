@@ -53,11 +53,11 @@ class AirQualityAgent:
         self.bq_client = bq_client
         self.model = genai_model
     
-    def query_air_quality_data(self, state=None, days=7):
+    def query_air_quality_data(self, state=None, days=7, start_date=None, end_date=None):
         """Query air quality data from YOUR BigQuery dataset"""
         if not self.bq_client:
             print("[BQ] No BigQuery client, using demo data")
-            return self._generate_demo_data(state, days)
+            return self._generate_demo_data(state, days, start_date, end_date)
             
         try:
             # Use YOUR dataset: AirQualityData.Daily-AQI-County-2025
@@ -80,6 +80,12 @@ class AirQualityAgent:
             if state:
                 query += f" AND UPPER(State_Name) = UPPER('{state}')"
             
+            # Add date filtering
+            if start_date:
+                query += f" AND Date_Local >= '{start_date}'"
+            if end_date:
+                query += f" AND Date_Local <= '{end_date}'"
+            
             query += " ORDER BY Date_Local DESC LIMIT 100"
             
             print(f"[BQ] Querying YOUR dataset: AirQualityData.Daily-AQI-County-2025 for {state or 'all states'}")
@@ -98,14 +104,14 @@ class AirQualityAgent:
                 return data
             else:
                 print(f"[BQ] No data found, using demo data")
-                return self._generate_demo_data(state, days)
+                return self._generate_demo_data(state, days, start_date, end_date)
                 
         except Exception as e:
             print(f"[BQ ERROR] {e}")
             print("[BQ] Falling back to demo data")
-            return self._generate_demo_data(state, days)
+            return self._generate_demo_data(state, days, start_date, end_date)
     
-    def _generate_demo_data(self, state=None, days=7):
+    def _generate_demo_data(self, state=None, days=7, start_date=None, end_date=None):
         """Generate demo data when BigQuery is unavailable"""
         import random
         data = []
@@ -120,13 +126,29 @@ class AirQualityAgent:
         
         selected_states = [state] if state else states[:3]
         
-        for day in range(days):
-            date = datetime.now() - timedelta(days=day)
+        # Determine date range for demo data
+        if start_date and end_date:
+            # Use provided date range
+            start_dt = datetime.strptime(start_date, '%Y-%m-%d')
+            end_dt = datetime.strptime(end_date, '%Y-%m-%d')
+            date_range = (end_dt - start_dt).days + 1
+            print(f"[DEMO] Generating data for date range: {start_date} to {end_date} ({date_range} days)")
+        else:
+            # Use days parameter as fallback
+            start_dt = datetime.now() - timedelta(days=days-1)
+            end_dt = datetime.now()
+            date_range = days
+            print(f"[DEMO] Generating data for last {days} days")
+        
+        # Generate data for each day in the range
+        for day_offset in range(min(date_range, 365)):  # Limit to 1 year max
+            current_date = start_dt + timedelta(days=day_offset)
+            
             for s in selected_states:
                 if s in counties:
                     for county in counties[s][:2]:
                         data.append({
-                            'date': date.strftime('%Y-%m-%d'),
+                            'date': current_date.strftime('%Y-%m-%d'),
                             'state_name': s,
                             'county_name': county,
                             'aqi': random.randint(20, 120),
@@ -192,7 +214,9 @@ agent = AirQualityAgent(bq_client, model)
 @app.route('/')
 def index():
     """Main dashboard page"""
-    return render_template('index.html')
+    # Use the same Google API key for Maps (works for multiple Google services)
+    google_maps_key = os.getenv('GOOGLE_API_KEY') or os.getenv('GEMINI_API_KEY', '')
+    return render_template('index.html', google_maps_key=google_maps_key)
 
 
 @app.route('/api/air-quality', methods=['GET'])
@@ -200,15 +224,21 @@ def get_air_quality():
     """API endpoint to get air quality data"""
     state = request.args.get('state', None)
     days = int(request.args.get('days', 7))
+    start_date = request.args.get('start_date', None)
+    end_date = request.args.get('end_date', None)
     
-    data = agent.query_air_quality_data(state=state, days=days)
+    data = agent.query_air_quality_data(state=state, days=days, start_date=start_date, end_date=end_date)
     stats = agent.get_statistics(data)
     
     return jsonify({
         'success': True,
         'data': data,
         'statistics': stats,
-        'count': len(data)
+        'count': len(data),
+        'date_range': {
+            'start_date': start_date,
+            'end_date': end_date
+        }
     })
 
 
@@ -220,9 +250,11 @@ def analyze():
         question = request_data.get('question', '')
         state = request_data.get('state', None)
         days = int(request_data.get('days', 7))
+        start_date = request_data.get('start_date', None)
+        end_date = request_data.get('end_date', None)
         
         # Get relevant data
-        data = agent.query_air_quality_data(state=state, days=days)
+        data = agent.query_air_quality_data(state=state, days=days, start_date=start_date, end_date=end_date)
         
         # Get AI analysis
         analysis = agent.analyze_with_ai(data, question)
@@ -243,8 +275,10 @@ def analyze():
 def health_recommendations():
     """Get health recommendations based on current air quality"""
     state = request.args.get('state', None)
+    start_date = request.args.get('start_date', None)
+    end_date = request.args.get('end_date', None)
     
-    data = agent.query_air_quality_data(state=state, days=1)
+    data = agent.query_air_quality_data(state=state, days=1, start_date=start_date, end_date=end_date)
     
     if not data:
         return jsonify({
@@ -427,7 +461,10 @@ def agent_chat():
             state = request_data.get('state', None)
             days = int(request_data.get('days', 7))
             data = agent.query_air_quality_data(state=state, days=days)
-            analysis = agent.analyze_with_ai(data, question)
+            
+            # Use the enhanced question (with location context) for fallback AI
+            fallback_question = question  # This already has location context if available
+            analysis = agent.analyze_with_ai(data, fallback_question)
             
             return jsonify({
                 'success': True,
@@ -443,6 +480,10 @@ def agent_chat():
             }), 500
 
 
+@app.route('/acknowledgements')
+def acknowledgements():
+    """Acknowledgements page"""
+    return render_template('acknowledgements.html')
 @app.route('/api/generate-psa-video', methods=['POST'])
 def generate_psa_video_endpoint():
     """Generate PSA video from current health data"""

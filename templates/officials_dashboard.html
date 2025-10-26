@@ -1,0 +1,1422 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Officials Dashboard - Community Health Platform</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        navy: {
+                            50: '#e6eef5',
+                            100: '#ccdde9',
+                            200: '#99bbd3',
+                            300: '#6699bd',
+                            400: '#3377a7',
+                            500: '#1a3a52',
+                            600: '#152e41',
+                            700: '#102331',
+                            800: '#0a1720',
+                            900: '#050c10',
+                        },
+                        emerald: {
+                            400: '#34d399',
+                            500: '#10b981',
+                            600: '#059669',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <!-- Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
+    
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .font-display {
+            font-family: 'Space Grotesk', sans-serif;
+        }
+        .glass-morphism {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        .glass-dark {
+            background: rgba(26, 58, 82, 0.9);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .time-filter-btn.active {
+            background-color: #10b981 !important;
+            color: white !important;
+            border-color: #10b981 !important;
+        }
+        .time-filter-btn:not(.active) {
+            background-color: white;
+            color: #374151;
+            border-color: #d1d5db;
+        }
+        .chart-granularity-btn.active {
+            background-color: #10b981 !important;
+            color: white !important;
+            border-color: #10b981 !important;
+        }
+        .chart-granularity-btn:not(.active) {
+            background-color: white;
+            color: #374151;
+            border-color: #d1d5db;
+        }
+        .chart-granularity-btn:hover:not(.active) {
+            background-color: #f3f4f6;
+            border-color: #9ca3af;
+        }
+        
+        .location-grouping-btn.active {
+            background-color: #10b981 !important;
+            color: white !important;
+            border-color: #10b981 !important;
+        }
+        .location-grouping-btn:not(.active) {
+            background-color: white;
+            color: #374151;
+            border-color: #d1d5db;
+        }
+        .location-grouping-btn:hover:not(.active) {
+            background-color: #f3f4f6;
+            border-color: #9ca3af;
+        }
+        
+        /* Toast notifications */
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+        
+        @keyframes slideOut {
+            from {
+                transform: translateX(0);
+                opacity: 1;
+            }
+            to {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+        }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-900">
+
+    <!-- Navigation -->
+    <nav class="fixed top-0 w-full z-50 bg-white shadow-lg border-b border-gray-200">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center h-20">
+                <!-- Logo -->
+                <div class="flex items-center space-x-3">
+                    <div class="w-12 h-12 min-w-[3rem] bg-gradient-to-br from-emerald-400 to-emerald-600 rounded-xl flex items-center justify-center flex-shrink-0">
+                        <i class="fas fa-user-shield text-white text-xl"></i>
+                    </div>
+                    <div>
+                        <h1 class="text-navy-800 font-display font-bold text-xl">Officials Dashboard</h1>
+                        <p class="text-gray-500 text-xs">Health Department Portal</p>
+                    </div>
+                </div>
+                
+                <!-- Navigation Links -->
+                <div class="hidden md:flex space-x-8">
+                    <a href="#overview" class="nav-link text-navy-700 hover:text-emerald-600 transition-colors duration-300 font-medium">
+                        <i class="fas fa-tachometer-alt mr-2"></i>Overview
+                    </a>
+                    <a href="#alerts" class="nav-link text-gray-600 hover:text-emerald-600 transition-colors duration-300 font-medium">
+                        <i class="fas fa-exclamation-triangle mr-2"></i>Alerts
+                    </a>
+                    <a href="#reports" class="nav-link text-gray-600 hover:text-emerald-600 transition-colors duration-300 font-medium">
+                        <i class="fas fa-chart-bar mr-2"></i>Reports
+                    </a>
+                    <a href="#settings" class="nav-link text-gray-600 hover:text-emerald-600 transition-colors duration-300 font-medium">
+                        <i class="fas fa-cog mr-2"></i>Settings
+                    </a>
+                </div>
+                
+                <!-- User Menu -->
+                <div class="flex items-center space-x-4">
+                    <div class="hidden md:block text-right">
+                        <p class="text-sm font-semibold text-navy-700">Dr. Sarah Johnson</p>
+                        <p class="text-xs text-gray-500">Health Director</p>
+                    </div>
+                    <div class="w-10 h-10 bg-gradient-to-br from-navy-600 to-navy-800 rounded-full flex items-center justify-center">
+                        <span class="text-white font-semibold">SJ</span>
+                    </div>
+                    <button onclick="logout()" class="text-gray-500 hover:text-red-600 transition-colors">
+                        <i class="fas fa-sign-out-alt text-lg"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="pt-24 pb-12">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            
+            <!-- Welcome Section -->
+            <div class="mb-8">
+                <h2 class="font-display text-4xl font-bold text-navy-800 mb-2">Welcome back, Dr. Johnson</h2>
+                <p class="text-xl text-gray-600">Here's your community health overview</p>
+            </div>
+
+            <!-- Filters Section -->
+            <div class="bg-white rounded-2xl shadow-lg p-6 mb-8">
+                <h3 class="text-lg font-bold text-navy-800 mb-4">
+                    <i class="fas fa-filter text-emerald-600 mr-2"></i>
+                    Data Filters
+                </h3>
+                
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <!-- Location Filters -->
+                    <div class="space-y-4">
+                        <h4 class="text-sm font-semibold text-gray-700 uppercase tracking-wide">Location</h4>
+                        
+                        <div class="grid grid-cols-2 gap-4">
+                            <!-- State Filter -->
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">State</label>
+                                <select id="stateFilter" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
+                                    <option value="">Select State</option>
+                                </select>
+                            </div>
+                            
+                            <!-- City Filter -->
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">City</label>
+                                <select id="cityFilter" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500" disabled>
+                                    <option value="">Select City</option>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <div class="grid grid-cols-2 gap-4">
+                            <!-- County Filter -->
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">County</label>
+                                <select id="countyFilter" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500" disabled>
+                                    <option value="">Select County</option>
+                                </select>
+                            </div>
+                            
+                            <!-- ZIP Code Filter -->
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">ZIP Code</label>
+                                <select id="zipcodeFilter" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500" disabled>
+                                    <option value="">Select ZIP Code</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Time Period Filters -->
+                    <div class="space-y-4">
+                        <h4 class="text-sm font-semibold text-gray-700 uppercase tracking-wide">Time Period</h4>
+                        
+                        <div class="grid grid-cols-2 gap-2">
+                            <button onclick="setTimePeriod('live')" class="time-filter-btn px-4 py-2 text-sm font-medium rounded-lg border transition-all duration-200 hover:bg-emerald-50 hover:border-emerald-300 focus:ring-2 focus:ring-emerald-500 active" data-period="live">
+                                <i class="fas fa-broadcast-tower mr-2"></i>Live
+                            </button>
+                            <button onclick="setTimePeriod('hourly')" class="time-filter-btn px-4 py-2 text-sm font-medium rounded-lg border transition-all duration-200 hover:bg-emerald-50 hover:border-emerald-300 focus:ring-2 focus:ring-emerald-500" data-period="hourly">
+                                <i class="fas fa-clock mr-2"></i>Hourly
+                            </button>
+                            <button onclick="setTimePeriod('1day')" class="time-filter-btn px-4 py-2 text-sm font-medium rounded-lg border transition-all duration-200 hover:bg-emerald-50 hover:border-emerald-300 focus:ring-2 focus:ring-emerald-500" data-period="1day">
+                                <i class="fas fa-calendar-day mr-2"></i>1 Day
+                            </button>
+                            <button onclick="setTimePeriod('7day')" class="time-filter-btn px-4 py-2 text-sm font-medium rounded-lg border transition-all duration-200 hover:bg-emerald-50 hover:border-emerald-300 focus:ring-2 focus:ring-emerald-500" data-period="7day">
+                                <i class="fas fa-calendar-week mr-2"></i>7 Days
+                            </button>
+                            <button onclick="setTimePeriod('30day')" class="time-filter-btn px-4 py-2 text-sm font-medium rounded-lg border transition-all duration-200 hover:bg-emerald-50 hover:border-emerald-300 focus:ring-2 focus:ring-emerald-500" data-period="30day">
+                                <i class="fas fa-calendar-alt mr-2"></i>30 Days
+                            </button>
+                            <button onclick="setTimePeriod('1year')" class="time-filter-btn px-4 py-2 text-sm font-medium rounded-lg border transition-all duration-200 hover:bg-emerald-50 hover:border-emerald-300 focus:ring-2 focus:ring-emerald-500" data-period="1year">
+                                <i class="fas fa-calendar mr-2"></i>1 Year
+                            </button>
+                        </div>
+                        
+                        <div class="mt-4">
+                            <button onclick="applyFilters()" class="w-full bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-300 transform hover:scale-[1.02] shadow-lg">
+                                <i class="fas fa-sync-alt mr-2"></i>
+                                Apply Filters & Refresh Data
+                            </button>
+                        </div>
+                        
+                        <!-- Current Selection Display -->
+                        <div id="currentSelection" class="mt-3 p-3 bg-gray-50 rounded-lg border">
+                            <p class="text-sm text-gray-600 font-medium">Current Selection:</p>
+                            <p id="selectionText" class="text-sm text-navy-700">Live data, All locations</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quick Stats -->
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+                <!-- Active Alerts -->
+                <div class="bg-white rounded-2xl shadow-lg p-6 border-l-4 border-red-500">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-gray-500 text-sm font-semibold uppercase tracking-wide">Active Alerts</p>
+                            <h3 class="text-4xl font-bold text-red-600 mt-2">3</h3>
+                            <p class="text-sm text-red-500 mt-1">2 High Priority</p>
+                        </div>
+                        <div class="w-14 h-14 bg-red-100 rounded-xl flex items-center justify-center">
+                            <i class="fas fa-exclamation-triangle text-red-600 text-2xl"></i>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Avg AQI -->
+                <div class="bg-white rounded-2xl shadow-lg p-6 border-l-4 border-amber-500">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-gray-500 text-sm font-semibold uppercase tracking-wide">Avg AQI</p>
+                            <h3 class="text-4xl font-bold text-amber-600 mt-2">67</h3>
+                            <p class="text-sm text-amber-600 mt-1">Moderate</p>
+                        </div>
+                        <div class="w-14 h-14 bg-amber-100 rounded-xl flex items-center justify-center">
+                            <i class="fas fa-wind text-amber-600 text-2xl"></i>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Disease Cases -->
+                <div class="bg-white rounded-2xl shadow-lg p-6 border-l-4 border-blue-500">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-gray-500 text-sm font-semibold uppercase tracking-wide">New Cases (7d)</p>
+                            <h3 class="text-4xl font-bold text-blue-600 mt-2">47</h3>
+                            <p class="text-sm text-blue-600 mt-1">↓ 12% vs last week</p>
+                        </div>
+                        <div class="w-14 h-14 bg-blue-100 rounded-xl flex items-center justify-center">
+                            <i class="fas fa-virus text-blue-600 text-2xl"></i>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Population Coverage -->
+                <div class="bg-white rounded-2xl shadow-lg p-6 border-l-4 border-emerald-500">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-gray-500 text-sm font-semibold uppercase tracking-wide">Population</p>
+                            <h3 class="text-4xl font-bold text-emerald-600 mt-2">2.1M</h3>
+                            <p class="text-sm text-emerald-600 mt-1">Under Monitoring</p>
+                        </div>
+                        <div class="w-14 h-14 bg-emerald-100 rounded-xl flex items-center justify-center">
+                            <i class="fas fa-users text-emerald-600 text-2xl"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Main Dashboard Grid -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                
+                <!-- Critical Alerts Panel -->
+                <div class="lg:col-span-2">
+                    <div class="bg-white rounded-2xl shadow-lg p-6 mb-6">
+                        <div class="flex items-center justify-between mb-6">
+                            <h3 class="text-2xl font-bold text-navy-800">
+                                <i class="fas fa-exclamation-triangle text-red-500 mr-2"></i>
+                                Critical Alerts
+                            </h3>
+                            <button class="text-emerald-600 hover:text-emerald-700 font-semibold">View All</button>
+                        </div>
+                        
+                        <div class="space-y-4">
+                            <!-- Alert 1 -->
+                            <div class="border-l-4 border-red-500 bg-red-50 p-4 rounded-r-xl">
+                                <div class="flex items-start justify-between">
+                                    <div class="flex-1">
+                                        <div class="flex items-center space-x-2 mb-2">
+                                            <span class="px-2 py-1 bg-red-500 text-white text-xs font-bold rounded-full">HIGH</span>
+                                            <span class="text-sm text-gray-600">2 hours ago</span>
+                                        </div>
+                                        <h4 class="font-semibold text-navy-800 mb-1">AQI Spike in Downtown Area</h4>
+                                        <p class="text-sm text-gray-700">PM2.5 levels reached 180 μg/m³ near industrial district. Immediate action required.</p>
+                                    </div>
+                                    <button class="text-red-600 hover:text-red-700 ml-4">
+                                        <i class="fas fa-arrow-right"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <!-- Alert 2 -->
+                            <div class="border-l-4 border-amber-500 bg-amber-50 p-4 rounded-r-xl">
+                                <div class="flex items-start justify-between">
+                                    <div class="flex-1">
+                                        <div class="flex items-center space-x-2 mb-2">
+                                            <span class="px-2 py-1 bg-amber-500 text-white text-xs font-bold rounded-full">MEDIUM</span>
+                                            <span class="text-sm text-gray-600">5 hours ago</span>
+                                        </div>
+                                        <h4 class="font-semibold text-navy-800 mb-1">Flu Cases Trending Up</h4>
+                                        <p class="text-sm text-gray-700">15% increase in respiratory illness reports across 3 counties.</p>
+                                    </div>
+                                    <button class="text-amber-600 hover:text-amber-700 ml-4">
+                                        <i class="fas fa-arrow-right"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <!-- Alert 3 -->
+                            <div class="border-l-4 border-blue-500 bg-blue-50 p-4 rounded-r-xl">
+                                <div class="flex items-start justify-between">
+                                    <div class="flex-1">
+                                        <div class="flex items-center space-x-2 mb-2">
+                                            <span class="px-2 py-1 bg-blue-500 text-white text-xs font-bold rounded-full">INFO</span>
+                                            <span class="text-sm text-gray-600">1 day ago</span>
+                                        </div>
+                                        <h4 class="font-semibold text-navy-800 mb-1">Water Quality Report</h4>
+                                        <p class="text-sm text-gray-700">Monthly water quality assessment completed for all districts.</p>
+                                    </div>
+                                    <button class="text-blue-600 hover:text-blue-700 ml-4">
+                                        <i class="fas fa-arrow-right"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Quick Actions -->
+                <div>
+                    <div class="bg-white rounded-2xl shadow-lg p-6 mb-6">
+                        <h3 class="text-xl font-bold text-navy-800 mb-6">
+                            <i class="fas fa-bolt text-emerald-500 mr-2"></i>
+                            Quick Actions
+                        </h3>
+                        
+                        <div class="space-y-3">
+                            <button class="w-full text-left p-4 bg-emerald-50 hover:bg-emerald-100 rounded-xl transition-colors duration-200 flex items-center space-x-3">
+                                <div class="w-10 h-10 bg-emerald-500 rounded-lg flex items-center justify-center">
+                                    <i class="fas fa-bullhorn text-white"></i>
+                                </div>
+                                <div>
+                                    <p class="font-semibold text-navy-800">Issue Public Alert</p>
+                                    <p class="text-sm text-gray-600">Send emergency notifications</p>
+                                </div>
+                            </button>
+                            
+                            <button class="w-full text-left p-4 bg-blue-50 hover:bg-blue-100 rounded-xl transition-colors duration-200 flex items-center space-x-3">
+                                <div class="w-10 h-10 bg-blue-500 rounded-lg flex items-center justify-center">
+                                    <i class="fas fa-file-alt text-white"></i>
+                                </div>
+                                <div>
+                                    <p class="font-semibold text-navy-800">Generate Report</p>
+                                    <p class="text-sm text-gray-600">Create custom health reports</p>
+                                </div>
+                            </button>
+                            
+                            <button class="w-full text-left p-4 bg-purple-50 hover:bg-purple-100 rounded-xl transition-colors duration-200 flex items-center space-x-3">
+                                <div class="w-10 h-10 bg-purple-500 rounded-lg flex items-center justify-center">
+                                    <i class="fas fa-users text-white"></i>
+                                </div>
+                                <div>
+                                    <p class="font-semibold text-navy-800">Contact Teams</p>
+                                    <p class="text-sm text-gray-600">Coordinate response efforts</p>
+                                </div>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Recent Activity -->
+                    <div class="bg-white rounded-2xl shadow-lg p-6">
+                        <h3 class="text-xl font-bold text-navy-800 mb-6">
+                            <i class="fas fa-clock text-gray-500 mr-2"></i>
+                            Recent Activity
+                        </h3>
+                        
+                        <div class="space-y-4">
+                            <div class="flex items-start space-x-3">
+                                <div class="w-2 h-2 bg-emerald-500 rounded-full mt-2"></div>
+                                <div>
+                                    <p class="text-sm font-medium text-navy-800">Alert threshold updated</p>
+                                    <p class="text-xs text-gray-600">15 minutes ago</p>
+                                </div>
+                            </div>
+                            
+                            <div class="flex items-start space-x-3">
+                                <div class="w-2 h-2 bg-blue-500 rounded-full mt-2"></div>
+                                <div>
+                                    <p class="text-sm font-medium text-navy-800">Report shared with CDC</p>
+                                    <p class="text-xs text-gray-600">1 hour ago</p>
+                                </div>
+                            </div>
+                            
+                            <div class="flex items-start space-x-3">
+                                <div class="w-2 h-2 bg-gray-400 rounded-full mt-2"></div>
+                                <div>
+                                    <p class="text-sm font-medium text-navy-800">Data sync completed</p>
+                                    <p class="text-xs text-gray-600">3 hours ago</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Charts Section -->
+            <div class="mt-8 grid grid-cols-1 lg:grid-cols-3 gap-8">
+                <!-- Reports Count Chart -->
+                <div class="bg-white rounded-2xl shadow-lg p-6">
+                    <div class="mb-6">
+                        <h3 class="text-xl font-bold text-navy-800 mb-3">Community Reports Over Time</h3>
+                        <div class="flex flex-wrap gap-2">
+                            <button onclick="updateChartGranularity('hour')" id="hourBtn" class="chart-granularity-btn px-3 py-1.5 text-xs sm:text-sm rounded-lg border transition-all whitespace-nowrap">
+                                By Hour
+                            </button>
+                            <button onclick="updateChartGranularity('day')" id="dayBtn" class="chart-granularity-btn active px-3 py-1.5 text-xs sm:text-sm rounded-lg border transition-all whitespace-nowrap">
+                                By Day
+                            </button>
+                            <button onclick="updateChartGranularity('week')" id="weekBtn" class="chart-granularity-btn px-3 py-1.5 text-xs sm:text-sm rounded-lg border transition-all whitespace-nowrap">
+                                By Week
+                            </button>
+                            <button onclick="updateChartGranularity('month')" id="monthBtn" class="chart-granularity-btn px-3 py-1.5 text-xs sm:text-sm rounded-lg border transition-all whitespace-nowrap">
+                                By Month
+                            </button>
+                            <button onclick="resetChartZoom()" class="px-3 py-1.5 text-xs sm:text-sm rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 transition-all whitespace-nowrap">
+                                <i class="fas fa-search-minus mr-1"></i> Reset
+                            </button>
+                        </div>
+                    </div>
+                    <div class="h-80">
+                        <canvas id="aqiTrendChart" class="w-full h-full"></canvas>
+                    </div>
+                    <p class="text-xs text-gray-500 mt-2 text-center">
+                        <i class="fas fa-info-circle mr-1"></i> Scroll to zoom, drag to pan
+                    </p>
+                </div>
+                
+                <!-- Report Types Chart -->
+                <div class="bg-white rounded-2xl shadow-lg p-6">
+                    <h3 class="text-xl font-bold text-navy-800 mb-6">Reports by Type</h3>
+                    <div class="h-80">
+                        <canvas id="diseaseCasesChart" class="w-full h-full"></canvas>
+                    </div>
+                </div>
+                
+                <!-- ZIP Codes Chart -->
+                <div class="bg-white rounded-2xl shadow-lg p-6">
+                    <div class="mb-4">
+                        <h3 class="text-xl font-bold text-navy-800 mb-3">Top Locations</h3>
+                        <div class="flex flex-wrap gap-2">
+                            <button onclick="updateLocationGrouping('zipcode')" id="zipcodeBtn" class="location-grouping-btn active px-3 py-1.5 text-xs sm:text-sm rounded-lg border transition-all whitespace-nowrap">
+                                ZIP Code
+                            </button>
+                            <button onclick="updateLocationGrouping('city')" id="cityBtn" class="location-grouping-btn px-3 py-1.5 text-xs sm:text-sm rounded-lg border transition-all whitespace-nowrap">
+                                City
+                            </button>
+                            <button onclick="updateLocationGrouping('county')" id="countyBtn" class="location-grouping-btn px-3 py-1.5 text-xs sm:text-sm rounded-lg border transition-all whitespace-nowrap">
+                                County
+                            </button>
+                            <button onclick="updateLocationGrouping('state')" id="stateBtn" class="location-grouping-btn px-3 py-1.5 text-xs sm:text-sm rounded-lg border transition-all whitespace-nowrap">
+                                State
+                            </button>
+                        </div>
+                    </div>
+                    <div class="h-80">
+                        <canvas id="zipCodesChart" class="w-full h-full"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Community Reports Section -->
+            <div class="mt-12">
+                <div class="bg-white rounded-2xl shadow-lg p-6 mb-6">
+                    <div class="flex items-center justify-between mb-6">
+                        <div>
+                            <h3 class="text-2xl font-bold text-navy-800">
+                                <i class="fas fa-table text-emerald-600 mr-2"></i>
+                                Community Reports Database
+                            </h3>
+                            <p class="text-gray-600 mt-1">View and manage all crowdsourced community health reports</p>
+                        </div>
+                        <div class="flex gap-2">
+                            <button id="exportCsvBtn" class="px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg font-semibold transition-all shadow-md flex items-center gap-2">
+                                <i class="fas fa-file-csv"></i>
+                                CSV
+                            </button>
+                            <button id="exportExcelBtn" class="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg font-semibold transition-all shadow-md flex items-center gap-2">
+                                <i class="fas fa-file-excel"></i>
+                                Excel
+                            </button>
+                            <button id="exportPdfBtn" class="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg font-semibold transition-all shadow-md flex items-center gap-2">
+                                <i class="fas fa-file-pdf"></i>
+                                PDF
+                            </button>
+                            <button id="exportPngBtn" class="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-semibold transition-all shadow-md flex items-center gap-2">
+                                <i class="fas fa-image"></i>
+                                PNG
+                            </button>
+                            <button id="toggleColumnsBtn" class="px-4 py-2 bg-purple-500 hover:bg-purple-600 text-white rounded-lg font-semibold transition-all shadow-md flex items-center gap-2">
+                                <i class="fas fa-columns"></i>
+                                <span id="toggleColumnsText">Show All Columns</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Additional Filters for Reports Table -->
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6 p-4 bg-gray-50 rounded-lg">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Report Type</label>
+                            <select id="reportTypeFilter" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-sm">
+                                <option value="">All Types</option>
+                                <option value="health">Health</option>
+                                <option value="environmental">Environmental</option>
+                                <option value="weather">Weather</option>
+                                <option value="emergency">Emergency</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Severity</label>
+                            <select id="severityFilter" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-sm">
+                                <option value="">All Severities</option>
+                                <option value="low">Low</option>
+                                <option value="moderate">Moderate</option>
+                                <option value="high">High</option>
+                                <option value="critical">Critical</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                            <select id="statusFilter" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-sm">
+                                <option value="">All Statuses</option>
+                                <option value="pending">Pending</option>
+                                <option value="reviewed">Reviewed</option>
+                                <option value="resolved">Resolved</option>
+                                <option value="closed">Closed</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Timeframe</label>
+                            <select id="timeframeFilter" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-sm">
+                                <option value="">All Timeframes</option>
+                                <option value="now">Happening Now</option>
+                                <option value="1hour">Within 1 Hour</option>
+                                <option value="today">Today</option>
+                                <option value="yesterday">Yesterday</option>
+                                <option value="week">This Week</option>
+                                <option value="ongoing">Ongoing</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Tags</label>
+                            <select id="tagFilter" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-sm">
+                                <option value="">All Tags</option>
+                                <optgroup label="AI Tags">
+                                    <option value="urgent">Urgent</option>
+                                    <option value="valid">Valid</option>
+                                    <option value="needs_review">Needs Review</option>
+                                    <option value="contact_required">Contact Required</option>
+                                    <option value="monitoring_required">Monitoring Required</option>
+                                    <option value="inappropriate">Inappropriate</option>
+                                    <option value="false_alarm">False Alarm</option>
+                                </optgroup>
+                                <optgroup label="Manual Tags">
+                                    <option value="follow-up-needed">Follow-up Needed</option>
+                                    <option value="high-priority">High Priority</option>
+                                    <option value="needs-inspection">Needs Inspection</option>
+                                    <option value="awaiting-lab-results">Awaiting Lab Results</option>
+                                    <option value="escalated">Escalated</option>
+                                    <option value="community-concern">Community Concern</option>
+                                </optgroup>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Search and Filter Actions -->
+                    <div class="flex gap-4 mb-6">
+                        <div class="flex-1">
+                            <input 
+                                type="text" 
+                                id="searchInput" 
+                                placeholder="Search reports by description, location, type..." 
+                                class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                            >
+                        </div>
+                        <button id="clearFiltersBtn" class="px-6 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg font-semibold transition-all shadow-md">
+                            <i class="fas fa-times mr-2"></i>
+                            Clear All
+                        </button>
+                    </div>
+
+                    <!-- Stats Summary -->
+                    <div class="grid grid-cols-4 gap-4 mb-6">
+                        <div class="bg-blue-50 rounded-lg p-4 border border-blue-200">
+                            <p class="text-sm text-blue-600 font-semibold">Total Reports</p>
+                            <p id="totalReportsCount" class="text-3xl font-bold text-blue-700 mt-1">0</p>
+                        </div>
+                        <div class="bg-red-50 rounded-lg p-4 border border-red-200">
+                            <p class="text-sm text-red-600 font-semibold">Critical/High</p>
+                            <p id="criticalReportsCount" class="text-3xl font-bold text-red-700 mt-1">0</p>
+                        </div>
+                        <div class="bg-yellow-50 rounded-lg p-4 border border-yellow-200">
+                            <p class="text-sm text-yellow-700 font-semibold">Pending Review</p>
+                            <p id="pendingReportsCount" class="text-3xl font-bold text-yellow-800 mt-1">0</p>
+                        </div>
+                        <div class="bg-green-50 rounded-lg p-4 border border-green-200">
+                            <p class="text-sm text-green-600 font-semibold">Resolved</p>
+                            <p id="resolvedReportsCount" class="text-3xl font-bold text-green-700 mt-1">0</p>
+                        </div>
+                    </div>
+
+                    <!-- Reports Table -->
+                    <div class="overflow-x-auto rounded-lg border border-gray-200">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead id="reportsTableHead" class="bg-gradient-to-r from-emerald-500 to-emerald-600">
+                                <!-- Table headers will be dynamically inserted here -->
+                            </thead>
+                            <tbody id="reportsTableBody" class="bg-white divide-y divide-gray-200">
+                                <!-- Table rows will be dynamically inserted here -->
+                                <tr>
+                                    <td colspan="10" class="px-6 py-12 text-center text-gray-500">
+                                        <i class="fas fa-spinner fa-spin text-4xl mb-3 text-gray-300"></i>
+                                        <p class="text-lg font-semibold">Loading reports...</p>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Pagination -->
+                    <div class="mt-6 flex items-center justify-between">
+                        <div class="text-sm text-gray-600">
+                            <span id="currentPageInfo">Loading...</span>
+                        </div>
+                        <div class="flex gap-2">
+                            <button id="prevPageBtn" class="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+                                <i class="fas fa-chevron-left mr-2"></i>
+                                Previous
+                            </button>
+                            <button id="nextPageBtn" class="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+                                Next
+                                <i class="fas fa-chevron-right ml-2"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Report Detail Modal -->
+    <div id="reportDetailModal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden items-center justify-center p-4">
+        <div class="bg-white rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <div class="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between rounded-t-2xl">
+                <h2 class="text-2xl font-bold text-navy-800">Report Details</h2>
+                <button onclick="closeReportDetailModal()" class="text-gray-400 hover:text-gray-600 transition-colors">
+                    <i class="fas fa-times text-2xl"></i>
+                </button>
+            </div>
+            <div id="reportDetailBody" class="p-6">
+                <!-- Report details will be inserted here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="fixed inset-0 bg-navy-900/90 hidden items-center justify-center z-50">
+        <div class="text-center">
+            <div class="inline-block animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-emerald-500 mb-4"></div>
+            <p class="text-white text-xl font-semibold">Loading...</p>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="{{ url_for('static', filename='js/officials-dashboard.js') }}"></script>
+    <script>
+        // Logout function
+        function logout() {
+            if (confirm('Are you sure you want to logout?')) {
+                window.location.href = '/';
+            }
+        }
+        
+        // Global variables for charts and filters
+        let aqiChart = null;
+        let diseasesChart = null;
+        let currentTimePeriod = 'live';
+        let currentLocation = {
+            state: '',
+            city: '',
+            county: '',
+            zipcode: ''
+        };
+        
+        // Initialize dashboard
+        document.addEventListener('DOMContentLoaded', function() {
+            initializeFilters();
+            initializeCharts();
+            loadInitialData();
+        });
+        
+        // Initialize location filters
+        async function initializeFilters() {
+            try {
+                // Load states
+                const response = await fetch('/api/locations/states');
+                const data = await response.json();
+                
+                if (data.success) {
+                    const stateSelect = document.getElementById('stateFilter');
+                    data.states.forEach(state => {
+                        const option = document.createElement('option');
+                        option.value = state.code;
+                        option.textContent = state.name;
+                        stateSelect.appendChild(option);
+                    });
+                }
+            } catch (error) {
+                console.error('Error loading states:', error);
+            }
+        }
+        
+        // Handle state selection
+        document.getElementById('stateFilter').addEventListener('change', async function() {
+            const stateCode = this.value;
+            const citySelect = document.getElementById('cityFilter');
+            const countySelect = document.getElementById('countyFilter');
+            const zipcodeSelect = document.getElementById('zipcodeFilter');
+            
+            // Reset dependent dropdowns
+            citySelect.innerHTML = '<option value="">Select City</option>';
+            countySelect.innerHTML = '<option value="">Select County</option>';
+            zipcodeSelect.innerHTML = '<option value="">Select ZIP Code</option>';
+            
+            citySelect.disabled = !stateCode;
+            countySelect.disabled = true;
+            zipcodeSelect.disabled = true;
+            
+            currentLocation.state = stateCode;
+            currentLocation.city = '';
+            currentLocation.county = '';
+            currentLocation.zipcode = '';
+            
+            if (stateCode) {
+                try {
+                    const response = await fetch(`/api/locations/cities/${stateCode}`);
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        data.cities.forEach(city => {
+                            const option = document.createElement('option');
+                            option.value = city.name;
+                            option.textContent = city.name;
+                            citySelect.appendChild(option);
+                        });
+                    }
+                } catch (error) {
+                    console.error('Error loading cities:', error);
+                }
+            }
+            
+            updateSelectionDisplay();
+        });
+        
+        // Handle city selection
+        document.getElementById('cityFilter').addEventListener('change', async function() {
+            const cityName = this.value;
+            const stateCode = document.getElementById('stateFilter').value;
+            const countySelect = document.getElementById('countyFilter');
+            const zipcodeSelect = document.getElementById('zipcodeFilter');
+            
+            countySelect.innerHTML = '<option value="">Select County</option>';
+            zipcodeSelect.innerHTML = '<option value="">Select ZIP Code</option>';
+            
+            countySelect.disabled = !cityName;
+            zipcodeSelect.disabled = !cityName;
+            
+            currentLocation.city = cityName;
+            currentLocation.county = '';
+            currentLocation.zipcode = '';
+            
+            if (cityName && stateCode) {
+                try {
+                    // Load counties
+                    const countiesResponse = await fetch(`/api/locations/counties/${stateCode}/${encodeURIComponent(cityName)}`);
+                    const countiesData = await countiesResponse.json();
+                    
+                    if (countiesData.success) {
+                        countiesData.counties.forEach(county => {
+                            const option = document.createElement('option');
+                            option.value = county.name;
+                            option.textContent = county.name;
+                            countySelect.appendChild(option);
+                        });
+                    }
+                    
+                    // Load ZIP codes
+                    const zipcodesResponse = await fetch(`/api/locations/zipcodes/${stateCode}?city=${encodeURIComponent(cityName)}`);
+                    const zipcodesData = await zipcodesResponse.json();
+                    
+                    if (zipcodesData.success) {
+                        zipcodesData.zipcodes.forEach(zip => {
+                            const option = document.createElement('option');
+                            option.value = zip.zipcode;
+                            option.textContent = `${zip.zipcode} (${zip.county})`;
+                            zipcodeSelect.appendChild(option);
+                        });
+                    }
+                } catch (error) {
+                    console.error('Error loading location data:', error);
+                }
+            }
+            
+            updateSelectionDisplay();
+        });
+        
+        // Handle county selection
+        document.getElementById('countyFilter').addEventListener('change', function() {
+            currentLocation.county = this.value;
+            updateSelectionDisplay();
+        });
+        
+        // Handle ZIP code selection
+        document.getElementById('zipcodeFilter').addEventListener('change', function() {
+            currentLocation.zipcode = this.value;
+            updateSelectionDisplay();
+        });
+        
+        // Handle time period selection
+        function setTimePeriod(period) {
+            // Update button states
+            document.querySelectorAll('.time-filter-btn').forEach(btn => {
+                btn.classList.remove('active', 'bg-emerald-500', 'text-white', 'border-emerald-500');
+                btn.classList.add('border-gray-300', 'text-gray-700');
+            });
+            
+            const activeBtn = document.querySelector(`[data-period="${period}"]`);
+            if (activeBtn) {
+                activeBtn.classList.add('active', 'bg-emerald-500', 'text-white', 'border-emerald-500');
+                activeBtn.classList.remove('border-gray-300', 'text-gray-700');
+            }
+            
+            currentTimePeriod = period;
+            updateSelectionDisplay();
+            
+            // Load data with new time period
+            loadDashboardData();
+        }
+        
+        // Update selection display
+        function updateSelectionDisplay() {
+            const selectionText = document.getElementById('selectionText');
+            let locationText = 'All locations';
+            
+            if (currentLocation.zipcode) {
+                locationText = `ZIP ${currentLocation.zipcode}`;
+            } else if (currentLocation.city) {
+                locationText = `${currentLocation.city}${currentLocation.county ? `, ${currentLocation.county} County` : ''}, ${currentLocation.state}`;
+            } else if (currentLocation.state) {
+                locationText = document.getElementById('stateFilter').selectedOptions[0]?.textContent || currentLocation.state;
+            }
+            
+            const periodText = currentTimePeriod.charAt(0).toUpperCase() + currentTimePeriod.slice(1).replace(/(\d+)/, ' $1 ').trim();
+            selectionText.textContent = `${periodText} data, ${locationText}`;
+        }
+        
+        // Apply filters and refresh data
+        async function applyFilters() {
+            const button = event.target;
+            button.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Loading...';
+            button.disabled = true;
+            
+            try {
+                await loadDashboardData();
+                button.innerHTML = '<i class="fas fa-check mr-2"></i>Data Updated!';
+                setTimeout(() => {
+                    button.innerHTML = '<i class="fas fa-sync-alt mr-2"></i>Apply Filters & Refresh Data';
+                    button.disabled = false;
+                }, 2000);
+            } catch (error) {
+                console.error('Error applying filters:', error);
+                button.innerHTML = '<i class="fas fa-exclamation-triangle mr-2"></i>Error Loading Data';
+                setTimeout(() => {
+                    button.innerHTML = '<i class="fas fa-sync-alt mr-2"></i>Apply Filters & Refresh Data';
+                    button.disabled = false;
+                }, 3000);
+            }
+        }
+        
+        // Initialize charts
+        function initializeCharts() {
+            const aqiCtx = document.getElementById('aqiTrendChart').getContext('2d');
+            const diseasesCtx = document.getElementById('diseaseCasesChart').getContext('2d');
+            
+            // Initialize with placeholder data - store on window for access
+            window.aqiChart = new Chart(aqiCtx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'AQI Value',
+                        data: [],
+                        borderColor: '#10b981',
+                        backgroundColor: 'rgba(16, 185, 129, 0.2)',
+                        borderWidth: 3,
+                        tension: 0.4,
+                        fill: true,
+                        pointRadius: 5,
+                        pointHoverRadius: 7,
+                        pointBackgroundColor: '#10b981',
+                        pointBorderColor: '#fff',
+                        pointBorderWidth: 2
+                    }]
+                },
+                plugins: [ChartZoom],
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        intersect: false,
+                        mode: 'index'
+                    },
+                    animation: {
+                        duration: 750,
+                        easing: 'easeInOutQuart'
+                    },
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top',
+                            labels: {
+                                font: {
+                                    size: 12,
+                                    weight: 'bold'
+                                }
+                            }
+                        },
+                        title: {
+                            display: true,
+                            text: 'Loading Data...',
+                            font: {
+                                size: 16,
+                                weight: 'bold'
+                            },
+                            padding: 10
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                            titleFont: {
+                                size: 14
+                            },
+                            bodyFont: {
+                                size: 13
+                            },
+                            padding: 12,
+                            displayColors: true
+                        },
+                        zoom: {
+                            zoom: {
+                                wheel: {
+                                    enabled: true,
+                                    speed: 0.1
+                                },
+                                pinch: {
+                                    enabled: true
+                                },
+                                mode: 'x',
+                            },
+                            pan: {
+                                enabled: true,
+                                mode: 'x',
+                            },
+                            limits: {
+                                x: {min: 'original', max: 'original'},
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            display: true,
+                            grid: {
+                                display: true,
+                                color: 'rgba(0, 0, 0, 0.1)'
+                            },
+                            ticks: {
+                                font: {
+                                    size: 11
+                                },
+                                maxRotation: 45,
+                                minRotation: 0,
+                                autoSkip: true
+                            },
+                            title: {
+                                display: true,
+                                text: 'Date/Time',
+                                font: {
+                                    size: 12,
+                                    weight: 'bold'
+                                }
+                            }
+                        },
+                        y: {
+                            display: true,
+                            beginAtZero: true,
+                            max: 200,
+                            grid: {
+                                display: true,
+                                color: 'rgba(0, 0, 0, 0.1)'
+                            },
+                            ticks: {
+                                font: {
+                                    size: 11
+                                },
+                                stepSize: 25
+                            },
+                            title: {
+                                display: true,
+                                text: 'AQI Level',
+                                font: {
+                                    size: 12,
+                                    weight: 'bold'
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+            
+            window.diseasesChart = new Chart(diseasesCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Loading...'],
+                    datasets: [{
+                        data: [1],
+                        backgroundColor: ['#gray'],
+                        borderWidth: 3,
+                        borderColor: '#fff',
+                        hoverBorderWidth: 5,
+                        hoverBorderColor: '#fff',
+                        hoverOffset: 15
+                    }]
+                },
+                plugins: [ChartDataLabels],
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    animation: {
+                        animateRotate: true,
+                        animateScale: true,
+                        duration: 1000,
+                        easing: 'easeInOutQuart'
+                    },
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: {
+                                padding: 15,
+                                font: {
+                                    size: 13,
+                                    weight: '500'
+                                },
+                                usePointStyle: true,
+                                pointStyle: 'circle'
+                            }
+                        },
+                        title: {
+                            display: true,
+                            text: 'Loading Data...',
+                            font: {
+                                size: 16,
+                                weight: 'bold'
+                            },
+                            padding: 10
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(0, 0, 0, 0.9)',
+                            titleFont: {
+                                size: 16,
+                                weight: 'bold'
+                            },
+                            bodyFont: {
+                                size: 14
+                            },
+                            padding: 16,
+                            displayColors: true,
+                            boxWidth: 20,
+                            boxHeight: 20
+                        },
+                        datalabels: {
+                            display: false // Will be enabled dynamically
+                        }
+                    }
+                }
+            });
+            
+            // Initialize ZIP codes chart
+            const zipCtx = document.getElementById('zipCodesChart').getContext('2d');
+            window.zipCodesChart = new Chart(zipCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Loading...'],
+                    datasets: [{
+                        data: [1],
+                        backgroundColor: ['#gray'],
+                        borderWidth: 3,
+                        borderColor: '#fff',
+                        hoverBorderWidth: 5,
+                        hoverBorderColor: '#fff',
+                        hoverOffset: 15
+                    }]
+                },
+                plugins: [ChartDataLabels],
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    animation: {
+                        animateRotate: true,
+                        animateScale: true,
+                        duration: 1000,
+                        easing: 'easeInOutQuart'
+                    },
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: {
+                                padding: 15,
+                                font: {
+                                    size: 11,
+                                    weight: '500'
+                                },
+                                usePointStyle: true,
+                                pointStyle: 'circle'
+                            }
+                        },
+                        title: {
+                            display: true,
+                            text: 'Loading Data...',
+                            font: {
+                                size: 16,
+                                weight: 'bold'
+                            },
+                            padding: 10
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(0, 0, 0, 0.9)',
+                            titleFont: {
+                                size: 16,
+                                weight: 'bold'
+                            },
+                            bodyFont: {
+                                size: 14
+                            },
+                            padding: 16,
+                            displayColors: true,
+                            boxWidth: 20,
+                            boxHeight: 20
+                        },
+                        datalabels: {
+                            display: false // Will be enabled dynamically
+                        }
+                    }
+                }
+            });
+        }
+        
+        // Load initial data
+        async function loadInitialData() {
+            try {
+                await loadDashboardData();
+            } catch (error) {
+                console.error('Error loading initial data:', error);
+            }
+        }
+        
+        // Load dashboard data based on current filters
+        async function loadDashboardData() {
+            try {
+                const params = new URLSearchParams({
+                    period: currentTimePeriod
+                });
+                
+                // Add location parameters
+                if (currentLocation.zipcode) {
+                    params.append('zipcode', currentLocation.zipcode);
+                } else if (currentLocation.state) {
+                    params.append('state', currentLocation.state);
+                    if (currentLocation.city) {
+                        params.append('city', currentLocation.city);
+                    }
+                    if (currentLocation.county) {
+                        params.append('county', currentLocation.county);
+                    }
+                }
+                
+                console.log('Fetching EPA data with params:', params.toString());
+                const response = await fetch(`/api/air-quality?${params}`);
+                const data = await response.json();
+                
+                console.log('EPA API Response:', data);
+                
+                if (data.success) {
+                    console.log('Data received, updating charts with:', data.data);
+                    updateChartsWithData(data);
+                    updateStatsWithData(data);
+                } else {
+                    throw new Error(data.error || 'Failed to load data');
+                }
+            } catch (error) {
+                console.error('Error loading dashboard data:', error);
+                // Show error in charts
+                updateChartsWithError(error.message);
+            }
+        }
+        
+        // Update charts with EPA data
+        function updateChartsWithData(data) {
+            const airQualityData = data.data || [];
+            
+            console.log('updateChartsWithData called with:', airQualityData.length, 'items');
+            console.log('First item:', airQualityData[0]);
+            console.log('Current time period:', currentTimePeriod);
+            
+            // Skip chart updates - community reports will handle this
+            // Charts are now populated by officials-dashboard.js with community data
+            return;
+            
+            if (airQualityData.length > 0) {
+                // Update AQI chart
+                const labels = [];
+                const aqiValues = [];
+                
+                if (currentTimePeriod === 'live') {
+                    // Live data - show current value
+                    const currentData = airQualityData[0];
+                    labels.push('Current AQI');
+                    aqiValues.push(currentData.current_aqi || currentData.aqi || 0);
+                } else {
+                    // Historical data - show trend
+                    airQualityData.forEach((item, index) => {
+                        let label = '';
+                        if (item.date) {
+                            // Format date nicely
+                            const date = new Date(item.date);
+                            label = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                        } else if (item.date_observed) {
+                            const date = new Date(item.date_observed);
+                            label = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                        } else {
+                            label = `Day ${index + 1}`;
+                        }
+                        labels.push(label);
+                        aqiValues.push(item.aqi || item.current_aqi || 0);
+                    });
+                }
+                
+                console.log('Chart labels:', labels);
+                console.log('Chart values:', aqiValues);
+                
+                // Calculate max for Y axis
+                const maxAqi = Math.max(...aqiValues, 100);
+                const yAxisMax = Math.ceil(maxAqi / 50) * 50 + 50; // Round up to nearest 50, add buffer
+                
+                // Update AQI chart
+                aqiChart.data.labels = labels;
+                aqiChart.data.datasets[0].data = aqiValues;
+                aqiChart.data.datasets[0].label = `Air Quality Index`;
+                aqiChart.options.plugins.title.text = `${data.period || currentTimePeriod} AQI Trend (${data.source || 'EPA API'})`;
+                aqiChart.options.scales.y.max = yAxisMax;
+                aqiChart.options.scales.x.title.text = currentTimePeriod === 'live' ? 'Current Reading' : 'Date';
+                aqiChart.update();
+                
+                console.log('AQI Chart updated successfully');
+                
+                // Update disease chart (mock data for now)
+                const diseaseLabels = ['Respiratory', 'Cardiovascular', 'Allergic', 'Other'];
+                const diseaseData = [35, 25, 25, 15]; // Simulated based on AQI
+                
+                diseasesChart.data.labels = diseaseLabels;
+                diseasesChart.data.datasets[0].data = diseaseData;
+                diseasesChart.data.datasets[0].backgroundColor = ['#3b82f6', '#f59e0b', '#ef4444', '#10b981'];
+                diseasesChart.options.plugins.title.text = 'Health Impact Distribution';
+                diseasesChart.update();
+            } else {
+                console.warn('No air quality data received');
+                // Show empty state
+                aqiChart.data.labels = ['No Data'];
+                aqiChart.data.datasets[0].data = [0];
+                aqiChart.options.plugins.title.text = 'No Data Available';
+                aqiChart.update();
+            }
+        }
+        
+        // Update charts with error message
+        function updateChartsWithError(errorMessage) {
+            aqiChart.options.plugins.title.text = `Error: ${errorMessage}`;
+            aqiChart.update();
+            
+            diseasesChart.options.plugins.title.text = `Error: ${errorMessage}`;
+            diseasesChart.update();
+        }
+        
+        // Update stats cards with EPA data
+        function updateStatsWithData(data) {
+            const stats = data.statistics || {};
+            
+            // Update AQI stat
+            const aqiElement = document.querySelector('[class*="border-amber-500"] h3');
+            if (aqiElement && stats.avg_aqi !== undefined) {
+                aqiElement.textContent = Math.round(stats.avg_aqi);
+                
+                // Update AQI level
+                const aqiLevelElement = aqiElement.parentElement.querySelector('p');
+                if (aqiLevelElement) {
+                    if (stats.avg_aqi <= 50) aqiLevelElement.textContent = 'Good';
+                    else if (stats.avg_aqi <= 100) aqiLevelElement.textContent = 'Moderate';
+                    else if (stats.avg_aqi <= 150) aqiLevelElement.textContent = 'Unhealthy (Sensitive)';
+                    else if (stats.avg_aqi <= 200) aqiLevelElement.textContent = 'Unhealthy';
+                    else if (stats.avg_aqi <= 300) aqiLevelElement.textContent = 'Very Unhealthy';
+                    else aqiLevelElement.textContent = 'Hazardous';
+                }
+            }
+        }
+        
+        // Function to update chart granularity (called from buttons)
+        function updateChartGranularity(granularity) {
+            // This will be called by officials-dashboard.js
+            const event = new CustomEvent('chartGranularityChange', { detail: { granularity } });
+            document.dispatchEvent(event);
+            
+            // Update button states
+            document.getElementById('hourBtn').classList.remove('active');
+            document.getElementById('dayBtn').classList.remove('active');
+            document.getElementById(granularity + 'Btn').classList.add('active');
+        }
+        
+        // Function to reset chart zoom
+        function resetChartZoom() {
+            if (window.aqiChart) {
+                window.aqiChart.resetZoom();
+            }
+        }
+    </script>
+</body>
+</html>
