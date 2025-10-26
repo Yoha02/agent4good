@@ -303,12 +303,34 @@ def agent_chat():
         
         request_data = request.get_json()
         question = request_data.get('question', '')
+        location_context = request_data.get('location_context', None)
+        time_frame = request_data.get('time_frame', None)
         
         if not question:
             return jsonify({
                 'success': False,
                 'error': 'No question provided'
             }), 400
+        
+        # Add location context to the question if available
+        if location_context:
+            location_info = []
+            if location_context.get('city'):
+                location_info.append(f"City: {location_context['city']}")
+            if location_context.get('state'):
+                location_info.append(f"State: {location_context['state']}")
+            if location_context.get('county'):
+                location_info.append(f"County: {location_context['county']}")
+            if location_context.get('zipCode'):
+                location_info.append(f"ZIP Code: {location_context['zipCode']}")
+            if location_context.get('formattedAddress'):
+                location_info.append(f"Address: {location_context['formattedAddress']}")
+            
+            if location_info:
+                location_text = " | ".join(location_info)
+                enhanced_question = f"User Location Context: {location_text}\n\nUser Question: {question}"
+                print(f"[CHAT] Enhanced question with location context: {enhanced_question}")
+                question = enhanced_question
         
         # Check if user wants to generate PSA video
         video_keywords = ['create video', 'generate psa', 'make video', 'create psa', 'video psa', 'psa video']
@@ -391,8 +413,8 @@ def agent_chat():
                 traceback.print_exc()
                 # Fall through to normal chat
         
-        # Normal chat flow
-        response = call_adk_agent(question)
+        # Normal chat flow - pass context to agent
+        response = call_adk_agent(question, location_context=location_context, time_frame=time_frame)
         
         return jsonify({
             'success': True,

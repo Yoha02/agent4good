@@ -335,6 +335,33 @@ async function askAI() {
     const loadingMsg = addMessage('Thinking...', 'bot');
     
     try {
+        // Get stored location data for chat agent
+        const storedLocationData = localStorage.getItem('currentLocationData');
+        let locationContext = null;
+        
+        if (storedLocationData) {
+            try {
+                locationContext = JSON.parse(storedLocationData);
+                console.log('[Chat] Using stored location data:', locationContext);
+            } catch (e) {
+                console.warn('[Chat] Failed to parse stored location data:', e);
+            }
+        }
+        
+        // Get time frame from date inputs
+        const startDateInput = document.getElementById('startDate');
+        const endDateInput = document.getElementById('endDate');
+        let timeFrame = null;
+        
+        if (startDateInput && endDateInput && startDateInput.value && endDateInput.value) {
+            timeFrame = {
+                start_date: startDateInput.value,
+                end_date: endDateInput.value,
+                period: `${startDateInput.value} to ${endDateInput.value}`
+            };
+            console.log('[Chat] Using time frame:', timeFrame);
+        }
+        
         // Try ADK agent first
         const response = await fetch('/api/agent-chat', {
             method: 'POST',
@@ -344,7 +371,9 @@ async function askAI() {
             body: JSON.stringify({
                 question: question,
                 state: currentState,
-                days: currentDays
+                days: currentDays,
+                location_context: locationContext,
+                time_frame: timeFrame
             })
         });
 
@@ -356,7 +385,39 @@ async function askAI() {
         if (data.success) {
             // Add agent badge if available
             const agentBadge = data.agent ? `<div class="text-xs text-gray-500 mt-1">via ${data.agent}</div>` : '';
-            addMessage(data.response + agentBadge, 'bot');
+            
+            // Add context indicators if available
+            let contextIndicators = '';
+            if (locationContext) {
+                const locationText = [locationContext.city, locationContext.state, locationContext.zipCode].filter(Boolean).join(', ');
+                contextIndicators += `<div class="text-xs text-emerald-600 mt-1 flex items-center">
+                    <i class="fas fa-map-marker-alt mr-1"></i>
+                    Using location: ${locationText}
+                </div>`;
+            }
+            
+            if (timeFrame) {
+                contextIndicators += `<div class="text-xs text-blue-600 mt-1 flex items-center">
+                    <i class="fas fa-calendar-alt mr-1"></i>
+                    Using time frame: ${timeFrame.period}
+                </div>`;
+            }
+            
+            // Add current time indicator
+            const now = new Date();
+            const currentTime = now.toLocaleString('en-US', { 
+                weekday: 'short', 
+                month: 'short', 
+                day: 'numeric', 
+                hour: '2-digit', 
+                minute: '2-digit' 
+            });
+            contextIndicators += `<div class="text-xs text-purple-600 mt-1 flex items-center">
+                <i class="fas fa-clock mr-1"></i>
+                Current time: ${currentTime}
+            </div>`;
+            
+            addMessage(data.response + agentBadge + contextIndicators, 'bot');
             
             // If video generation started, begin polling
             if (data.task_id) {
