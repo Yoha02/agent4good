@@ -341,6 +341,28 @@ document.addEventListener('DOMContentLoaded', function() {
             const formattedDate = timestamp.toLocaleDateString();
             const formattedTime = timestamp.toLocaleTimeString();
             
+            // Check for attachments
+            let hasAttachments = false;
+            let attachmentCount = 0;
+            if (report.attachment_urls) {
+                try {
+                    const urls = JSON.parse(report.attachment_urls);
+                    hasAttachments = urls && urls.length > 0;
+                    attachmentCount = urls.length;
+                } catch (e) {
+                    // Silent fail
+                }
+            }
+            if (!hasAttachments && report.media_urls) {
+                try {
+                    const urls = Array.isArray(report.media_urls) ? report.media_urls : JSON.parse(report.media_urls);
+                    hasAttachments = urls && urls.length > 0;
+                    attachmentCount = urls.length;
+                } catch (e) {
+                    // Silent fail
+                }
+            }
+            
             // Severity badge
             const severityColors = {
                 'low': 'bg-green-100 text-green-800',
@@ -414,6 +436,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         <div class="flex items-center">
                             <i class="fas ${typeIcon} mr-2"></i>
                             <span class="font-medium text-gray-900">${capitalize(report.report_type)}</span>
+                            ${hasAttachments ? `<i class="fas fa-paperclip ml-2 text-blue-500" title="${attachmentCount} attachment(s)"></i>` : ''}
                         </div>
                     </td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
@@ -575,6 +598,31 @@ document.addEventListener('DOMContentLoaded', function() {
         const modal = document.getElementById('reportDetailModal');
         const modalBody = document.getElementById('reportDetailBody');
         
+        // Parse attachment URLs
+        let attachmentUrls = [];
+        if (report.attachment_urls) {
+            try {
+                attachmentUrls = JSON.parse(report.attachment_urls);
+            } catch (e) {
+                console.error('Failed to parse attachment_urls:', e);
+            }
+        }
+        // Fallback to media_urls if attachment_urls is empty
+        if (attachmentUrls.length === 0 && report.media_urls) {
+            if (Array.isArray(report.media_urls)) {
+                attachmentUrls = report.media_urls;
+            } else if (typeof report.media_urls === 'string') {
+                try {
+                    attachmentUrls = JSON.parse(report.media_urls);
+                } catch (e) {
+                    // If it's a single URL string, wrap it in an array
+                    if (report.media_urls.startsWith('http')) {
+                        attachmentUrls = [report.media_urls];
+                    }
+                }
+            }
+        }
+        
         modalBody.innerHTML = `
             <div class="space-y-6">
                 <!-- Header -->
@@ -614,18 +662,50 @@ document.addEventListener('DOMContentLoaded', function() {
                     </div>
                     <div>
                         <label class="text-sm font-semibold text-gray-600 uppercase tracking-wide">People Affected</label>
-                        <p class="mt-1 text-gray-900">${report.people_affected || 'Not specified'}</p>
+                        <p class="mt-1 text-gray-900">${report.affected_count || report.people_affected || 'Not specified'}</p>
                     </div>
                     <div>
                         <label class="text-sm font-semibold text-gray-600 uppercase tracking-wide">Timeframe</label>
-                        <p class="mt-1 text-gray-900">${report.timeframe ? formatTimeframe(report.timeframe) : 'Not specified'}</p>
+                        <p class="mt-1 text-gray-900">${report.when_happened || report.timeframe ? formatTimeframe(report.when_happened || report.timeframe) : 'Not specified'}</p>
                     </div>
+                    
+                    ${attachmentUrls.length > 0 ? `
+                    <div class="col-span-2 border-t pt-4">
+                        <label class="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-3 block">
+                            <i class="fas fa-paperclip mr-2"></i>Attachments (${attachmentUrls.length})
+                        </label>
+                        <div class="grid grid-cols-3 gap-3">
+                            ${attachmentUrls.map((url, index) => {
+                                const isImage = url.match(/\.(jpg|jpeg|png|gif)($|\?)/i);
+                                return `
+                                    <div class="border rounded-lg overflow-hidden hover:shadow-lg transition-shadow">
+                                        ${isImage ? `
+                                            <a href="${url}" target="_blank" class="block">
+                                                <img src="${url}" alt="Attachment ${index + 1}" class="w-full h-32 object-cover">
+                                                <div class="p-2 bg-gray-50 text-xs text-center text-gray-600">
+                                                    <i class="fas fa-search-plus mr-1"></i>Click to view full size
+                                                </div>
+                                            </a>
+                                        ` : `
+                                            <a href="${url}" target="_blank" class="block p-4 bg-gray-50 hover:bg-gray-100 text-center">
+                                                <i class="fas fa-file text-3xl text-gray-400 mb-2"></i>
+                                                <div class="text-xs text-gray-600">Attachment ${index + 1}</div>
+                                                <div class="text-xs text-blue-600 mt-1">Click to open</div>
+                                            </a>
+                                        `}
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+                    </div>
+                    ` : ''}
+                    
                     ${!report.is_anonymous ? `
                     <div class="col-span-2 border-t pt-4">
                         <label class="text-sm font-semibold text-gray-600 uppercase tracking-wide">Contact Information</label>
                         <div class="mt-2 space-y-1">
-                            <p class="text-gray-900"><i class="fas fa-user mr-2 text-gray-400"></i>${report.contact_name}</p>
-                            ${report.contact_email ? `<p class="text-gray-900"><i class="fas fa-envelope mr-2 text-gray-400"></i>${report.contact_email}</p>` : ''}
+                            <p class="text-gray-900"><i class="fas fa-user mr-2 text-gray-400"></i>${report.contact_name || report.reporter_name}</p>
+                            ${report.contact_email || report.reporter_contact ? `<p class="text-gray-900"><i class="fas fa-envelope mr-2 text-gray-400"></i>${report.contact_email || report.reporter_contact}</p>` : ''}
                             ${report.contact_phone ? `<p class="text-gray-900"><i class="fas fa-phone mr-2 text-gray-400"></i>${report.contact_phone}</p>` : ''}
                         </div>
                     </div>
