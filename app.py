@@ -335,6 +335,12 @@ def agent_chat():
             }), 500
 
 
+@app.route('/acknowledgements')
+def acknowledgements():
+    """Acknowledgements page"""
+    return render_template('acknowledgements.html')
+
+
 @app.route('/health')
 def health_check():
     """Health check endpoint for Cloud Run"""

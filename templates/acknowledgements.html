@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Acknowledgements - Community Health Platform</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            padding: 0;
+            overflow-x: hidden;
+        }
+        .font-display {
+            font-family: 'Space Grotesk', sans-serif;
+        }
+        
+        .glass-dark {
+            background: rgba(26, 58, 82, 0.8);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        /* Starry sky background */
+        .stars-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            background: linear-gradient(to bottom, #0a0e27 0%, #1a1a2e 50%, #16213e 100%);
+            overflow: hidden;
+        }
+        
+        .stars {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+        }
+        
+        .star {
+            position: absolute;
+            background: white;
+            border-radius: 50%;
+            animation: twinkle var(--duration) ease-in-out infinite;
+        }
+        
+        @keyframes twinkle {
+            0%, 100% { opacity: 0.2; transform: scale(0.8); }
+            50% { opacity: 1; transform: scale(1.5); }
+        }
+        
+        @keyframes drift {
+            0% { transform: translate(0, 0); }
+            25% { transform: translate(5px, -5px); }
+            50% { transform: translate(-5px, 5px); }
+            75% { transform: translate(5px, 5px); }
+            100% { transform: translate(0, 0); }
+        }
+        
+        .star {
+            animation: twinkle var(--twinkle-duration) ease-in-out infinite, 
+                       drift var(--drift-duration) ease-in-out infinite;
+        }
+        
+        @keyframes shootingStar {
+            0% {
+                transform: translate(0, 0) rotate(-45deg);
+                opacity: 0;
+            }
+            5% {
+                opacity: 1;
+            }
+            100% {
+                transform: translate(800px, -800px) rotate(-45deg);
+                opacity: 0;
+            }
+        }
+        
+        .shooting-star {
+            position: absolute;
+            width: 2px;
+            height: 2px;
+            background: white;
+            border-radius: 50%;
+            box-shadow: 0 0 10px 2px rgba(255, 255, 255, 0.8),
+                        0 0 20px 4px rgba(147, 197, 253, 0.6),
+                        0 0 30px 6px rgba(96, 165, 250, 0.4);
+            animation: shootingStar var(--duration) linear;
+            pointer-events: none;
+        }
+        
+        .shooting-star::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            right: 0;
+            width: 100px;
+            height: 1px;
+            background: linear-gradient(270deg, 
+                transparent 0%,
+                rgba(147, 197, 253, 0.8) 30%,
+                rgba(255, 255, 255, 1) 100%);
+            transform-origin: 100% 50%;
+        }
+        
+        @keyframes float {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-20px); }
+        }
+        
+        .floating {
+            animation: float 8s ease-in-out infinite;
+        }
+        
+        .glass-card {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+        }
+        
+        .glass-card:hover {
+            background: rgba(255, 255, 255, 0.08);
+            transform: translateY(-5px);
+            transition: all 0.3s ease;
+        }
+        
+        .gradient-text {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .team-card {
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .team-card::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: linear-gradient(45deg, transparent, rgba(255,255,255,0.1), transparent);
+            transform: rotate(45deg);
+            transition: all 0.5s;
+        }
+        
+        .team-card:hover::before {
+            left: 100%;
+        }
+    </style>
+</head>
+<body>
+    <!-- Starry Background -->
+    <div class="stars-container">
+        <div class="stars" id="stars"></div>
+    </div>
+
+    <!-- Navigation -->
+    <nav class="fixed top-0 w-full z-50 glass-dark">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center h-20">
+                <!-- Logo -->
+                <a href="/" class="flex items-center space-x-3">
+                    <div class="w-12 h-12 min-w-[3rem] bg-gradient-to-br from-emerald-400 to-emerald-600 rounded-xl flex items-center justify-center animate-pulse flex-shrink-0">
+                        <i class="fas fa-heartbeat text-white text-xl"></i>
+                    </div>
+                    <div>
+                        <h1 class="text-white font-display font-bold text-xl">Health & Wellness</h1>
+                        <p class="text-gray-300 text-xs">Community Platform</p>
+                    </div>
+                </a>
+                
+                <!-- CTA Buttons -->
+                <div class="hidden md:flex space-x-4">
+                    <button onclick="window.location.href='/'" class="text-gray-300 hover:text-emerald-400 transition-colors duration-300 font-medium flex items-center space-x-2 px-4 py-2">
+                        <i class="fas fa-home"></i>
+                        <span>Home</span>
+                    </button>
+                    <button onclick="window.location.href='/report'" class="bg-red-600 hover:bg-red-700 text-white px-6 py-2 rounded-lg font-semibold transition-all duration-300 transform hover:scale-105 flex items-center space-x-2">
+                        <i class="fas fa-flag"></i>
+                        <span>Report</span>
+                    </button>
+                    <button onclick="window.location.href='/acknowledgements'" class="bg-emerald-500 hover:bg-emerald-600 text-white px-6 py-2 rounded-lg font-semibold transition-all duration-300 transform hover:scale-105 flex items-center space-x-2">
+                        <i class="fas fa-heart"></i>
+                        <span>Acknowledgements</span>
+                    </button>
+                    <button onclick="window.location.href='/officials-login'" class="bg-navy-600 hover:bg-navy-700 text-white px-6 py-2 rounded-lg font-semibold transition-all duration-300 transform hover:scale-105 flex items-center space-x-2">
+                        <i class="fas fa-user-shield"></i>
+                        <span>Officials Login</span>
+                    </button>
+                </div>
+                
+                <!-- Mobile Menu Button -->
+                <button class="md:hidden text-white" onclick="toggleMobileMenu()">
+                    <i class="fas fa-bars text-2xl"></i>
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="pt-32 pb-20 px-4 sm:px-6 lg:px-8">
+        <div class="max-w-7xl mx-auto">
+            
+            <!-- Hero Section -->
+            <div class="text-center mb-20 floating">
+                <h1 class="font-display text-5xl sm:text-6xl lg:text-7xl font-bold text-white mb-6">
+                    <span class="gradient-text">Acknowledgements</span>
+                </h1>
+                <p class="text-xl text-gray-300 max-w-3xl mx-auto">
+                    This project wouldn't be possible without the incredible support, 
+                    resources, and collaboration from our partners, mentors, and data providers.
+                </p>
+            </div>
+
+            <!-- Data Sources Section -->
+            <section class="mb-20">
+                <h2 class="font-display text-4xl font-bold text-white mb-12 text-center">
+                    <i class="fas fa-database mr-3 text-emerald-400"></i>
+                    Data Sources & APIs
+                </h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <!-- EPA AirNow -->
+                    <div class="glass-card rounded-2xl p-6 transition-all duration-300">
+                        <div class="w-14 h-14 bg-gradient-to-br from-blue-400 to-blue-600 rounded-xl flex items-center justify-center mb-4">
+                            <i class="fas fa-wind text-white text-2xl"></i>
+                        </div>
+                        <h3 class="text-xl font-bold text-white mb-2">EPA AirNow</h3>
+                        <p class="text-gray-300 text-sm mb-3">Real-time air quality data across the United States</p>
+                        <a href="https://www.airnow.gov/" target="_blank" class="text-emerald-400 hover:text-emerald-300 text-sm">
+                            airnow.gov <i class="fas fa-external-link-alt ml-1"></i>
+                        </a>
+                    </div>
+
+                    <!-- EPA AQS -->
+                    <div class="glass-card rounded-2xl p-6 transition-all duration-300">
+                        <div class="w-14 h-14 bg-gradient-to-br from-green-400 to-green-600 rounded-xl flex items-center justify-center mb-4">
+                            <i class="fas fa-leaf text-white text-2xl"></i>
+                        </div>
+                        <h3 class="text-xl font-bold text-white mb-2">EPA AQS API</h3>
+                        <p class="text-gray-300 text-sm mb-3">Detailed air quality and pollutant measurements</p>
+                        <a href="https://aqs.epa.gov/aqsweb/documents/data_api.html" target="_blank" class="text-emerald-400 hover:text-emerald-300 text-sm">
+                            epa.gov <i class="fas fa-external-link-alt ml-1"></i>
+                        </a>
+                    </div>
+
+                    <!-- Google Weather -->
+                    <div class="glass-card rounded-2xl p-6 transition-all duration-300">
+                        <div class="w-14 h-14 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-xl flex items-center justify-center mb-4">
+                            <i class="fas fa-cloud-sun text-white text-2xl"></i>
+                        </div>
+                        <h3 class="text-xl font-bold text-white mb-2">Google Weather API</h3>
+                        <p class="text-gray-300 text-sm mb-3">Weather conditions and forecasts</p>
+                        <a href="https://developers.google.com/maps/documentation/weather" target="_blank" class="text-emerald-400 hover:text-emerald-300 text-sm">
+                            Google Developers <i class="fas fa-external-link-alt ml-1"></i>
+                        </a>
+                    </div>
+
+                    <!-- Google Pollen -->
+                    <div class="glass-card rounded-2xl p-6 transition-all duration-300">
+                        <div class="w-14 h-14 bg-gradient-to-br from-pink-400 to-rose-500 rounded-xl flex items-center justify-center mb-4">
+                            <i class="fas fa-seedling text-white text-2xl"></i>
+                        </div>
+                        <h3 class="text-xl font-bold text-white mb-2">Google Pollen API</h3>
+                        <p class="text-gray-300 text-sm mb-3">Pollen count and allergen information</p>
+                        <a href="https://developers.google.com/maps/documentation/pollen" target="_blank" class="text-emerald-400 hover:text-emerald-300 text-sm">
+                            Google Developers <i class="fas fa-external-link-alt ml-1"></i>
+                        </a>
+                    </div>
+
+                    <!-- USGS Earthquakes -->
+                    <div class="glass-card rounded-2xl p-6 transition-all duration-300">
+                        <div class="w-14 h-14 bg-gradient-to-br from-red-400 to-red-600 rounded-xl flex items-center justify-center mb-4">
+                            <i class="fas fa-house-damage text-white text-2xl"></i>
+                        </div>
+                        <h3 class="text-xl font-bold text-white mb-2">USGS Earthquake Feed</h3>
+                        <p class="text-gray-300 text-sm mb-3">Real-time earthquake monitoring and alerts</p>
+                        <a href="https://earthquake.usgs.gov/" target="_blank" class="text-emerald-400 hover:text-emerald-300 text-sm">
+                            earthquake.usgs.gov <i class="fas fa-external-link-alt ml-1"></i>
+                        </a>
+                    </div>
+
+                    <!-- InciWeb Wildfires -->
+                    <div class="glass-card rounded-2xl p-6 transition-all duration-300">
+                        <div class="w-14 h-14 bg-gradient-to-br from-orange-400 to-red-500 rounded-xl flex items-center justify-center mb-4">
+                            <i class="fas fa-fire text-white text-2xl"></i>
+                        </div>
+                        <h3 class="text-xl font-bold text-white mb-2">InciWeb Wildfire Data</h3>
+                        <p class="text-gray-300 text-sm mb-3">Active wildfire incidents and containment status</p>
+                        <a href="https://inciweb.wildfire.gov/" target="_blank" class="text-emerald-400 hover:text-emerald-300 text-sm">
+                            inciweb.wildfire.gov <i class="fas fa-external-link-alt ml-1"></i>
+                        </a>
+                    </div>
+
+                    <!-- NOAA Storm Prediction -->
+                    <div class="glass-card rounded-2xl p-6 transition-all duration-300">
+                        <div class="w-14 h-14 bg-gradient-to-br from-purple-400 to-indigo-600 rounded-xl flex items-center justify-center mb-4">
+                            <i class="fas fa-bolt text-white text-2xl"></i>
+                        </div>
+                        <h3 class="text-xl font-bold text-white mb-2">NOAA Storm Prediction</h3>
+                        <p class="text-gray-300 text-sm mb-3">Severe weather forecasts and alerts</p>
+                        <a href="https://www.spc.noaa.gov/" target="_blank" class="text-emerald-400 hover:text-emerald-300 text-sm">
+                            spc.noaa.gov <i class="fas fa-external-link-alt ml-1"></i>
+                        </a>
+                    </div>
+
+                    <!-- CDC Health Data -->
+                    <div class="glass-card rounded-2xl p-6 transition-all duration-300">
+                        <div class="w-14 h-14 bg-gradient-to-br from-teal-400 to-cyan-600 rounded-xl flex items-center justify-center mb-4">
+                            <i class="fas fa-hospital text-white text-2xl"></i>
+                        </div>
+                        <h3 class="text-xl font-bold text-white mb-2">CDC Health Data</h3>
+                        <p class="text-gray-300 text-sm mb-3">COVID-19 and public health statistics</p>
+                        <a href="https://healthdata.gov/" target="_blank" class="text-emerald-400 hover:text-emerald-300 text-sm">
+                            healthdata.gov <i class="fas fa-external-link-alt ml-1"></i>
+                        </a>
+                    </div>
+
+                    <!-- NY Health Data -->
+                    <div class="glass-card rounded-2xl p-6 transition-all duration-300">
+                        <div class="w-14 h-14 bg-gradient-to-br from-indigo-400 to-purple-600 rounded-xl flex items-center justify-center mb-4">
+                            <i class="fas fa-heartbeat text-white text-2xl"></i>
+                        </div>
+                        <h3 class="text-xl font-bold text-white mb-2">NY Health Data</h3>
+                        <p class="text-gray-300 text-sm mb-3">New York state health metrics and trends</p>
+                        <a href="https://health.data.ny.gov/" target="_blank" class="text-emerald-400 hover:text-emerald-300 text-sm">
+                            health.data.ny.gov <i class="fas fa-external-link-alt ml-1"></i>
+                        </a>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Our Team Section -->
+            <section class="mb-20">
+                <h2 class="font-display text-4xl font-bold text-white mb-12 text-center">
+                    <i class="fas fa-users mr-3 text-emerald-400"></i>
+                    Our Team
+                </h2>
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
+                    <!-- Team Member 1 -->
+                    <div class="glass-card team-card rounded-2xl p-8 text-center transition-all duration-300">
+                        <div class="w-32 h-32 mx-auto mb-6 rounded-full bg-gradient-to-br from-emerald-400 to-cyan-500 flex items-center justify-center">
+                            <i class="fas fa-user text-white text-5xl"></i>
+                        </div>
+                        <h3 class="text-2xl font-bold text-white mb-2">Team Member</h3>
+                        <p class="text-emerald-400 mb-3">Role Title</p>
+                        <p class="text-gray-300 text-sm">Brief description of team member's contributions and expertise.</p>
+                    </div>
+
+                    <!-- Team Member 2 -->
+                    <div class="glass-card team-card rounded-2xl p-8 text-center transition-all duration-300">
+                        <div class="w-32 h-32 mx-auto mb-6 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center">
+                            <i class="fas fa-user text-white text-5xl"></i>
+                        </div>
+                        <h3 class="text-2xl font-bold text-white mb-2">Team Member</h3>
+                        <p class="text-emerald-400 mb-3">Role Title</p>
+                        <p class="text-gray-300 text-sm">Brief description of team member's contributions and expertise.</p>
+                    </div>
+
+                    <!-- Team Member 3 -->
+                    <div class="glass-card team-card rounded-2xl p-8 text-center transition-all duration-300">
+                        <div class="w-32 h-32 mx-auto mb-6 rounded-full bg-gradient-to-br from-pink-400 to-rose-500 flex items-center justify-center">
+                            <i class="fas fa-user text-white text-5xl"></i>
+                        </div>
+                        <h3 class="text-2xl font-bold text-white mb-2">Team Member</h3>
+                        <p class="text-emerald-400 mb-3">Role Title</p>
+                        <p class="text-gray-300 text-sm">Brief description of team member's contributions and expertise.</p>
+                    </div>
+
+                    <!-- Team Member 4 -->
+                    <div class="glass-card team-card rounded-2xl p-8 text-center transition-all duration-300">
+                        <div class="w-32 h-32 mx-auto mb-6 rounded-full bg-gradient-to-br from-yellow-400 to-orange-500 flex items-center justify-center">
+                            <i class="fas fa-user text-white text-5xl"></i>
+                        </div>
+                        <h3 class="text-2xl font-bold text-white mb-2">Team Member</h3>
+                        <p class="text-emerald-400 mb-3">Role Title</p>
+                        <p class="text-gray-300 text-sm">Brief description of team member's contributions and expertise.</p>
+                    </div>
+
+                    <!-- Team Member 5 -->
+                    <div class="glass-card team-card rounded-2xl p-8 text-center transition-all duration-300">
+                        <div class="w-32 h-32 mx-auto mb-6 rounded-full bg-gradient-to-br from-indigo-400 to-purple-600 flex items-center justify-center">
+                            <i class="fas fa-user text-white text-5xl"></i>
+                        </div>
+                        <h3 class="text-2xl font-bold text-white mb-2">Team Member</h3>
+                        <p class="text-emerald-400 mb-3">Role Title</p>
+                        <p class="text-gray-300 text-sm">Brief description of team member's contributions and expertise.</p>
+                    </div>
+
+                    <!-- Team Member 6 -->
+                    <div class="glass-card team-card rounded-2xl p-8 text-center transition-all duration-300">
+                        <div class="w-32 h-32 mx-auto mb-6 rounded-full bg-gradient-to-br from-teal-400 to-cyan-600 flex items-center justify-center">
+                            <i class="fas fa-user text-white text-5xl"></i>
+                        </div>
+                        <h3 class="text-2xl font-bold text-white mb-2">Team Member</h3>
+                        <p class="text-emerald-400 mb-3">Role Title</p>
+                        <p class="text-gray-300 text-sm">Brief description of team member's contributions and expertise.</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Mentor Section -->
+            <section class="mb-20">
+                <h2 class="font-display text-4xl font-bold text-white mb-12 text-center">
+                    <i class="fas fa-graduation-cap mr-3 text-emerald-400"></i>
+                    Our Mentor
+                </h2>
+                <div class="max-w-2xl mx-auto">
+                    <div class="glass-card rounded-2xl p-10 text-center transition-all duration-300">
+                        <div class="w-40 h-40 mx-auto mb-6 rounded-full bg-gradient-to-br from-purple-400 to-pink-500 flex items-center justify-center">
+                            <i class="fas fa-user-tie text-white text-6xl"></i>
+                        </div>
+                        <h3 class="text-3xl font-bold text-white mb-3">Mentor Name</h3>
+                        <p class="text-emerald-400 text-lg mb-4">Mentor Title & Organization</p>
+                        <p class="text-gray-300 text-base leading-relaxed">
+                            Our mentor provided invaluable guidance, expertise, and support throughout the development 
+                            of this project. Their insights and encouragement were instrumental in bringing this vision to life.
+                        </p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Google & Agents4Impact Section -->
+            <section class="mb-20">
+                <h2 class="font-display text-4xl font-bold text-white mb-12 text-center">
+                    <i class="fas fa-handshake mr-3 text-emerald-400"></i>
+                    Special Thanks
+                </h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+                    <!-- Google -->
+                    <div class="glass-card rounded-2xl p-10 text-center transition-all duration-300">
+                        <div class="w-24 h-24 mx-auto mb-6 bg-white rounded-2xl flex items-center justify-center">
+                            <i class="fab fa-google text-blue-500 text-5xl"></i>
+                        </div>
+                        <h3 class="text-3xl font-bold text-white mb-4">Google</h3>
+                        <p class="text-gray-300 text-base leading-relaxed">
+                            For providing cutting-edge AI technology, cloud infrastructure, and APIs that power 
+                            the intelligent features of our platform. Their commitment to innovation enables us 
+                            to serve communities better.
+                        </p>
+                    </div>
+
+                    <!-- Agents4Impact -->
+                    <div class="glass-card rounded-2xl p-10 text-center transition-all duration-300">
+                        <div class="w-24 h-24 mx-auto mb-6 bg-gradient-to-br from-emerald-400 to-cyan-500 rounded-2xl flex items-center justify-center">
+                            <i class="fas fa-hands-helping text-white text-4xl"></i>
+                        </div>
+                        <h3 class="text-3xl font-bold text-white mb-4">Google Agents4Impact Committee</h3>
+                        <p class="text-gray-300 text-base leading-relaxed">
+                            For believing in our mission and supporting projects that leverage AI for social good. 
+                            Their program empowers developers to create meaningful solutions that positively impact communities worldwide.
+                        </p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Footer Message -->
+            <div class="text-center">
+                <div class="glass-card rounded-2xl p-12 max-w-4xl mx-auto">
+                    <i class="fas fa-heart text-red-400 text-5xl mb-6"></i>
+                    <p class="text-2xl text-white font-semibold mb-4">
+                        Built with passion for healthier communities
+                    </p>
+                    <p class="text-gray-300 text-lg">
+                        This platform represents the collective effort of many individuals and organizations 
+                        committed to making environmental and health data accessible to everyone. Thank you to 
+                        all who contributed to making this vision a reality.
+                    </p>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- JavaScript for Stars -->
+    <script>
+        // Generate starry background with gentle drift
+        function createStars() {
+            const starsContainer = document.getElementById('stars');
+            const numberOfStars = 200;
+            
+            for (let i = 0; i < numberOfStars; i++) {
+                const star = document.createElement('div');
+                star.className = 'star';
+                
+                // Random position
+                star.style.left = `${Math.random() * 100}%`;
+                star.style.top = `${Math.random() * 100}%`;
+                
+                // Random size (1-3px)
+                const size = Math.random() * 2 + 1;
+                star.style.width = `${size}px`;
+                star.style.height = `${size}px`;
+                
+                // Random twinkle duration (1.5-5s for faster twinkling)
+                const twinkleDuration = Math.random() * 3.5 + 1.5;
+                star.style.setProperty('--twinkle-duration', `${twinkleDuration}s`);
+                
+                // Random drift duration (8-20s for more noticeable movement)
+                const driftDuration = Math.random() * 12 + 8;
+                star.style.setProperty('--drift-duration', `${driftDuration}s`);
+                
+                // Random animation delay
+                star.style.animationDelay = `${Math.random() * 5}s, ${Math.random() * 10}s`;
+                
+                starsContainer.appendChild(star);
+            }
+        }
+        
+        // Create shooting stars
+        function createShootingStar() {
+            const starsContainer = document.getElementById('stars');
+            const shootingStar = document.createElement('div');
+            shootingStar.className = 'shooting-star';
+            
+            // Random starting position in bottom-left area
+            const startX = Math.random() * 30; // 0-30% from left
+            const startY = 70 + Math.random() * 30; // 70-100% from top (bottom area)
+            
+            shootingStar.style.left = `${startX}%`;
+            shootingStar.style.top = `${startY}%`;
+            
+            // Random duration (1-2.5s)
+            const duration = Math.random() * 1.5 + 1;
+            shootingStar.style.setProperty('--duration', `${duration}s`);
+            
+            starsContainer.appendChild(shootingStar);
+            
+            // Remove after animation completes
+            setTimeout(() => {
+                shootingStar.remove();
+            }, duration * 1000);
+        }
+        
+        // Create shooting stars at random intervals
+        function startShootingStars() {
+            // Create first shooting star after 2-8 seconds
+            const firstDelay = Math.random() * 6000 + 2000;
+            setTimeout(() => {
+                createShootingStar();
+                // Continue creating shooting stars every 8-20 seconds
+                setInterval(() => {
+                    createShootingStar();
+                }, Math.random() * 12000 + 8000);
+            }, firstDelay);
+        }
+        
+        // Initialize
+        createStars();
+        startShootingStars();
+        
+        // Mobile menu toggle (if needed)
+        function toggleMobileMenu() {
+            // Add mobile menu logic if needed
+            console.log('Mobile menu toggle');
+        }
+    </script>
+</body>
+</html>
