@@ -1,33 +1,525 @@
 // Global variables
 let aqiChart = null;
 let currentState = '';
+let currentCity = '';
+let currentZip = '';
 let currentDays = 7;
+let locationData = {}; // Cache location data
+let autocomplete = null; // Google Places Autocomplete
+let geocoder = null; // Google Geocoder
 let lastVideoData = null; // Store video data for Twitter posting
 
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', function() {
     initializeApp();
     setupEventListeners();
+    initializeGoogleAutocomplete();
 });
+
+// Initialize Google Places Autocomplete
+function initializeGoogleAutocomplete() {
+    // Wait for Google Maps API to load
+    if (typeof google === 'undefined' || typeof google.maps === 'undefined') {
+        setTimeout(initializeGoogleAutocomplete, 100);
+        return;
+    }
+    
+    const input = document.getElementById('locationSearch');
+    if (!input) {
+        console.error('[Google API] locationSearch input not found');
+        return;
+    }
+    
+    // Initialize autocomplete for US cities, regions, and postal codes
+    autocomplete = new google.maps.places.Autocomplete(input, {
+        types: ['(regions)'],  // Includes cities, states, counties, and postal codes
+        componentRestrictions: { country: 'us' }
+    });
+    
+    // CRITICAL: Prevent autocomplete from interfering with typing
+    // Limit fields to reduce API costs and prevent focus issues
+    autocomplete.setFields(['address_components', 'geometry', 'name', 'formatted_address']);
+    
+    // Prevent autocomplete from selecting on Enter (let user keep typing)
+    google.maps.event.addDomListener(input, 'keydown', function(e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            e.stopPropagation();
+            // If dropdown is showing, don't submit
+            const pacContainer = document.querySelector('.pac-container');
+            if (pacContainer && pacContainer.offsetParent !== null) {
+                return false;
+            }
+        }
+    });
+    
+    // Initialize geocoder for reverse geocoding
+    geocoder = new google.maps.Geocoder();
+    
+    // Listen for place selection
+    autocomplete.addListener('place_changed', onPlaceSelected);
+    
+    console.log('[Google API] Autocomplete initialized with full location support');
+}
+
+// Handle place selection from autocomplete
+function onPlaceSelected() {
+    const place = autocomplete.getPlace();
+    
+    if (!place.geometry) {
+        alert('No details available for: ' + place.name);
+        return;
+    }
+    
+    console.log('[Google API] Place selected:', place);
+    
+    // Extract location details from place
+    let city = '';
+    let state = '';
+    let county = '';
+    let zipCode = '';
+    
+    // Parse address components
+    if (place.address_components) {
+        for (const component of place.address_components) {
+            const types = component.types;
+            
+            if (types.includes('locality')) {
+                city = component.long_name;
+            }
+            if (types.includes('administrative_area_level_2')) {
+                county = component.long_name;
+            }
+            if (types.includes('administrative_area_level_1')) {
+                state = component.long_name;
+            }
+            if (types.includes('postal_code')) {
+                zipCode = component.short_name;
+            }
+        }
+    }
+    
+    console.log(`[Location Search] City: ${city}, County: ${county}, State: ${state}, ZIP: ${zipCode}`);
+    
+    // Update current location
+    currentState = state;
+    currentCity = city;
+    currentZip = zipCode;
+    
+    // Store location data in browser storage for chat agent
+    const locationData = {
+        city: city,
+        state: state,
+        county: county,
+        zipCode: zipCode,
+        formattedAddress: place.formatted_address,
+        coordinates: {
+            lat: place.geometry.location.lat(),
+            lng: place.geometry.location.lng()
+        },
+        timestamp: new Date().toISOString()
+    };
+    
+    // Store in localStorage for persistence
+    localStorage.setItem('currentLocationData', JSON.stringify(locationData));
+    console.log('[Location Search] Location data stored for chat agent:', locationData);
+    
+    // Update dropdowns if applicable
+    if (state) {
+        document.getElementById('stateSelect').value = state || '';
+    }
+    
+    // Load data
+    loadAirQualityData();
+    loadHealthRecommendations();
+    loadWeatherData();  // NEW: Load weather
+    loadPollenData();   // NEW: Load pollen
+    
+    // Update heatmap and zoom to location
+    if (typeof loadHeatmapData === 'function') {
+        loadHeatmapData(state);
+    }
+    // Zoom to the specific searched location
+    if (place.geometry && place.geometry.location && typeof flyToCoordinates === 'function') {
+        const lat = place.geometry.location.lat();
+        const lng = place.geometry.location.lng();
+        console.log('[Location Search] Flying to coordinates:', lat, lng);
+        flyToCoordinates(lat, lng, zipCode ? 50000 : 200000); // Closer for ZIP, further for city
+    }
+    
+    // Show success message
+    const locationText = [city, county, state, zipCode].filter(Boolean).join(', ');
+    updateAPIStatus('success', 'Location Set', locationText);
+}
+
+// Auto-location using browser geolocation
+function getAutoLocation() {
+    const btn = document.getElementById('autoLocationBtn');
+    
+    if (!navigator.geolocation) {
+        alert('Geolocation is not supported by your browser');
+        return;
+    }
+    
+    // Check if Google is available
+    if (typeof google === 'undefined' || typeof google.maps === 'undefined') {
+        alert('Google Maps is still loading. Please wait a moment and try again.');
+        return;
+    }
+    
+    // Update button state
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i><span>Locating...</span>';
+    btn.disabled = true;
+    
+    updateAPIStatus('loading', 'Getting Location', 'Using device location...');
+    
+    navigator.geolocation.getCurrentPosition(
+        (position) => {
+            const lat = position.coords.latitude;
+            const lon = position.coords.longitude;
+            
+            console.log(`[Auto-location] Coordinates: ${lat}, ${lon}`);
+            
+            // Ensure geocoder is initialized
+            if (!geocoder) {
+                geocoder = new google.maps.Geocoder();
+            }
+            
+            geocoder.geocode(
+                { location: { lat, lng: lon } },
+                (results, status) => {
+                    if (status === 'OK' && results[0]) {
+                        console.log('[Geocoding] Result:', results[0]);
+                        
+                        // Extract city, state, ZIP
+                        let city = '';
+                        let state = '';
+                        let zipCode = '';
+                        
+                        for (const component of results[0].address_components) {
+                            const types = component.types;
+                            
+                            if (types.includes('locality')) {
+                                city = component.long_name;
+                            }
+                            if (types.includes('administrative_area_level_1')) {
+                                state = component.long_name;
+                            }
+                            if (types.includes('postal_code')) {
+                                zipCode = component.short_name;
+                            }
+                        }
+                        
+                        console.log(`[Auto-location] Detected: ${city}, ${state} ${zipCode}`);
+                        
+                        if (zipCode) {
+                            currentZip = zipCode;
+                            currentState = state;
+                            currentCity = city;
+                            
+                            // Store location data in browser storage for chat agent
+                            const locationData = {
+                                city: city,
+                                state: state,
+                                county: '', // Auto-location doesn't provide county
+                                zipCode: zipCode,
+                                formattedAddress: results[0].formatted_address,
+                                coordinates: {
+                                    lat: position.coords.latitude,
+                                    lng: position.coords.longitude
+                                },
+                                timestamp: new Date().toISOString(),
+                                source: 'auto-location'
+                            };
+                            
+                            // Store in localStorage for persistence
+                            localStorage.setItem('currentLocationData', JSON.stringify(locationData));
+                            console.log('[Auto-location] Location data stored for chat agent:', locationData);
+                            
+                            // Update search box
+                            document.getElementById('locationSearch').value = `${city}, ${state} ${zipCode}`;
+                            
+                            // Update dropdowns
+                            const stateSelect = document.getElementById('stateSelect');
+                            if (stateSelect) {
+                                stateSelect.value = state || '';
+                            }
+                            
+                            // Load ALL data
+                            loadAirQualityData();
+                            loadHealthRecommendations();
+                            loadWeatherData();
+                            loadPollenData();
+                            
+                            // Update heatmap - fly to specific location instead of just state
+                            if (typeof loadHeatmapData === 'function') {
+                                loadHeatmapData(state);
+                            }
+                            // Zoom to specific coordinates (city level)
+                            if (typeof flyToCoordinates === 'function') {
+                                flyToCoordinates(position.coords.latitude, position.coords.longitude, 50000); // 50km height for city view
+                            }
+                            
+                            updateAPIStatus('success', 'Location Detected', `${city}, ${state} (${zipCode})`);
+                        } else {
+                            alert('Could not determine ZIP code from your location. Please search manually.');
+                            updateAPIStatus('error', 'Location Error', 'ZIP code not found');
+                        }
+                    } else {
+                        console.error('[Geocoding] Failed:', status);
+                        alert('Could not determine your location. Error: ' + status);
+                        updateAPIStatus('error', 'Geocoding Failed', status);
+                    }
+                    
+                    // Reset button
+                    btn.innerHTML = '<i class="fas fa-location-arrow"></i><span>Use My Location</span>';
+                    btn.disabled = false;
+                }
+            );
+        },
+        (error) => {
+            console.error('[Auto-location] Error:', error);
+            
+            let errorMsg = 'Unknown error';
+            switch(error.code) {
+                case error.PERMISSION_DENIED:
+                    errorMsg = 'Location permission denied. Please enable location access in your browser settings.';
+                    break;
+                case error.POSITION_UNAVAILABLE:
+                    errorMsg = 'Location information unavailable. Please check your device settings.';
+                    break;
+                case error.TIMEOUT:
+                    errorMsg = 'Location request timed out. Please try again.';
+                    break;
+            }
+            
+            alert(errorMsg);
+            updateAPIStatus('error', 'Location Error', errorMsg);
+            
+            // Reset button
+            btn.innerHTML = '<i class="fas fa-location-arrow"></i><span>Use My Location</span>';
+            btn.disabled = false;
+        },
+        {
+            enableHighAccuracy: true,
+            timeout: 10000,
+            maximumAge: 0
+        }
+    );
+}
 
 // Initialize the application
 function initializeApp() {
+    // Load stored location data if available
+    loadStoredLocationData();
+    
+    // Set default to California if no stored location
+    if (!currentState) {
+        currentState = 'California';
+    }
+    
+    // Set default date range (2024 to 2025)
+    setDefaultDateRange();
+    
+    // Update date range display
+    updateDateRangeDisplay();
+    
+    updateAPIStatus('loading', 'Initializing...', 'Loading location data');
+    
+    // Load cities for current state on startup
+    onStateChange();
+    
     loadAirQualityData();
     loadHealthRecommendations();
+    
+    // Initialize pollutant charts immediately on page load (even without location)
+    if (typeof initializePollutantCharts === 'function') {
+        console.log('[APP] Initializing pollutant charts on page load');
+        // Call with null/empty to show empty charts
+        initializePollutantCharts(null, null, null);
+    }
+}
+
+// Set default date range (2024 to 2025)
+function setDefaultDateRange() {
+    const startDateInput = document.getElementById('startDate');
+    const endDateInput = document.getElementById('endDate');
+    
+    if (startDateInput && endDateInput) {
+        // Set default dates to 2024-2025
+        startDateInput.value = '2024-01-01';
+        endDateInput.value = '2025-12-31';
+        
+        console.log('[APP] Default date range set: 2024-01-01 to 2025-12-31');
+    }
+}
+
+// Load stored location data from localStorage
+function loadStoredLocationData() {
+    const storedLocationData = localStorage.getItem('currentLocationData');
+    
+    if (storedLocationData) {
+        try {
+            const locationData = JSON.parse(storedLocationData);
+            
+            // Check if location data is recent (within 24 hours)
+            const dataAge = Date.now() - new Date(locationData.timestamp).getTime();
+            const maxAge = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
+            
+            if (dataAge < maxAge) {
+                // Restore location data
+                currentState = locationData.state || '';
+                currentCity = locationData.city || '';
+                currentZip = locationData.zipCode || '';
+                
+                // Update search box if it exists
+                const searchInput = document.getElementById('locationSearch');
+                if (searchInput && locationData.formattedAddress) {
+                    searchInput.value = locationData.formattedAddress;
+                }
+                
+                console.log('[APP] Restored location data:', locationData);
+                updateAPIStatus('success', 'Location Restored', `${locationData.city || ''}, ${locationData.state || ''}`);
+            } else {
+                console.log('[APP] Stored location data is too old, clearing');
+                localStorage.removeItem('currentLocationData');
+            }
+        } catch (e) {
+            console.warn('[APP] Failed to parse stored location data:', e);
+            localStorage.removeItem('currentLocationData');
+        }
+    }
+}
+
+// Handle state selection change
+async function onStateChange() {
+    const stateSelect = document.getElementById('stateSelect');
+    const citySelect = document.getElementById('citySelect');
+    const countyZipSelect = document.getElementById('countyZipSelect');
+    
+    const selectedState = stateSelect.value;
+    
+    // Reset dependent dropdowns
+    citySelect.innerHTML = '<option value="">Select City</option>';
+    countyZipSelect.innerHTML = '<option value="">County/ZIP Code</option>';
+    citySelect.disabled = true;
+    countyZipSelect.disabled = true;
+    
+    if (!selectedState) {
+        return;
+    }
+    
+    currentState = selectedState;
+    currentCity = '';
+    currentZip = '';
+    
+    try {
+        // Fetch cities for selected state
+        const response = await fetch(`/api/locations?type=cities&state=${encodeURIComponent(selectedState)}`);
+        const data = await response.json();
+        
+        console.log('Cities API response:', data);
+        
+        if (data.success && data.data) {
+            // Store state code
+            locationData.stateCode = data.state_code;
+            locationData.cities = data.data;
+            
+            // Populate city dropdown
+            data.data.forEach(city => {
+                const option = document.createElement('option');
+                option.value = city.name;
+                option.textContent = `${city.name} (${city.zipcodes_count} ZIPs)`;
+                citySelect.appendChild(option);
+            });
+            
+            citySelect.disabled = false;
+            
+            console.log(`Loaded ${data.data.length} cities for ${selectedState} (${data.state_code})`);
+        } else {
+            console.error('Failed to load cities:', data);
+            alert(`Error loading cities: ${data.error || 'Unknown error'}`);
+        }
+    } catch (error) {
+        console.error('Error loading cities:', error);
+        alert(`Network error loading cities: ${error.message}`);
+    }
+}
+
+// Handle city selection change
+async function onCityChange() {
+    const citySelect = document.getElementById('citySelect');
+    const countyZipSelect = document.getElementById('countyZipSelect');
+    
+    const selectedCity = citySelect.value;
+    
+    // Reset county/ZIP dropdown
+    countyZipSelect.innerHTML = '<option value="">County/ZIP Code</option>';
+    countyZipSelect.disabled = true;
+    
+    if (!selectedCity) {
+        currentCity = '';
+        currentZip = '';
+        return;
+    }
+    
+    currentCity = selectedCity;
+    currentZip = '';
+    
+    try {
+        // Fetch ZIP codes and counties for selected city
+        const response = await fetch(`/api/locations?type=zipcodes&state=${encodeURIComponent(currentState)}&city=${encodeURIComponent(selectedCity)}`);
+        const data = await response.json();
+        
+        console.log('ZIP/County API response:', data);
+        
+        if (data.success) {
+            locationData.zipcodes = data.zipcodes || [];
+            locationData.counties = data.counties || [];
+            
+            console.log(`Received ${locationData.zipcodes.length} ZIPs and ${locationData.counties.length} counties`);
+            
+            // Add counties as optgroup
+            if (locationData.counties.length > 0) {
+                const countyGroup = document.createElement('optgroup');
+                countyGroup.label = 'Counties';
+                locationData.counties.forEach(county => {
+                    const option = document.createElement('option');
+                    option.value = `county:${county.name}`;
+                    option.textContent = `${county.name} County`;
+                    countyGroup.appendChild(option);
+                });
+                countyZipSelect.appendChild(countyGroup);
+            }
+            
+            // Add ZIP codes as optgroup
+            if (locationData.zipcodes.length > 0) {
+                const zipGroup = document.createElement('optgroup');
+                zipGroup.label = 'ZIP Codes';
+                locationData.zipcodes.forEach(zip => {
+                    const option = document.createElement('option');
+                    option.value = `zip:${zip.zipcode}`;
+                    option.textContent = `${zip.zipcode} - ${zip.city}`;
+                    zipGroup.appendChild(option);
+                });
+                countyZipSelect.appendChild(zipGroup);
+            }
+            
+            countyZipSelect.disabled = false;
+            
+            console.log(`Loaded ${locationData.zipcodes.length} ZIP codes and ${locationData.counties.length} counties for ${selectedCity}`);
+        } else {
+            console.error('Failed to load ZIP/counties:', data);
+            alert(`Error loading ZIP codes: ${data.error || 'Unknown error'}`);
+        }
+    } catch (error) {
+        console.error('Error loading ZIP codes/counties:', error);
+        alert(`Network error loading ZIP codes: ${error.message}`);
+    }
 }
 
 // Setup event listeners
 function setupEventListeners() {
-    // State selector
-    const stateSelect = document.getElementById('stateSelect');
-    if (stateSelect) {
-        stateSelect.addEventListener('change', function(e) {
-            currentState = e.target.value;
-            loadAirQualityData();
-            loadHealthRecommendations();
-        });
-    }
-
     // Enter key for AI chat
     const questionInput = document.getElementById('questionInput');
     if (questionInput) {
@@ -37,34 +529,371 @@ function setupEventListeners() {
             }
         });
     }
+    
+    // Date picker change listeners
+    const startDateInput = document.getElementById('startDate');
+    const endDateInput = document.getElementById('endDate');
+    
+    if (startDateInput) {
+        startDateInput.addEventListener('change', function() {
+            console.log('[Date Picker] Start date changed:', this.value);
+            updateDateRangeDisplay();
+            // Refresh charts if we have a location
+            if (currentZip || (currentCity && currentState)) {
+                console.log('[Date Picker] Refreshing charts with new date range');
+                initializePollutantCharts(currentZip, currentCity, currentState);
+            }
+        });
+    }
+    
+    if (endDateInput) {
+        endDateInput.addEventListener('change', function() {
+            console.log('[Date Picker] End date changed:', this.value);
+            updateDateRangeDisplay();
+            // Refresh charts if we have a location
+            if (currentZip || (currentCity && currentState)) {
+                console.log('[Date Picker] Refreshing charts with new date range');
+                initializePollutantCharts(currentZip, currentCity, currentState);
+            }
+        });
+    }
+}
+
+// Apply location filter
+function applyLocationFilter() {
+    const stateSelect = document.getElementById('stateSelect');
+    const citySelect = document.getElementById('citySelect');
+    const countyZipSelect = document.getElementById('countyZipSelect');
+    
+    if (!stateSelect.value) {
+        alert('Please select a state');
+        return;
+    }
+    
+    currentState = stateSelect.value;
+    currentCity = citySelect.value || '';
+    
+    // Parse county/ZIP selection
+    const countyZipValue = countyZipSelect.value;
+    if (countyZipValue) {
+        if (countyZipValue.startsWith('zip:')) {
+            currentZip = countyZipValue.replace('zip:', '');
+        } else {
+            currentZip = ''; // County selected, backend will handle
+        }
+    } else {
+        currentZip = '';
+    }
+    
+    // Build location display text
+    let locationText = currentState;
+    if (currentCity) {
+        locationText = `${currentCity}, ${locationData.stateCode || currentState}`;
+    }
+    if (currentZip) {
+        locationText += ` (${currentZip})`;
+    }
+    
+    updateLocationDisplay(locationText);
+    
+    console.log('Applying filter - State:', currentState, 'City:', currentCity, 'ZIP:', currentZip);
+    loadAirQualityData();
+    loadHealthRecommendations();
+    
+    // Update heatmap - zoom to state level
+    if (typeof loadHeatmapData === 'function') {
+        loadHeatmapData(currentState);
+    }
+    // If we have city data, try to get coordinates and zoom closer
+    if (currentCity && currentState && typeof geocoder !== 'undefined') {
+        const address = currentCity + ', ' + currentState;
+        geocoder.geocode({ address: address }, (results, status) => {
+            if (status === 'OK' && results[0] && typeof flyToCoordinates === 'function') {
+                const location = results[0].geometry.location;
+                flyToCoordinates(location.lat(), location.lng(), currentZip ? 50000 : 200000);
+            }
+        });
+    }
+}
+
+// Clear location filter
+function clearLocationFilter() {
+    const stateSelect = document.getElementById('stateSelect');
+    const citySelect = document.getElementById('citySelect');
+    const countyZipSelect = document.getElementById('countyZipSelect');
+    
+    stateSelect.value = 'California';
+    citySelect.innerHTML = '<option value="">Select City</option>';
+    countyZipSelect.innerHTML = '<option value="">County/ZIP Code</option>';
+    citySelect.disabled = true;
+    countyZipSelect.disabled = true;
+    
+    currentState = 'California';
+    currentCity = '';
+    currentZip = '';
+    
+    // Reload cities for California
+    onStateChange();
+    
+    updateLocationDisplay('California');
+    loadAirQualityData();
+    loadHealthRecommendations();
+    
+    // Update heatmap if it exists
+    if (typeof loadHeatmapData === 'function') {
+        loadHeatmapData('California');
+    }
+}
+
+// Update location display text
+function updateLocationDisplay(location) {
+    const locationText = document.getElementById('currentLocationText');
+    if (locationText) {
+        locationText.textContent = location;
+    }
+    
+    // Update date range display
+    updateDateRangeDisplay();
+}
+
+// Update date range display
+function updateDateRangeDisplay() {
+    const startDateInput = document.getElementById('startDate');
+    const endDateInput = document.getElementById('endDate');
+    const dateRangeText = document.getElementById('dateRangeText');
+    
+    if (startDateInput && endDateInput && dateRangeText) {
+        const startDate = startDateInput.value;
+        const endDate = endDateInput.value;
+        
+        if (startDate && endDate) {
+            // Format dates for display
+            const startFormatted = new Date(startDate).toLocaleDateString('en-US', { 
+                year: 'numeric', 
+                month: 'short' 
+            });
+            const endFormatted = new Date(endDate).toLocaleDateString('en-US', { 
+                year: 'numeric', 
+                month: 'short' 
+            });
+            
+            dateRangeText.textContent = `(${startFormatted} - ${endFormatted})`;
+        } else {
+            dateRangeText.textContent = '';
+        }
+    }
+}
+
+// Update API status indicator
+function updateAPIStatus(status, message, details = '') {
+    const statusIndicator = document.getElementById('statusIndicator');
+    const statusText = document.getElementById('statusText');
+    const statusInfo = document.getElementById('statusInfo');
+    const apiStatus = document.getElementById('apiStatus');
+    
+    if (!statusIndicator || !statusText) return;
+    
+    const timestamp = new Date().toLocaleString('en-US', { 
+        month: 'short', 
+        day: 'numeric', 
+        hour: '2-digit', 
+        minute: '2-digit',
+        second: '2-digit'
+    });
+    
+    // RAG colors: Red/Amber/Green
+    const statusConfig = {
+        loading: {
+            color: '#fbbf24', // Amber
+            bg: '#fef3c7',
+            border: '#fbbf24',
+            text: 'Loading...',
+            icon: 'fa-spinner fa-spin'
+        },
+        success: {
+            color: '#10b981', // Green
+            bg: '#d1fae5',
+            border: '#10b981',
+            text: 'Connected',
+            icon: 'fa-check-circle'
+        },
+        error: {
+            color: '#ef4444', // Red
+            bg: '#fee2e2',
+            border: '#ef4444',
+            text: 'Error',
+            icon: 'fa-exclamation-circle'
+        },
+        warning: {
+            color: '#f97316', // Amber/Orange
+            bg: '#ffedd5',
+            border: '#f97316',
+            text: 'Warning',
+            icon: 'fa-exclamation-triangle'
+        }
+    };
+    
+    const config = statusConfig[status] || statusConfig.error;
+    
+    // Update indicator dot
+    statusIndicator.style.backgroundColor = config.color;
+    statusIndicator.className = statusIndicator.className.replace(/fa-\S+/g, '');
+    
+    // Update text
+    statusText.textContent = config.text;
+    statusText.style.color = config.color;
+    
+    // Update container
+    apiStatus.style.backgroundColor = config.bg;
+    apiStatus.style.borderColor = config.border;
+    
+    // Update info icon with tooltip
+    if (statusInfo) {
+        statusInfo.className = `fas ${config.icon} cursor-help`;
+        statusInfo.style.color = config.color;
+        
+        const tooltipText = details 
+            ? `${message}\n${details}\nLast updated: ${timestamp}`
+            : `${message}\nLast updated: ${timestamp}`;
+        
+        statusInfo.title = tooltipText;
+        
+        // Add hover effect for more info
+        statusInfo.onmouseover = function() {
+            const tooltip = document.createElement('div');
+            tooltip.id = 'apiStatusTooltip';
+            tooltip.className = 'absolute z-50 bg-gray-900 text-white text-xs rounded-lg py-2 px-3 shadow-lg max-w-xs';
+            tooltip.style.right = '0';
+            tooltip.style.top = '100%';
+            tooltip.style.marginTop = '8px';
+            tooltip.innerHTML = tooltipText.replace(/\n/g, '<br>');
+            
+            apiStatus.style.position = 'relative';
+            
+            // Remove existing tooltip
+            const existing = document.getElementById('apiStatusTooltip');
+            if (existing) existing.remove();
+            
+            apiStatus.appendChild(tooltip);
+        };
+        
+        statusInfo.onmouseout = function() {
+            const tooltip = document.getElementById('apiStatusTooltip');
+            if (tooltip) tooltip.remove();
+        };
+    }
 }
 
 // Load air quality data
 async function loadAirQualityData() {
     showLoading();
+    updateAPIStatus('loading', 'Fetching EPA data...', `Requesting data for: ${currentZip || currentState || 'Default location'}`);
+    
     try {
         const params = new URLSearchParams({
             days: currentDays
         });
         
-        if (currentState) {
+        // Add date range parameters
+        const startDateInput = document.getElementById('startDate');
+        const endDateInput = document.getElementById('endDate');
+        
+        if (startDateInput && startDateInput.value) {
+            params.append('start_date', startDateInput.value);
+            console.log('Using start date:', startDateInput.value);
+        }
+        
+        if (endDateInput && endDateInput.value) {
+            params.append('end_date', endDateInput.value);
+            console.log('Using end date:', endDateInput.value);
+        }
+        
+        if (currentZip) {
+            params.append('zipCode', currentZip);
+            console.log('Using ZIP code:', currentZip);
+        } else if (currentState) {
             params.append('state', currentState);
+            console.log('Using state:', currentState);
         }
 
+        console.log('Fetching air quality data with params:', params.toString());
+        const startTime = Date.now();
         const response = await fetch(`/api/air-quality?${params}`);
         const data = await response.json();
+        const responseTime = Date.now() - startTime;
+        
+        console.log('API Response:', data);
 
         if (data.success) {
+            console.log('Data received:', data.data ? data.data.length : 0, 'records');
+            
+            const recordCount = data.data ? data.data.length : 0;
+            updateAPIStatus(
+                'success', 
+                'EPA API data loaded successfully', 
+                `${recordCount} records retrieved in ${responseTime}ms`
+            );
+            
+            // Update current AQI display
+            if (data.data && data.data.length > 0) {
+                const latestData = data.data[data.data.length - 1];
+                updateCurrentAQI(latestData.aqi, latestData.location || (currentZip || currentState));
+            }
+            
             updateStatistics(data.statistics);
             updateDataTable(data.data);
             updateChart(data.data);
         } else {
-            console.error('Failed to load air quality data');
+            console.error('Failed to load air quality data:', data.error);
+            updateAPIStatus('error', 'Failed to load EPA data', data.error || 'Unknown error');
+            showError(data.error || 'Failed to load data');
         }
     } catch (error) {
         console.error('Error loading air quality data:', error);
+        updateAPIStatus('error', 'Network error', error.message || 'Could not connect to EPA API');
+        showError('Network error - please try again');
     } finally {
         hideLoading();
+    }
+}
+
+// Update current AQI display
+function updateCurrentAQI(aqi, location) {
+    const currentAqiEl = document.getElementById('currentAqi');
+    const aqiLevelEl = document.getElementById('aqiLevel');
+    
+    if (currentAqiEl) {
+        currentAqiEl.textContent = aqi || '--';
+    }
+    
+    if (aqiLevelEl && aqi) {
+        const level = getAQILevel(aqi);
+        aqiLevelEl.textContent = level.text;
+        aqiLevelEl.style.color = level.color;
+    }
+}
+
+// Get AQI level details
+function getAQILevel(aqi) {
+    if (aqi <= 50) return { text: 'Good', color: '#10b981' };
+    if (aqi <= 100) return { text: 'Moderate', color: '#fbbf24' };
+    if (aqi <= 150) return { text: 'Unhealthy for Sensitive Groups', color: '#f97316' };
+    if (aqi <= 200) return { text: 'Unhealthy', color: '#ef4444' };
+    if (aqi <= 300) return { text: 'Very Unhealthy', color: '#a855f7' };
+    return { text: 'Hazardous', color: '#7f1d1d' };
+}
+
+// Show error message
+function showError(message) {
+    const currentAqiEl = document.getElementById('currentAqi');
+    const aqiLevelEl = document.getElementById('aqiLevel');
+    
+    if (currentAqiEl) {
+        currentAqiEl.textContent = '--';
+    }
+    if (aqiLevelEl) {
+        aqiLevelEl.textContent = message;
+        aqiLevelEl.style.color = '#ef4444';
     }
 }
 
@@ -99,6 +928,18 @@ async function loadHealthRecommendations() {
         const params = new URLSearchParams();
         if (currentState) {
             params.append('state', currentState);
+        }
+        
+        // Add date range parameters
+        const startDateInput = document.getElementById('startDate');
+        const endDateInput = document.getElementById('endDate');
+        
+        if (startDateInput && startDateInput.value) {
+            params.append('start_date', startDateInput.value);
+        }
+        
+        if (endDateInput && endDateInput.value) {
+            params.append('end_date', endDateInput.value);
         }
 
         const response = await fetch(`/api/health-recommendations?${params}`);
@@ -176,45 +1017,82 @@ function getAQIBadgeClass(aqi) {
 
 // Update chart with modern styling
 function updateChart(data) {
-    if (!data || data.length === 0) return;
+    if (!data || data.length === 0) {
+        console.log('No data available for chart');
+        return;
+    }
 
     // Aggregate data by date
     const dateAqiMap = {};
     data.forEach(row => {
-        const date = formatDate(row.date);
+        const date = row.date; // Use full date for proper sorting
         if (!dateAqiMap[date]) {
             dateAqiMap[date] = [];
         }
         dateAqiMap[date].push(row.aqi);
     });
 
-    // Calculate average AQI per date
+    // Calculate average AQI per date and sort by date
     const chartData = Object.keys(dateAqiMap)
-        .sort()
-        .slice(-currentDays)
+        .sort((a, b) => new Date(a) - new Date(b)) // Sort by actual date
+        .slice(-currentDays) // Take last N days
         .map(date => ({
             date: date,
+            dateFormatted: formatDate(date),
             aqi: average(dateAqiMap[date])
         }));
 
+    console.log('Chart data:', chartData);
+
     const ctx = document.getElementById('aqiChart');
-    if (!ctx) return;
+    if (!ctx) {
+        console.error('Chart canvas not found');
+        return;
+    }
 
     // Destroy existing chart
     if (aqiChart) {
         aqiChart.destroy();
     }
 
-    // Create gradient
+    // Function to get color based on AQI value
+    const getAQIColor = (aqi) => {
+        if (aqi <= 50) return '#00E400'; // Good - Green
+        if (aqi <= 100) return '#FFFF00'; // Moderate - Yellow
+        if (aqi <= 150) return '#FF7E00'; // Unhealthy for Sensitive - Orange
+        if (aqi <= 200) return '#FF0000'; // Unhealthy - Red
+        if (aqi <= 300) return '#8F3F97'; // Very Unhealthy - Purple
+        return '#7E0023'; // Hazardous - Maroon
+    };
+
+    // Function to get AQI level text
+    const getAQILevel = (aqi) => {
+        if (aqi <= 50) return 'Good';
+        if (aqi <= 100) return 'Moderate';
+        if (aqi <= 150) return 'Unhealthy for Sensitive Groups';
+        if (aqi <= 200) return 'Unhealthy';
+        if (aqi <= 300) return 'Very Unhealthy';
+        return 'Hazardous';
+    };
+
+    // Create color array for each point
+    const pointColors = chartData.map(d => getAQIColor(d.aqi));
+    const borderColors = chartData.map(d => getAQIColor(d.aqi));
+
+    // Create gradient background
     const gradient = ctx.getContext('2d').createLinearGradient(0, 0, 0, 400);
-    gradient.addColorStop(0, 'rgba(16, 185, 129, 0.4)');
+    gradient.addColorStop(0, 'rgba(16, 185, 129, 0.3)');
     gradient.addColorStop(1, 'rgba(16, 185, 129, 0.0)');
 
-    // Create new chart with modern styling
+    // Calculate max for Y axis
+    const maxAqi = Math.max(...chartData.map(d => d.aqi), 100);
+    const yAxisMax = Math.ceil(maxAqi / 50) * 50 + 50;
+
+    // Create new chart with zoom and better styling
     aqiChart = new Chart(ctx, {
         type: 'line',
         data: {
-            labels: chartData.map(d => d.date),
+            labels: chartData.map(d => d.dateFormatted),
             datasets: [{
                 label: 'Average AQI',
                 data: chartData.map(d => d.aqi),
@@ -223,82 +1101,190 @@ function updateChart(data) {
                 borderWidth: 3,
                 fill: true,
                 tension: 0.4,
-                pointRadius: 6,
-                pointHoverRadius: 8,
-                pointBackgroundColor: '#10b981',
+                pointRadius: 8,
+                pointHoverRadius: 12,
+                pointBackgroundColor: pointColors,
                 pointBorderColor: '#fff',
                 pointBorderWidth: 3,
-                pointHoverBackgroundColor: '#10b981',
+                pointHoverBackgroundColor: pointColors,
                 pointHoverBorderColor: '#fff',
-                pointHoverBorderWidth: 3
+                pointHoverBorderWidth: 4,
+                segment: {
+                    borderColor: (ctx) => {
+                        const value = ctx.p1.parsed.y;
+                        return getAQIColor(value);
+                    }
+                }
             }]
         },
         options: {
             responsive: true,
-            maintainAspectRatio: true,
+            maintainAspectRatio: false,
             plugins: {
                 legend: {
-                    display: false
+                    display: true,
+                    position: 'top',
+                    labels: {
+                        font: {
+                            size: 16,
+                            weight: 'bold',
+                            family: "'Inter', sans-serif"
+                        },
+                        color: '#1a3a52',
+                        usePointStyle: true,
+                        padding: 20,
+                        boxWidth: 15,
+                        boxHeight: 15
+                    }
+                },
+                title: {
+                    display: true,
+                    text: `Air Quality Trend (${currentDays} Days)`,
+                    font: {
+                        size: 22,
+                        weight: 'bold',
+                        family: "'Space Grotesk', sans-serif"
+                    },
+                    color: '#1a3a52',
+                    padding: {
+                        top: 15,
+                        bottom: 25
+                    }
                 },
                 tooltip: {
+                    enabled: true,
                     backgroundColor: 'rgba(26, 58, 82, 0.95)',
-                    padding: 16,
+                    padding: 20,
                     titleFont: {
-                        size: 16,
+                        size: 18,
                         weight: 'bold',
                         family: "'Inter', sans-serif"
                     },
                     bodyFont: {
-                        size: 14,
+                        size: 16,
                         family: "'Inter', sans-serif"
                     },
                     borderColor: '#10b981',
-                    borderWidth: 2,
-                    cornerRadius: 12,
-                    displayColors: false,
+                    borderWidth: 3,
+                    cornerRadius: 15,
+                    displayColors: true,
                     callbacks: {
+                        title: function(context) {
+                            return context[0].label;
+                        },
                         label: function(context) {
-                            return 'AQI: ' + Math.round(context.parsed.y);
+                            const aqi = Math.round(context.parsed.y);
+                            const level = getAQILevel(aqi);
+                            return [
+                                `AQI: ${aqi}`,
+                                `Level: ${level}`
+                            ];
+                        },
+                        labelColor: function(context) {
+                            return {
+                                borderColor: getAQIColor(context.parsed.y),
+                                backgroundColor: getAQIColor(context.parsed.y),
+                                borderWidth: 2,
+                                borderRadius: 5
+                            };
                         }
+                    }
+                },
+                zoom: {
+                    pan: {
+                        enabled: true,
+                        mode: 'x',
+                        modifierKey: 'ctrl'
+                    },
+                    zoom: {
+                        wheel: {
+                            enabled: true,
+                            speed: 0.1
+                        },
+                        pinch: {
+                            enabled: true
+                        },
+                        mode: 'x'
                     }
                 }
             },
             scales: {
                 y: {
                     beginAtZero: true,
+                    max: yAxisMax,
                     grid: {
-                        color: 'rgba(0, 0, 0, 0.05)',
-                        drawBorder: false
+                        color: 'rgba(0, 0, 0, 0.08)',
+                        drawBorder: false,
+                        lineWidth: 1
                     },
                     ticks: {
                         font: {
-                            size: 12,
+                            size: 14,
                             family: "'Inter', sans-serif",
-                            weight: '500'
+                            weight: '600'
                         },
-                        color: '#6b7280'
+                        color: '#374151',
+                        stepSize: 25,
+                        padding: 12,
+                        callback: function(value) {
+                            return value;
+                        }
+                    },
+                    title: {
+                        display: true,
+                        text: 'Air Quality Index (AQI)',
+                        font: {
+                            size: 16,
+                            weight: 'bold',
+                            family: "'Inter', sans-serif"
+                        },
+                        color: '#1a3a52',
+                        padding: {
+                            top: 5,
+                            bottom: 15
+                        }
                     },
                     border: {
-                        display: false
+                        display: true,
+                        color: '#d1d5db',
+                        width: 2
                     }
                 },
                 x: {
                     grid: {
-                        display: false,
+                        display: true,
+                        color: 'rgba(0, 0, 0, 0.04)',
                         drawBorder: false
                     },
                     ticks: {
                         font: {
-                            size: 12,
+                            size: 13,
                             family: "'Inter', sans-serif",
-                            weight: '500'
+                            weight: '600'
                         },
-                        color: '#6b7280',
+                        color: '#374151',
                         maxRotation: 45,
-                        minRotation: 45
+                        minRotation: 0,
+                        padding: 10
+                    },
+                    title: {
+                        display: true,
+                        text: 'Date',
+                        font: {
+                            size: 16,
+                            weight: 'bold',
+                            family: "'Inter', sans-serif"
+                        },
+                        color: '#1a3a52',
+                        padding: {
+                            top: 15,
+                            bottom: 5
+                        }
                     },
                     border: {
-                        display: false
+                        display: true,
+                        color: '#d1d5db',
+                        width: 2
                     }
                 }
             },
@@ -308,6 +1294,8 @@ function updateChart(data) {
             }
         }
     });
+
+    console.log('Chart created successfully');
 }
 
 // Ask AI function
@@ -335,6 +1323,19 @@ async function askAI() {
     const loadingMsg = addMessage('Thinking...', 'bot');
     
     try {
+        // Get stored location data for chat agent
+        const storedLocationData = localStorage.getItem('currentLocationData');
+        let locationContext = null;
+        
+        if (storedLocationData) {
+            try {
+                locationContext = JSON.parse(storedLocationData);
+                console.log('[Chat] Using stored location data:', locationContext);
+            } catch (e) {
+                console.warn('[Chat] Failed to parse stored location data:', e);
+            }
+        }
+        
         // Try ADK agent first
         const response = await fetch('/api/agent-chat', {
             method: 'POST',
@@ -344,7 +1345,8 @@ async function askAI() {
             body: JSON.stringify({
                 question: question,
                 state: currentState,
-                days: currentDays
+                days: currentDays,
+                location_context: locationContext
             })
         });
 
@@ -356,7 +1358,18 @@ async function askAI() {
         if (data.success) {
             // Add agent badge if available
             const agentBadge = data.agent ? `<div class="text-xs text-gray-500 mt-1">via ${data.agent}</div>` : '';
-            addMessage(data.response + agentBadge, 'bot');
+            
+            // Add location context indicator if location data is available
+            let locationIndicator = '';
+            if (locationContext) {
+                const locationText = [locationContext.city, locationContext.state, locationContext.zipCode].filter(Boolean).join(', ');
+                locationIndicator = `<div class="text-xs text-emerald-600 mt-1 flex items-center">
+                    <i class="fas fa-map-marker-alt mr-1"></i>
+                    Using location: ${locationText}
+                </div>`;
+            }
+            
+            addMessage(data.response + agentBadge + locationIndicator, 'bot');
             
             // If video generation started, begin polling
             if (data.task_id) {
@@ -575,7 +1588,27 @@ function addMessage(text, type) {
 // Change days function
 function changeDays(days) {
     currentDays = days;
+    
+    // Update button styles
+    document.querySelectorAll('[id^="btn"]').forEach(btn => {
+        btn.classList.remove('bg-navy-600', 'text-white');
+        btn.classList.add('bg-gray-200', 'text-navy-700');
+    });
+    
+    const activeBtn = document.getElementById(`btn${days}d`);
+    if (activeBtn) {
+        activeBtn.classList.remove('bg-gray-200', 'text-navy-700');
+        activeBtn.classList.add('bg-navy-600', 'text-white');
+    }
+    
     loadAirQualityData();
+}
+
+// Reset chart zoom
+function resetChartZoom() {
+    if (aqiChart) {
+        aqiChart.resetZoom();
+    }
 }
 
 // Utility functions
@@ -618,4 +1651,212 @@ function hideLoading() {
 
 function smoothScrollToSections() {
     // Handled by animations.js
+}
+
+// Load weather data
+async function loadWeatherData() {
+    if (!currentZip && !currentCity) {
+        console.log('[Weather] No location set - ZIP:', currentZip, 'City:', currentCity);
+        return;
+    }
+    
+    console.log('[Weather] Loading data for ZIP:', currentZip, 'City:', currentCity, 'State:', currentState);
+    
+    try {
+        const params = new URLSearchParams();
+        if (currentZip) params.append('zipCode', currentZip);
+        else if (currentCity && currentState) {
+            params.append('city', currentCity);
+            params.append('state', currentState);
+        }
+        
+        // Add date range parameters
+        const startDateInput = document.getElementById('startDate');
+        const endDateInput = document.getElementById('endDate');
+        
+        if (startDateInput && startDateInput.value) {
+            params.append('start_date', startDateInput.value);
+        }
+        
+        if (endDateInput && endDateInput.value) {
+            params.append('end_date', endDateInput.value);
+        }
+        
+        const url = `/api/weather?${params.toString()}`;
+        console.log('[Weather] Fetching from:', url);
+        
+        const response = await fetch(url);
+        const data = await response.json();
+        
+        console.log('[Weather] Response:', data);
+        
+        if (data.success && data.data) {
+            updateWeatherDisplay(data.data);
+        } else {
+            console.error('[Weather] Failed to load:', data.error);
+        }
+    } catch (error) {
+        console.error('[Weather] Error loading data:', error);
+    }
+    
+    // Load detailed pollutant charts
+    if (typeof initializePollutantCharts === 'function') {
+        initializePollutantCharts(currentZip, currentCity, currentState);
+    }
+}
+
+// Load pollen data
+async function loadPollenData() {
+    if (!currentZip && !currentCity) {
+        console.log('[Pollen] No location set - ZIP:', currentZip, 'City:', currentCity);
+        return;
+    }
+    
+    console.log('[Pollen] Loading data for ZIP:', currentZip, 'City:', currentCity, 'State:', currentState);
+    
+    try {
+        const params = new URLSearchParams();
+        if (currentZip) params.append('zipCode', currentZip);
+        else if (currentCity && currentState) {
+            params.append('city', currentCity);
+            params.append('state', currentState);
+        }
+        
+        // Add date range parameters
+        const startDateInput = document.getElementById('startDate');
+        const endDateInput = document.getElementById('endDate');
+        
+        if (startDateInput && startDateInput.value) {
+            params.append('start_date', startDateInput.value);
+        }
+        
+        if (endDateInput && endDateInput.value) {
+            params.append('end_date', endDateInput.value);
+        }
+        
+        const url = `/api/pollen?${params.toString()}`;
+        console.log('[Pollen] Fetching from:', url);
+        
+        const response = await fetch(url);
+        const data = await response.json();
+        
+        console.log('[Pollen] Response:', data);
+        
+        if (data.success && data.data) {
+            updatePollenDisplay(data.data);
+        } else {
+            console.error('[Pollen] Failed to load:', data.error);
+        }
+    } catch (error) {
+        console.error('[Pollen] Error loading data:', error);
+    }
+}
+
+// Update weather display
+function updateWeatherDisplay(weather) {
+    if (!weather || !weather.current) {
+        console.log('[Weather] No data to display');
+        return;
+    }
+    
+    const current = weather.current;
+    console.log('[Weather] Current data:', current);
+    
+    // Temperature
+    const temp = Math.round(current.temperature || 0);
+    const unit = current.temperature_unit || 'F';
+    document.getElementById('temperature').textContent = `${temp}°${unit}`;
+    document.getElementById('feelsLike').textContent = `Feels like ${Math.round(current.feels_like || 0)}°${unit}`;
+    
+    // Humidity
+    document.getElementById('humidity').textContent = `${Math.round(current.humidity || 0)}%`;
+    
+    // Wind - use wind_direction (cardinal) directly, use wind_degrees for getWindDirection if needed
+    document.getElementById('windSpeed').textContent = `${Math.round(current.wind_speed || 0)} mph`;
+    document.getElementById('windDirection').textContent = `Direction: ${current.wind_direction || getWindDirection(current.wind_degrees || 0) || '--'}`;
+    
+    // UV Index
+    const uvIndex = current.uv_index || 0;
+    document.getElementById('uvIndex').textContent = uvIndex || '--';
+    document.getElementById('uvLevel').textContent = getUVLevel(uvIndex);
+    
+    // Conditions
+    document.getElementById('weatherConditions').textContent = current.conditions || 'Unknown';
+    document.getElementById('weatherIcon').textContent = getWeatherIcon(current.conditions || '');
+    
+    console.log('[Weather] Display updated successfully');
+}
+
+// Update pollen display
+function updatePollenDisplay(pollen) {
+    if (!pollen || !pollen.current) {
+        console.log('[Pollen] No data to display');
+        return;
+    }
+    
+    const current = pollen.current;
+    console.log('[Pollen] Current data:', current);
+    
+    // UPI
+    const upi = current.upi !== undefined ? current.upi : '--';
+    document.getElementById('pollenUPI').textContent = upi;
+    document.getElementById('pollenLevel').textContent = current.level || 'Unknown';
+    
+    // Individual indices - handle 0 as valid value
+    const treeIndex = current.tree_index !== undefined ? current.tree_index : '--';
+    const grassIndex = current.grass_index !== undefined ? current.grass_index : '--';
+    const weedIndex = current.weed_index !== undefined ? current.weed_index : '--';
+    
+    document.getElementById('treeIndex').textContent = treeIndex;
+    document.getElementById('grassIndex').textContent = grassIndex;
+    document.getElementById('weedIndex').textContent = weedIndex;
+    
+    // Recommendations
+    document.getElementById('pollenRecommendations').textContent = current.health_recommendations || 'No recommendations available';
+    
+    // Primary plants
+    if (current.primary_plants && current.primary_plants.length > 0) {
+        document.getElementById('primaryPlants').textContent = `Primary allergens: ${current.primary_plants.join(', ')}`;
+    } else {
+        document.getElementById('primaryPlants').textContent = 'Primary allergens: None detected';
+    }
+    
+    // Update icon based on level
+    document.getElementById('pollenIcon').textContent = getPollenIcon(upi);
+    
+    console.log('[Pollen] Display updated successfully');
+}
+
+// Helper functions
+function getWindDirection(degrees) {
+    const directions = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+    const index = Math.round(degrees / 45) % 8;
+    return directions[index] || '--';
+}
+
+function getUVLevel(uv) {
+    if (uv <= 2) return 'Low';
+    if (uv <= 5) return 'Moderate';
+    if (uv <= 7) return 'High';
+    if (uv <= 10) return 'Very High';
+    return 'Extreme';
+}
+
+function getWeatherIcon(conditions) {
+    const conditionsLower = (conditions || '').toLowerCase();
+    if (conditionsLower.includes('clear') || conditionsLower.includes('sunny')) return '☀️';
+    if (conditionsLower.includes('cloud')) return '☁️';
+    if (conditionsLower.includes('rain')) return '🌧️';
+    if (conditionsLower.includes('storm')) return '⛈️';
+    if (conditionsLower.includes('snow')) return '❄️';
+    if (conditionsLower.includes('fog')) return '🌫️';
+    return '🌤️';
+}
+
+function getPollenIcon(upi) {
+    if (upi <= 1) return '🌱';
+    if (upi == 2) return '🌸';
+    if (upi == 3) return '🌺';
+    if (upi == 4) return '🌼';
+    return '🌻';
 }

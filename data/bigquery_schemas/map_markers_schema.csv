@@ -1,0 +1,18 @@
+field_name,data_type,mode,description
+marker_id,STRING,REQUIRED,Unique marker identifier
+item_id,STRING,REQUIRED,Foreign key to data_items table
+marker_type,STRING,REQUIRED,Type (wildfire/earthquake/storm/health/drug)
+latitude,FLOAT,REQUIRED,Marker latitude
+longitude,FLOAT,REQUIRED,Marker longitude
+marker_color,STRING,NULLABLE,Hex color code (#FF0000)
+marker_icon,STRING,NULLABLE,Icon identifier (fire/warning/info/medical)
+marker_size,STRING,NULLABLE,Size (small/medium/large)
+z_index,INTEGER,NULLABLE,Display priority on map
+popup_title,STRING,NULLABLE,Popup window title
+popup_content,STRING,NULLABLE,Popup HTML content
+show_by_default,BOOLEAN,NULLABLE,Display on map load
+zoom_level,INTEGER,NULLABLE,Recommended zoom level
+animation,STRING,NULLABLE,Animation type (pulse/bounce/drop)
+cluster_group,STRING,NULLABLE,Clustering group identifier
+visibility_rules,STRING,NULLABLE,JSON rules for when to show
+created_at,TIMESTAMP,REQUIRED,Creation timestamp
