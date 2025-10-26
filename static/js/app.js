@@ -106,6 +106,24 @@ function onPlaceSelected() {
     currentCity = city;
     currentZip = zipCode;
     
+    // Store location data in browser storage for chat agent
+    const locationData = {
+        city: city,
+        state: state,
+        county: county,
+        zipCode: zipCode,
+        formattedAddress: place.formatted_address,
+        coordinates: {
+            lat: place.geometry.location.lat(),
+            lng: place.geometry.location.lng()
+        },
+        timestamp: new Date().toISOString()
+    };
+    
+    // Store in localStorage for persistence
+    localStorage.setItem('currentLocationData', JSON.stringify(locationData));
+    console.log('[Location Search] Location data stored for chat agent:', locationData);
+    
     // Update dropdowns if applicable
     if (state) {
         document.getElementById('stateSelect').value = state || '';
@@ -199,6 +217,25 @@ function getAutoLocation() {
                             currentState = state;
                             currentCity = city;
                             
+                            // Store location data in browser storage for chat agent
+                            const locationData = {
+                                city: city,
+                                state: state,
+                                county: '', // Auto-location doesn't provide county
+                                zipCode: zipCode,
+                                formattedAddress: results[0].formatted_address,
+                                coordinates: {
+                                    lat: position.coords.latitude,
+                                    lng: position.coords.longitude
+                                },
+                                timestamp: new Date().toISOString(),
+                                source: 'auto-location'
+                            };
+                            
+                            // Store in localStorage for persistence
+                            localStorage.setItem('currentLocationData', JSON.stringify(locationData));
+                            console.log('[Auto-location] Location data stored for chat agent:', locationData);
+                            
                             // Update search box
                             document.getElementById('locationSearch').value = `${city}, ${state} ${zipCode}`;
                             
@@ -273,11 +310,17 @@ function getAutoLocation() {
 
 // Initialize the application
 function initializeApp() {
-    // Set default to California
-    currentState = 'California';
-    updateAPIStatus('loading', 'Initializing...', 'Loading default location data');
+    // Load stored location data if available
+    loadStoredLocationData();
     
-    // Load cities for California on startup
+    // Set default to California if no stored location
+    if (!currentState) {
+        currentState = 'California';
+    }
+    
+    updateAPIStatus('loading', 'Initializing...', 'Loading location data');
+    
+    // Load cities for current state on startup
     onStateChange();
     
     loadAirQualityData();
@@ -288,6 +331,43 @@ function initializeApp() {
         console.log('[APP] Initializing pollutant charts on page load');
         // Call with null/empty to show empty charts
         initializePollutantCharts(null, null, null);
+    }
+}
+
+// Load stored location data from localStorage
+function loadStoredLocationData() {
+    const storedLocationData = localStorage.getItem('currentLocationData');
+    
+    if (storedLocationData) {
+        try {
+            const locationData = JSON.parse(storedLocationData);
+            
+            // Check if location data is recent (within 24 hours)
+            const dataAge = Date.now() - new Date(locationData.timestamp).getTime();
+            const maxAge = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
+            
+            if (dataAge < maxAge) {
+                // Restore location data
+                currentState = locationData.state || '';
+                currentCity = locationData.city || '';
+                currentZip = locationData.zipCode || '';
+                
+                // Update search box if it exists
+                const searchInput = document.getElementById('locationSearch');
+                if (searchInput && locationData.formattedAddress) {
+                    searchInput.value = locationData.formattedAddress;
+                }
+                
+                console.log('[APP] Restored location data:', locationData);
+                updateAPIStatus('success', 'Location Restored', `${locationData.city || ''}, ${locationData.state || ''}`);
+            } else {
+                console.log('[APP] Stored location data is too old, clearing');
+                localStorage.removeItem('currentLocationData');
+            }
+        } catch (e) {
+            console.warn('[APP] Failed to parse stored location data:', e);
+            localStorage.removeItem('currentLocationData');
+        }
     }
 }
 
@@ -1164,6 +1244,19 @@ async function askAI() {
     const loadingMsg = addMessage('Thinking...', 'bot');
     
     try {
+        // Get stored location data for chat agent
+        const storedLocationData = localStorage.getItem('currentLocationData');
+        let locationContext = null;
+        
+        if (storedLocationData) {
+            try {
+                locationContext = JSON.parse(storedLocationData);
+                console.log('[Chat] Using stored location data:', locationContext);
+            } catch (e) {
+                console.warn('[Chat] Failed to parse stored location data:', e);
+            }
+        }
+        
         // Try ADK agent first
         const response = await fetch('/api/agent-chat', {
             method: 'POST',
@@ -1173,7 +1266,8 @@ async function askAI() {
             body: JSON.stringify({
                 question: question,
                 state: currentState,
-                days: currentDays
+                days: currentDays,
+                location_context: locationContext
             })
         });
 
@@ -1185,7 +1279,18 @@ async function askAI() {
         if (data.success) {
             // Add agent badge if available
             const agentBadge = data.agent ? `<div class="text-xs text-gray-500 mt-1">via ${data.agent}</div>` : '';
-            addMessage(data.response + agentBadge, 'bot');
+            
+            // Add location context indicator if location data is available
+            let locationIndicator = '';
+            if (locationContext) {
+                const locationText = [locationContext.city, locationContext.state, locationContext.zipCode].filter(Boolean).join(', ');
+                locationIndicator = `<div class="text-xs text-emerald-600 mt-1 flex items-center">
+                    <i class="fas fa-map-marker-alt mr-1"></i>
+                    Using location: ${locationText}
+                </div>`;
+            }
+            
+            addMessage(data.response + agentBadge + locationIndicator, 'bot');
             
             // If video generation started, begin polling
             if (data.task_id) {
