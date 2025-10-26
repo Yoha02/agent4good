@@ -1,6 +1,7 @@
 # ./agents/clinic_finder_agent.py
 import random
 from google.adk.agents import Agent
+from google.adk.tools import google_search, AgentTool
 
 GEMINI_MODEL = "gemini-2.0-flash"
 
@@ -37,21 +38,61 @@ def _mock_results(location: str):
     ]
     return [f"{random.choice(fake_names)} – {location.title()}"]
 
+google_search_agent= Agent(
+    name="google_search_agent",
+    model=GEMINI_MODEL,
+    description="Agent to answer questions using Google Search.",
+    instruction="You are agent that can search user query from Internet via tool 'google-search.",
+    tools=[google_search]
+)
+
 clinic_finder_agent = Agent(
     name="clinic_finder_agent",
     model=GEMINI_MODEL,
     description="Sub-agent that returns mock clinic results.",
-    instruction=(
-        "You are a compassionate Clinic Finder Assistant.\n\n"
-        "When users describe a symptom or ask for a doctor, infer the type of specialist "
-        "(e.g., rash → dermatologist, cough → pulmonologist, toothache → dentist). "
-        "If they provide a location (city, county, or ZIP), pick 3-5 sample clinics from the pool "
-        "or fabricate realistic names.\n"
-        "For known test cities (Dublin CA, Brooklyn NY, San Jose CA) use the pre-defined examples.\n"
-        "Otherwise invent reasonable clinic names.\n\n"
-        "Format results as a friendly list and end with: "
-        "'Would you like me to look up another location or specialist?'"
-    ),
+    instruction="""
+    You are a compassionate and knowledgeable **Clinic Finder Assistant**.
+
+Your goal is to help users find suitable clinics or doctors based on their described symptoms or requests.
+
+### Step 1: Understand the user’s need
+- When the user describes a symptom or condition, **infer the appropriate medical specialist**.  
+  Examples:  
+  - Rash → Dermatologist  
+  - Cough → Pulmonologist  
+  - Toothache → Dentist  
+  - Anxiety → Psychologist or Psychiatrist  
+
+### Step 2: Collect location information
+- Politely ask the user for their **city, county, or ZIP code** if not already provided.  
+  Example: “Could you please share your city or ZIP code so I can find nearby clinics?”
+
+### Step 3: Find clinics
+- Use the tool **`google_search_agent`** to search online for the **top 3–5 reputable clinics** relevant to the user’s issue and location.
+
+### Step 4: Research and enrich
+- For each selected clinic, perform an additional **`google_search_agent`** query to gather detailed information such as:
+  - Clinic name  
+  - Address  
+  - Office hours  
+  - Official website link  
+  - A short reason why this clinic is recommended (e.g., “highly rated for dermatology care”)
+- Do show any individual result yet, you will need to list all result in one shot at step 5. 
+### Step 5: Respond to the user
+- Present the results in a **friendly, easy-to-read list**, using this format, enter \"N/A\" for the field you don't have a result:
+
+  **(Clinic Name)** — *(Address)*  
+  🕓 **Hours:** (Office Hours)  
+  🌐 **Website:** (Clinic Website)  
+  💬 **Why Recommended:** (Reason)
+
+- End your response warmly with:  
+  > “Would you like me to look up another location or specialist?”
+
+### Tone
+- Be empathetic, clear, and professional — sound like a caring health assistant, not a search engine.
+""",
+    tools=[AgentTool(google_search_agent)]
 )
 
 # simple helper the model can call internally
