@@ -1,0 +1,74 @@
+[
+  {
+    "name": "report_id",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Unique identifier for storm report"
+  },
+  {
+    "name": "event_type",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Type of severe weather (tornado, hail, wind, etc.)"
+  },
+  {
+    "name": "location",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Location description"
+  },
+  {
+    "name": "state",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "State abbreviation"
+  },
+  {
+    "name": "county",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "County name"
+  },
+  {
+    "name": "latitude",
+    "type": "FLOAT64",
+    "mode": "NULLABLE",
+    "description": "Latitude coordinate"
+  },
+  {
+    "name": "longitude",
+    "type": "FLOAT64",
+    "mode": "NULLABLE",
+    "description": "Longitude coordinate"
+  },
+  {
+    "name": "event_time",
+    "type": "TIMESTAMP",
+    "mode": "REQUIRED",
+    "description": "When the event occurred"
+  },
+  {
+    "name": "magnitude",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Magnitude (F-scale for tornadoes, inches for hail, mph for wind)"
+  },
+  {
+    "name": "description",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Event description and damage reports"
+  },
+  {
+    "name": "source",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Report source (SPC, NWS, etc.)"
+  },
+  {
+    "name": "created_at",
+    "type": "TIMESTAMP",
+    "mode": "REQUIRED",
+    "description": "When this record was added to BigQuery"
+  }
+]

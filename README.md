@@ -36,7 +36,9 @@ A full-stack web application combining beautiful UI dashboards with Google's Age
 ### **Prerequisites**
 - Google Cloud Project with billing enabled
 - Gemini API Key from https://aistudio.google.com/apikey (free tier available)
-- Google Cloud SDK installed and configured
+- BigQuery service account credentials (see [BigQuery Setup](#bigquery-setup))
+- Python 3.11+
+- Google Cloud SDK (optional, for deployment)
 
 ### **Local Development**
 
@@ -44,35 +46,115 @@ A full-stack web application combining beautiful UI dashboards with Google's Age
 ```bash
 git clone https://github.com/Yoha02/agent4good
 cd agent4good
-git checkout combined_UI_and_agent
+git checkout UI-and-DB
 ```
 
-2. **Create `.env` file** in root directory:
-```env
-GOOGLE_CLOUD_PROJECT=your-gcp-project-id
-GOOGLE_API_KEY=your-gemini-api-key
-GEMINI_API_KEY=your-gemini-api-key
-GOOGLE_GENAI_USE_VERTEXAI=FALSE
-SECRET_KEY=your-random-secret-key
-```
-
-3. **Install dependencies**:
+2. **Install dependencies**:
 ```bash
+python -m venv .venv
+# Windows
+.venv\Scripts\activate
+# Mac/Linux
+source .venv/bin/activate
+
 pip install -r requirements.txt
 ```
 
-4. **Authenticate with Google Cloud**:
+3. **Configure environment variables**:
 ```bash
-gcloud auth application-default login
-gcloud config set project your-gcp-project-id
+# Copy the example file
+cp .env.example .env
 ```
 
-5. **Run the application**:
+Edit `.env` with your credentials (see [Environment Setup](#environment-setup) below)
+
+4. **Set up BigQuery authentication** (IMPORTANT!):
+   
+   See detailed instructions in [SETUP_BIGQUERY.md](SETUP_BIGQUERY.md)
+   
+   Quick steps:
+   - Create service account in Google Cloud Console
+   - Download JSON key as `bigquery-credentials.json`
+   - Place in project root folder
+   - Update `GOOGLE_APPLICATION_CREDENTIALS` in `.env`
+
+5. **Test BigQuery connection**:
 ```bash
-python app.py
+python test_bigquery_auth.py
 ```
 
-6. **Open browser**: http://localhost:8080
+6. **Run the application**:
+```bash
+python app_local.py
+```
+
+7. **Open browser**: http://localhost:8080
+
+---
+
+## 🔐 Environment Setup
+
+### **Required Environment Variables**:
+
+Create a `.env` file in the project root with these values:
+
+```env
+# Flask Configuration
+SECRET_KEY=your-secret-key-here
+FLASK_ENV=development
+
+# Google Cloud Configuration
+GOOGLE_CLOUD_PROJECT=your-gcp-project-id
+BIGQUERY_DATASET=CrowdsourceData
+BIGQUERY_TABLE_REPORTS=CrowdSourceData
+GOOGLE_APPLICATION_CREDENTIALS=bigquery-credentials.json
+
+# Gemini AI Configuration
+GOOGLE_API_KEY=your-google-api-key
+GEMINI_API_KEY=your-gemini-api-key
+MAPPING_API_KEY=your-google-maps-api-key
+
+# EPA/AirNow API Configuration
+EPA_API_KEY=your-epa-api-key
+AQS_API_KEY=your-aqs-api-key
+AQS_EMAIL=your-email@example.com
+
+# Optional
+PORT=8080
+```
+
+**Where to get API keys:**
+- **Gemini API**: https://aistudio.google.com/apikey (free)
+- **Google Maps API**: https://console.cloud.google.com/google/maps-apis
+- **EPA AirNow API**: https://docs.airnowapi.org/account/request
+- **EPA AQS API**: https://aqs.epa.gov/data/api/signup?email=youremail
+
+---
+
+## 📊 BigQuery Setup
+
+This application uses **BigQuery** to store community-submitted reports. Your teammates will need to set up authentication to use this feature.
+
+### **For New Team Members:**
+
+See **[SETUP_BIGQUERY.md](SETUP_BIGQUERY.md)** for complete step-by-step instructions.
+
+**Quick Overview:**
+1. Get the `bigquery-credentials.json` file from project admin (shared securely, NOT in git)
+2. Place it in the project root folder
+3. Update `.env` to point to it: `GOOGLE_APPLICATION_CREDENTIALS=bigquery-credentials.json`
+4. Test with: `python test_bigquery_auth.py`
+
+**For Project Admin:**
+1. Go to [Google Cloud Console - Service Accounts](https://console.cloud.google.com/iam-admin/serviceaccounts)
+2. Create service account with **BigQuery Data Editor** role
+3. Generate and download JSON key
+4. Share securely with team (encrypted email, secure file sharing)
+5. **Never commit the JSON file to git!** (already in `.gitignore`)
+
+---
+
+## 🚀 Quick Start
 
 ---
 

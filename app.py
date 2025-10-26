@@ -192,7 +192,9 @@ agent = AirQualityAgent(bq_client, model)
 @app.route('/')
 def index():
     """Main dashboard page"""
-    return render_template('index.html')
+    # Use the same Google API key for Maps (works for multiple Google services)
+    google_maps_key = os.getenv('GOOGLE_API_KEY') or os.getenv('GEMINI_API_KEY', '')
+    return render_template('index.html', google_maps_key=google_maps_key)
 
 
 @app.route('/api/air-quality', methods=['GET'])
@@ -421,6 +423,10 @@ def agent_chat():
             }), 500
 
 
+@app.route('/acknowledgements')
+def acknowledgements():
+    """Acknowledgements page"""
+    return render_template('acknowledgements.html')
 @app.route('/api/generate-psa-video', methods=['POST'])
 def generate_psa_video_endpoint():
     """Generate PSA video from current health data"""
