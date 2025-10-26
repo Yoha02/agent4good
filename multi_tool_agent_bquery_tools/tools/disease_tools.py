@@ -11,8 +11,13 @@ INFECTIOUS_DISEASES = ["Salmonella", "E. coli", "Norovirus", "Hepatitis A", "Gia
 
 
 def get_infectious_disease_data(county: Optional[str] = None, state: Optional[str] = None, 
-                                disease: Optional[str] = None, year: Optional[int] = None) -> dict:
-    """Retrieves infectious disease data from CDC BEAM BigQuery dataset."""
+                                disease: Optional[str] = None, year: Optional[int] = None,
+                                start_year: Optional[int] = None, end_year: Optional[int] = None) -> dict:
+    """Retrieves infectious disease data from CDC BEAM BigQuery dataset.
+    
+    Supports both single year (year parameter) and year ranges (start_year/end_year).
+    Use year for a single year, or start_year + end_year for a range (e.g., 2019-2021).
+    """
     try:
         # Handle state inference from county
         if county and not state:
@@ -60,7 +65,11 @@ def get_infectious_disease_data(county: Optional[str] = None, state: Optional[st
             where_conditions.append(f"State = '{state_abbrev}'")
         if disease:
             where_conditions.append(f"LOWER(Pathogen) LIKE LOWER('%{disease}%')")
-        if year:
+        
+        # Handle year range vs single year
+        if start_year and end_year:
+            where_conditions.append(f"Year >= {start_year} AND Year <= {end_year}")
+        elif year:
             where_conditions.append(f"Year = {year}")
         else:
             where_conditions.append("Year = 2025")  # Default to recent data

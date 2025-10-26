@@ -39,9 +39,14 @@ def infer_state_from_county(county):
 
 
 def get_air_quality(county: Optional[str] = None, state: Optional[str] = None, city: Optional[str] = None, 
-                   year: Optional[int] = None, month: Optional[int] = None, day: Optional[int] = None,
+                   year: Optional[int] = None, start_year: Optional[int] = None, end_year: Optional[int] = None,
+                   month: Optional[int] = None, day: Optional[int] = None,
                    days_back: Optional[int] = None) -> dict:
-    """Retrieves air quality data from EPA Historical Air Quality BigQuery dataset."""
+    """Retrieves air quality data from EPA Historical Air Quality BigQuery dataset.
+    
+    Supports both single year (year parameter) and year ranges (start_year/end_year).
+    Use year for a single year, or start_year + end_year for a range (e.g., 2019-2021).
+    """
     try:
         # Handle state inference from county
         if county and not state:
@@ -66,8 +71,19 @@ def get_air_quality(county: Optional[str] = None, state: Optional[str] = None, c
         if days_back is not None:
             year, month, day = handle_relative_dates(days_back)
         
-        # Set default year if not provided
-        if year is None:
+        # Handle year range vs single year
+        if start_year and end_year:
+            # Year range provided
+            year_range = list(range(start_year, end_year + 1))
+            use_year_range = True
+        elif year:
+            # Single year provided
+            year_range = [year]
+            use_year_range = False
+        else:
+            # No year provided, default to recent
+            year_range = [2020]
+            use_year_range = False
             year = 2020
         
         # Query real EPA data from public BigQuery dataset
@@ -78,13 +94,20 @@ def get_air_quality(county: Optional[str] = None, state: Optional[str] = None, c
             where_conditions.append(f"county_name = '{county}'")
         if city:
             where_conditions.append(f"city_name = '{city}'")
+        
+        # Date conditions
         if year and month and day:
             where_conditions.append(f"date_local = DATE({year}, {month}, {day})")
         elif year and month:
             where_conditions.append(f"EXTRACT(YEAR FROM date_local) = {year}")
             where_conditions.append(f"EXTRACT(MONTH FROM date_local) = {month}")
-        elif year:
-            where_conditions.append(f"EXTRACT(YEAR FROM date_local) = {year}")
+        elif use_year_range and len(year_range) > 1:
+            # Multiple years - use IN clause
+            year_list = ','.join(map(str, year_range))
+            where_conditions.append(f"EXTRACT(YEAR FROM date_local) IN ({year_list})")
+        elif use_year_range or year:
+            # Single year or first year in range
+            where_conditions.append(f"EXTRACT(YEAR FROM date_local) = {year_range[0]}")
         
         where_clause = " AND ".join(where_conditions) if where_conditions else f"EXTRACT(YEAR FROM date_local) = {year}"
         

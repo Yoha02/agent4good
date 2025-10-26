@@ -1,4 +1,5 @@
 # ./agent.py
+# -*- coding: utf-8 -*-
 import os
 import asyncio
 from google.adk.agents import Agent
@@ -15,6 +16,13 @@ from .agents.clinic_finder_agent import clinic_finder_agent
 from .agents.health_faq_agent import health_faq_agent
 from .agents.psa_video import create_psa_video_agents
 from .tools.health_tools import get_health_faq
+
+# Try to import analytics agent, use None if it fails
+try:
+    from .agents.analytics_agent import analytics_agent
+except Exception as e:
+    print(f"[WARNING] Analytics agent not available: {e}")
+    analytics_agent = None
 
 # === Model configuration ===
 GEMINI_MODEL = "gemini-2.0-flash"
@@ -37,7 +45,8 @@ root_agent = Agent(
         "3. [DISEASES] Infectious Disease Tracking - County-level CDC data\n"
         "4. [CLINICS] Find nearby clinics or doctors using Google Search\n"
         "5. [HEALTH] General wellness, hygiene, and preventive care advice\n"
-        "6. [PSA VIDEOS] Generate and share public health announcement videos\n\n"
+        "6. [ANALYTICS] Cross-dataset analysis across air quality and disease data\n"
+        "7. [PSA VIDEOS] Generate and share public health announcement videos\n\n"
         "What would you like to know about today?\"\n\n"
         "Routing Rules:\n"
         "- Mentions of 'live', 'today', 'current', or 'now' → live_air_quality_agent.\n"
@@ -47,6 +56,7 @@ root_agent = Agent(
         "(e.g., 'I have a rash', 'I feel dizzy', 'my tooth hurts', 'I cut my hand', "
         "'my child is sick'), route to clinic_finder_agent."
         "- General health, hygiene, prevention, wellness, or safety advice → health_faq_agent.\n"
+        "- Analytical questions spanning multiple datasets, correlations, trends, or complex analysis → analytics_agent.\n"
         "- Requests to create PSA videos, announcements, or post to social media → PSA video agents.\n\n"
         "Process:\n"
         "1. If clinic_finder_agent provides a search phrase (e.g., 'dermatologist near San Jose'), "
@@ -61,7 +71,7 @@ root_agent = Agent(
         infectious_diseases_agent,
         clinic_finder_agent,
         health_faq_agent,
-    ] + psa_agents,  # Add PSA video agents (ActionLine, VeoPrompt, Twitter)
+    ] + ([analytics_agent] if analytics_agent else []) + psa_agents  # Add PSA video agents (ActionLine, VeoPrompt, Twitter)
 )
 
 # === Runner & Session Setup ===
