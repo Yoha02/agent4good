@@ -67,9 +67,9 @@ class AirQualityAgent:
             # The table is called "Daily-AQI-County-2025" so it likely has 2025 data
             query = f"""
             SELECT 
-                Date_Local as date,
-                State_Name as state_name,
-                County_Name as county_name,
+                `Date Local` as date,
+                `State Name` as state_name,
+                `County Name` as county_name,
                 CAST(AQI AS INT64) as aqi,
                 'PM2.5' as parameter_name,
                 'Monitoring Station' as site_name
@@ -78,9 +78,9 @@ class AirQualityAgent:
             """
             
             if state:
-                query += f" AND UPPER(State_Name) = UPPER('{state}')"
+                query += f" AND UPPER(`State Name`) = UPPER('{state}')"
             
-            query += " ORDER BY Date_Local DESC LIMIT 100"
+            query += " ORDER BY `Date Local` DESC LIMIT 100"
             
             print(f"[BQ] Querying YOUR dataset: AirQualityData.Daily-AQI-County-2025 for {state or 'all states'}")
             query_job = self.bq_client.query(query)
