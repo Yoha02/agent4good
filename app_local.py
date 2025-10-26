@@ -11,6 +11,8 @@ from epa_aqs_service import EPAAQSService
 from location_service_comprehensive import ComprehensiveLocationService
 from google_weather_service import GoogleWeatherService
 from google_pollen_service import GooglePollenService
+from google.cloud import storage
+import google.generativeai as genai
 
 # Load environment variables
 load_dotenv()
@@ -18,7 +20,34 @@ load_dotenv()
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev-secret-key')
 
+# GCS Configuration
+GCS_BUCKET_NAME = 'agent4good-report-attachments'
+GCP_PROJECT_ID = 'qwiklabs-gcp-00-4a7d408c735c'
+
+# Gemini API Configuration
+GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
+if GEMINI_API_KEY:
+    genai.configure(api_key=GEMINI_API_KEY)
+
 print("[OK] Starting Flask app with EPA API integration")
+
+# Initialize GCS client
+try:
+    storage_client = storage.Client(project=GCP_PROJECT_ID)
+    # Try to get bucket, create if doesn't exist
+    try:
+        bucket = storage_client.get_bucket(GCS_BUCKET_NAME)
+        print(f"[OK] Connected to GCS bucket: {GCS_BUCKET_NAME}")
+    except Exception as e:
+        print(f"[INFO] Bucket not found, creating: {GCS_BUCKET_NAME}")
+        bucket = storage_client.create_bucket(GCS_BUCKET_NAME, location='us-central1')
+        print(f"[OK] Created GCS bucket: {GCS_BUCKET_NAME}")
+    GCS_AVAILABLE = True
+except Exception as e:
+    print(f"[WARNING] GCS initialization failed: {e}")
+    GCS_AVAILABLE = False
+    storage_client = None
+    bucket = None
 
 # Initialize services
 try:
@@ -39,6 +68,138 @@ except Exception as e:
     location_service = ComprehensiveLocationService()  # Location service can work independently
     weather_service = None
     pollen_service = None
+
+# ===== FILE UPLOAD & AI ANALYSIS HELPERS =====
+
+ALLOWED_EXTENSIONS = {
+    'image': {'jpg', 'jpeg', 'png', 'gif'},
+    'video': {'mp4', 'mov'},
+    'document': {'pdf', 'doc', 'docx'},
+    'data': {'csv'}
+}
+MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
+MAX_FILES_PER_REPORT = 10
+
+def allowed_file(filename):
+    """Check if file extension is allowed"""
+    if '.' not in filename:
+        return False
+    ext = filename.rsplit('.', 1)[1].lower()
+    return ext in ALLOWED_EXTENSIONS['image'] | ALLOWED_EXTENSIONS['video'] | \
+           ALLOWED_EXTENSIONS['document'] | ALLOWED_EXTENSIONS['data']
+
+def get_file_type(filename):
+    """Determine file type category"""
+    if '.' not in filename:
+        return 'unknown'
+    ext = filename.rsplit('.', 1)[1].lower()
+    for category, extensions in ALLOWED_EXTENSIONS.items():
+        if ext in extensions:
+            return category
+    return 'unknown'
+
+def upload_to_gcs(file, report_id, file_index):
+    """Upload file to GCS bucket and return URL"""
+    if not GCS_AVAILABLE or not bucket:
+        raise Exception("GCS not available")
+    
+    filename = file.filename
+    # Create unique blob name: reports/{report_id}/{index}_{original_filename}
+    blob_name = f"reports/{report_id}/{file_index}_{filename}"
+    blob = bucket.blob(blob_name)
+    
+    # Upload file
+    blob.upload_from_file(file, content_type=file.content_type)
+    
+    # Make blob publicly accessible (or use signed URLs for security)
+    blob.make_public()
+    
+    return {
+        'url': blob.public_url,
+        'filename': filename,
+        'blob_name': blob_name,
+        'file_type': get_file_type(filename)
+    }
+
+def analyze_text_with_gemini(description, severity, timeframe, report_type):
+    """Use Gemini to analyze report text and suggest status/tags"""
+    if not GEMINI_API_KEY:
+        return None
+    
+    try:
+        model = genai.GenerativeModel('gemini-pro')
+        
+        prompt = f"""Analyze this environmental/health report and provide:
+1. A concise 2-3 sentence summary
+2. Relevant tags from: valid, urgent, moderate, inappropriate, needs_review, contact_required, false_alarm, monitoring_required
+3. Confidence score (0-1) on validity
+
+Report Details:
+- Type: {report_type}
+- Severity: {severity}
+- Timeframe: {timeframe}
+- Description: {description}
+
+Return ONLY valid JSON:
+{{
+    "summary": "...",
+    "tags": ["tag1", "tag2"],
+    "confidence": 0.85
+}}"""
+        
+        response = model.generate_content(prompt)
+        result = json.loads(response.text.strip().replace('```json', '').replace('```', ''))
+        
+        return result
+    except Exception as e:
+        print(f"[ERROR] Gemini text analysis failed: {e}")
+        return None
+
+def analyze_attachments_with_gemini(attachment_urls):
+    """Use Gemini Vision to analyze images/media"""
+    if not GEMINI_API_KEY or not attachment_urls:
+        return None
+    
+    try:
+        # For now, analyze images only (videos need frame extraction)
+        image_urls = [a for a in attachment_urls if a['file_type'] == 'image']
+        
+        if not image_urls:
+            return "No images to analyze"
+        
+        model = genai.GenerativeModel('gemini-pro-vision')
+        
+        # Analyze first few images (API limits)
+        summaries = []
+        for img in image_urls[:3]:  # Limit to 3 images
+            prompt = "Describe what you see in this environmental/health report image. Focus on any visible hazards, conditions, or concerning elements."
+            # Note: Actual implementation needs to download image or use PIL
+            # For now, return placeholder
+            summaries.append(f"Image analysis: {img['filename']}")
+        
+        return "; ".join(summaries)
+    except Exception as e:
+        print(f"[ERROR] Gemini media analysis failed: {e}")
+        return None
+
+def assign_auto_status(ai_tags, ai_confidence):
+    """Auto-assign status based on AI analysis"""
+    if not ai_tags:
+        return 'Pending'
+    
+    # Priority-based status assignment
+    if 'inappropriate' in ai_tags or 'false_alarm' in ai_tags:
+        return 'Closed - Invalid'
+    elif 'urgent' in ai_tags or ai_confidence > 0.85:
+        return 'Valid - Action Required'
+    elif 'needs_review' in ai_tags or ai_confidence < 0.7:
+        return 'Under Review'
+    elif 'valid' in ai_tags:
+        return 'Valid - Monitoring'
+    else:
+        return 'Pending'
+
+# ===== END FILE UPLOAD & AI HELPERS =====
 
 # Mock data for fallback when EPA is unavailable
 class MockAirQualityAgent:
@@ -799,7 +960,17 @@ def get_community_reports():
             latitude,
             longitude,
             ai_overall_summary,
-            ai_media_summary
+            ai_media_summary,
+            ai_tags,
+            ai_confidence,
+            ai_analyzed_at,
+            attachment_urls,
+            reviewed_by,
+            reviewed_at,
+            exclude_from_analysis,
+            exclusion_reason,
+            manual_tags,
+            media_urls
         FROM `{project_id}.{dataset_id}.{table_id}`
         WHERE 1=1
         """
@@ -859,15 +1030,21 @@ def get_community_reports():
                 'reporter_contact': row.contact_email if not row.is_anonymous else None,
                 'is_anonymous': row.is_anonymous,
                 'status': row.status,
-                'reviewed_by': None,  # Will be added in Phase 2
-                'reviewed_at': None,  # Will be added in Phase 2
-                'exclude_from_analysis': None,  # Will be added in Phase 2
-                'exclusion_reason': None,  # Will be added in Phase 2
+                'reviewed_by': row.reviewed_by if hasattr(row, 'reviewed_by') else None,
+                'reviewed_at': row.reviewed_at.isoformat() if hasattr(row, 'reviewed_at') and row.reviewed_at else None,
+                'exclude_from_analysis': row.exclude_from_analysis if hasattr(row, 'exclude_from_analysis') else None,
+                'exclusion_reason': row.exclusion_reason if hasattr(row, 'exclusion_reason') else None,
                 'notes': row.notes,
                 'latitude': row.latitude,
                 'longitude': row.longitude,
                 'ai_overall_summary': row.ai_overall_summary if hasattr(row, 'ai_overall_summary') else None,
-                'ai_media_summary': row.ai_media_summary if hasattr(row, 'ai_media_summary') else None
+                'ai_media_summary': row.ai_media_summary if hasattr(row, 'ai_media_summary') else None,
+                'ai_tags': row.ai_tags if hasattr(row, 'ai_tags') else None,
+                'ai_confidence': row.ai_confidence if hasattr(row, 'ai_confidence') else None,
+                'ai_analyzed_at': row.ai_analyzed_at.isoformat() if hasattr(row, 'ai_analyzed_at') and row.ai_analyzed_at else None,
+                'attachment_urls': row.attachment_urls if hasattr(row, 'attachment_urls') else None,
+                'manual_tags': row.manual_tags if hasattr(row, 'manual_tags') else None,
+                'media_urls': row.media_urls if hasattr(row, 'media_urls') else None
             }
             reports.append(report)
         
@@ -1139,6 +1316,7 @@ def submit_report():
     from datetime import datetime
     from werkzeug.utils import secure_filename
     import os
+    import json
     from google.cloud import bigquery
     
     try:
@@ -1151,32 +1329,46 @@ def submit_report():
         
         # Handle file uploads
         media_files = request.files.getlist('media[]')
-        media_urls = []
+        media_urls = []  # Old field - still save locally for backwards compatibility
+        attachment_urls = []  # New field - GCS URLs
         media_count = len(media_files)
         
-        # Create uploads directory if it doesn't exist
-        upload_dir = os.path.join('data', 'report_uploads', report_id)
-        os.makedirs(upload_dir, exist_ok=True)
+        # Save files to GCS if available
+        if GCS_AVAILABLE and bucket and media_files:
+            for idx, file in enumerate(media_files):
+                if file and file.filename:
+                    try:
+                        # Upload to GCS
+                        file_info = upload_to_gcs(file, report_id, idx)
+                        attachment_urls.append(file_info['url'])
+                        print(f"[GCS] Uploaded {file.filename} -> {file_info['url']}")
+                    except Exception as e:
+                        print(f"[GCS ERROR] Failed to upload {file.filename}: {e}")
         
-        # Save uploaded files
-        for file in media_files:
-            if file and file.filename:
-                filename = secure_filename(file.filename)
-                filepath = os.path.join(upload_dir, filename)
-                file.save(filepath)
-                # In production, upload to cloud storage and get URL
-                media_urls.append(f"/uploads/{report_id}/{filename}")
+        # Fallback: Save locally if GCS fails or unavailable
+        if not attachment_urls and media_files:
+            # Create uploads directory if it doesn't exist
+            upload_dir = os.path.join('data', 'report_uploads', report_id)
+            os.makedirs(upload_dir, exist_ok=True)
+            
+            # Save uploaded files
+            for file in media_files:
+                if file and file.filename:
+                    filename = secure_filename(file.filename)
+                    filepath = os.path.join(upload_dir, filename)
+                    file.save(filepath)
+                    media_urls.append(f"/uploads/{report_id}/{filename}")
         
         # Prepare data for BigQuery
         row_data = {
             'report_id': report_id,
             'report_type': data.get('reportType', ''),
             'timestamp': timestamp.isoformat() + 'Z',
-            'address': data.get('address') or None,  # Optional - can be None
+            'address': data.get('address') or None,
             'zip_code': data.get('zipCode', ''),
             'city': data.get('city', ''),
             'state': data.get('state', ''),
-            'county': data.get('county') or None,  # Auto-populated from ZIP
+            'county': data.get('county') or None,
             'severity': data.get('severity', ''),
             'specific_type': data.get('specificType', ''),
             'description': data.get('description', ''),
@@ -1186,13 +1378,20 @@ def submit_report():
             'contact_email': data.get('contactEmail', None),
             'contact_phone': data.get('contactPhone', None),
             'is_anonymous': data.get('anonymous') == 'on',
-            'media_urls': media_urls,
+            'media_urls': attachment_urls if attachment_urls else [],  # REPEATED field = array
             'media_count': media_count,
+            'attachment_urls': json.dumps(attachment_urls) if attachment_urls else None,  # STRING = JSON
             'ai_media_summary': None,
             'ai_overall_summary': None,
+            'ai_tags': None,
+            'ai_confidence': None,
+            'ai_analyzed_at': None,
             'status': 'pending',
             'reviewed_by': None,
             'reviewed_at': None,
+            'exclude_from_analysis': None,
+            'exclusion_reason': None,
+            'manual_tags': None,
             'notes': None,
             'latitude': None,
             'longitude': None
@@ -1231,11 +1430,14 @@ def submit_report():
         print(f"[REPORT] Type: {row_data['report_type']}, Severity: {row_data['severity']}")
         print(f"[REPORT] Location: {row_data['city']}, {row_data['state']} {row_data['zip_code']}")
         print(f"[REPORT] Media files: {media_count}")
+        if attachment_urls:
+            print(f"[REPORT] GCS URLs: {attachment_urls}")
         
         return jsonify({
             'success': True,
             'report_id': report_id,
-            'message': 'Report submitted successfully'
+            'message': 'Report submitted successfully',
+            'attachment_urls': attachment_urls
         })
         
     except Exception as e:
