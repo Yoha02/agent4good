@@ -174,11 +174,21 @@ def _initialize_session_and_runner():
         )
         _runner = Runner(agent=root_agent, app_name=APP_NAME, session_service=_session_service)
 
-def call_agent(query: str) -> str:
+def call_agent(query: str, location_context=None, time_frame=None) -> str:
     """Helper function to call the agent with a query and return the response."""
     _initialize_session_and_runner()
+    
+    # Create agent with context if provided
+    if location_context or time_frame:
+        agent_with_context = create_root_agent_with_context(location_context, time_frame)
+        # Create a new runner with the context-aware agent
+        context_runner = Runner(agent=agent_with_context, app_name=APP_NAME, session_service=_session_service)
+        runner_to_use = context_runner
+    else:
+        runner_to_use = _runner
+    
     content = types.Content(role="user", parts=[types.Part(text=query)])
-    events = _runner.run(user_id=USER_ID, session_id=SESSION_ID, new_message=content)
+    events = runner_to_use.run(user_id=USER_ID, session_id=SESSION_ID, new_message=content)
 
     for event in events:
         if event.is_final_response():

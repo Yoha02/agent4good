@@ -1390,12 +1390,59 @@ async function askAI() {
     const loadingMsg = addMessage('Thinking...', 'bot');
     
     try {
+        // Get current location from dropdowns if variables are empty
+        const stateSelect = document.getElementById('stateSelect');
+        const citySelect = document.getElementById('citySelect');
+        const countyZipSelect = document.getElementById('countyZipSelect');
+        
+        let actualState = currentState;
+        let actualCity = currentCity;
+        let actualZip = currentZip;
+        
+        // Fallback to dropdown values if variables are empty
+        if (!actualState && stateSelect && stateSelect.value) {
+            actualState = stateSelect.value;
+        }
+        if (!actualCity && citySelect && citySelect.value) {
+            actualCity = citySelect.value;
+        }
+        if (!actualZip && countyZipSelect && countyZipSelect.value) {
+            const countyZipValue = countyZipSelect.value;
+            if (countyZipValue.startsWith('zip:')) {
+                actualZip = countyZipValue.replace('zip:', '');
+            }
+        }
+        
+        // Debug: Log current location state
+        console.log('[Chat Debug] Current location state:', {
+            currentState: currentState,
+            currentCity: currentCity,
+            currentZip: currentZip,
+            actualState: actualState,
+            actualCity: actualCity,
+            actualZip: actualZip
+        });
+        
         // Get current location context
         const locationContext = {
-            state: currentState,
-            city: currentCity,
-            zipcode: currentZip
+            state: actualState,
+            city: actualCity,
+            zipcode: actualZip
         };
+        
+        // Get time frame from date inputs
+        const startDateInput = document.getElementById('startDate');
+        const endDateInput = document.getElementById('endDate');
+        let timeFrame = null;
+        
+        if (startDateInput && endDateInput && startDateInput.value && endDateInput.value) {
+            timeFrame = {
+                start_date: startDateInput.value,
+                end_date: endDateInput.value,
+                period: `${startDateInput.value} to ${endDateInput.value}`
+            };
+            console.log('[Chat Debug] Time frame:', timeFrame);
+        }
         
         // Try ADK agent first with location context
         const response = await fetch('/api/agent-chat', {
@@ -1405,10 +1452,11 @@ async function askAI() {
             },
             body: JSON.stringify({
                 question: question,
-                state: currentState,
-                city: currentCity,
-                zipcode: currentZip,
-                days: currentDays
+                state: actualState,
+                city: actualCity,
+                zipcode: actualZip,
+                days: currentDays,
+                time_frame: timeFrame
             })
         });
 
@@ -1418,11 +1466,57 @@ async function askAI() {
         loadingMsg.remove();
 
         if (data.success) {
+            // Debug: Log response data
+            console.log('[Chat Debug] Response data:', data);
+            
+            // Build context indicators
+            let contextIndicators = '';
+            
             // Add location context badge if available
-            const locationBadge = data.location ? `<div class="text-xs text-emerald-600 font-medium mt-1"><i class="fas fa-map-marker-alt mr-1"></i>${data.location}</div>` : '';
+            if (data.location) {
+                contextIndicators += `<div class="text-xs text-emerald-600 font-medium mt-1 flex items-center">
+                    <i class="fas fa-map-marker-alt mr-1"></i>
+                    Location: ${data.location}
+                </div>`;
+            } else if (actualState || actualCity) {
+                // Show location even if backend doesn't return it
+                const locationParts = [actualCity, actualState];
+                if (actualZip) {
+                    locationParts.push(`(${actualZip})`);
+                }
+                const locationText = locationParts.filter(Boolean).join(', ');
+                contextIndicators += `<div class="text-xs text-emerald-600 font-medium mt-1 flex items-center">
+                    <i class="fas fa-map-marker-alt mr-1"></i>
+                    Location: ${locationText}
+                </div>`;
+            }
+            
+            // Add time frame indicator if we have time frame data
+            if (timeFrame) {
+                contextIndicators += `<div class="text-xs text-blue-600 font-medium mt-1 flex items-center">
+                    <i class="fas fa-calendar-alt mr-1"></i>
+                    Time Frame: ${timeFrame.period}
+                </div>`;
+            }
+            
+            // Add current time indicator
+            const now = new Date();
+            const currentTime = now.toLocaleString('en-US', { 
+                weekday: 'short', 
+                month: 'short', 
+                day: 'numeric', 
+                hour: '2-digit', 
+                minute: '2-digit' 
+            });
+            contextIndicators += `<div class="text-xs text-purple-600 font-medium mt-1 flex items-center">
+                <i class="fas fa-clock mr-1"></i>
+                Current Time: ${currentTime}
+            </div>`;
+            
             // Add agent badge if available
             const agentBadge = data.agent ? `<div class="text-xs text-gray-500 mt-1">via ${data.agent}</div>` : '';
-            addMessage(data.response + locationBadge + agentBadge, 'bot');
+            
+            addMessage(data.response + contextIndicators + agentBadge, 'bot');
             
             // If video generation started, begin polling
             if (data.task_id) {

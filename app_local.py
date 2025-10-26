@@ -993,6 +993,10 @@ def agent_chat():
         city = request_data.get('city', None)
         zipcode = request_data.get('zipcode', None)
         days = int(request_data.get('days', 7))
+        time_frame = request_data.get('time_frame', None)
+        
+        # Debug: Log received parameters
+        print(f"[AGENT-CHAT] Received parameters: state={state}, city={city}, zipcode={zipcode}, days={days}, time_frame={time_frame}")
         
         # Build location context string for AI
         location_context = ""
@@ -1099,7 +1103,19 @@ def agent_chat():
                     enhanced_question = f"For {location_context}: {question}"
                 
                 print(f"[AGENT-CHAT] Enhanced question: {enhanced_question}")
-                response = call_adk_agent(enhanced_question)
+                
+                # Prepare location context for ADK agent
+                location_context_dict = None
+                if state or city or zipcode:
+                    location_context_dict = {
+                        'state': state,
+                        'city': city,
+                        'zipCode': zipcode,
+                        'formattedAddress': location_context
+                    }
+                
+                # Call ADK agent with context
+                response = call_adk_agent(enhanced_question, location_context=location_context_dict, time_frame=time_frame)
                 print(f"[AGENT-CHAT] ADK response received: {response[:100]}...")
                 
                 # Check if response indicates an API key error
