@@ -43,6 +43,8 @@
     
     <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
     
     <style>
         body {
@@ -70,6 +72,20 @@
             background-color: white;
             color: #374151;
             border-color: #d1d5db;
+        }
+        .chart-granularity-btn.active {
+            background-color: #10b981 !important;
+            color: white !important;
+            border-color: #10b981 !important;
+        }
+        .chart-granularity-btn:not(.active) {
+            background-color: white;
+            color: #374151;
+            border-color: #d1d5db;
+        }
+        .chart-granularity-btn:hover:not(.active) {
+            background-color: #f3f4f6;
+            border-color: #9ca3af;
         }
     </style>
 </head>
@@ -429,27 +445,233 @@
             </div>
             
             <!-- Charts Section -->
-            <div class="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-8">
-                <!-- AQI Trend Chart -->
+            <div class="mt-8 grid grid-cols-1 lg:grid-cols-3 gap-8">
+                <!-- Reports Count Chart -->
                 <div class="bg-white rounded-2xl shadow-lg p-6">
-                    <h3 class="text-xl font-bold text-navy-800 mb-6">7-Day AQI Trend</h3>
+                    <div class="flex items-center justify-between mb-6">
+                        <h3 class="text-xl font-bold text-navy-800">Community Reports Over Time</h3>
+                        <div class="flex gap-2">
+                            <button onclick="updateChartGranularity('hour')" id="hourBtn" class="chart-granularity-btn px-3 py-1 text-sm rounded-lg border transition-all">
+                                By Hour
+                            </button>
+                            <button onclick="updateChartGranularity('day')" id="dayBtn" class="chart-granularity-btn active px-3 py-1 text-sm rounded-lg border transition-all">
+                                By Day
+                            </button>
+                            <button onclick="resetChartZoom()" class="px-3 py-1 text-sm rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 transition-all">
+                                <i class="fas fa-search-minus mr-1"></i> Reset Zoom
+                            </button>
+                        </div>
+                    </div>
                     <div class="h-80">
                         <canvas id="aqiTrendChart" class="w-full h-full"></canvas>
                     </div>
+                    <p class="text-xs text-gray-500 mt-2 text-center">
+                        <i class="fas fa-info-circle mr-1"></i> Scroll to zoom, drag to pan
+                    </p>
                 </div>
                 
-                <!-- Disease Cases Chart -->
+                <!-- Report Types Chart -->
                 <div class="bg-white rounded-2xl shadow-lg p-6">
-                    <h3 class="text-xl font-bold text-navy-800 mb-6">Disease Case Distribution</h3>
+                    <h3 class="text-xl font-bold text-navy-800 mb-6">Reports by Type</h3>
                     <div class="h-80">
                         <canvas id="diseaseCasesChart" class="w-full h-full"></canvas>
+                    </div>
+                </div>
+                
+                <!-- ZIP Codes Chart -->
+                <div class="bg-white rounded-2xl shadow-lg p-6">
+                    <h3 class="text-xl font-bold text-navy-800 mb-6">Top ZIP Codes</h3>
+                    <div class="h-80">
+                        <canvas id="zipCodesChart" class="w-full h-full"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Community Reports Section -->
+            <div class="mt-12">
+                <div class="bg-white rounded-2xl shadow-lg p-6 mb-6">
+                    <div class="flex items-center justify-between mb-6">
+                        <div>
+                            <h3 class="text-2xl font-bold text-navy-800">
+                                <i class="fas fa-table text-emerald-600 mr-2"></i>
+                                Community Reports Database
+                            </h3>
+                            <p class="text-gray-600 mt-1">View and manage all crowdsourced community health reports</p>
+                        </div>
+                        <div class="flex gap-2">
+                            <button id="exportCsvBtn" class="px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg font-semibold transition-all shadow-md flex items-center gap-2">
+                                <i class="fas fa-file-csv"></i>
+                                CSV
+                            </button>
+                            <button id="exportExcelBtn" class="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg font-semibold transition-all shadow-md flex items-center gap-2">
+                                <i class="fas fa-file-excel"></i>
+                                Excel
+                            </button>
+                            <button id="exportPdfBtn" class="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg font-semibold transition-all shadow-md flex items-center gap-2">
+                                <i class="fas fa-file-pdf"></i>
+                                PDF
+                            </button>
+                            <button id="exportPngBtn" class="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-semibold transition-all shadow-md flex items-center gap-2">
+                                <i class="fas fa-image"></i>
+                                PNG
+                            </button>
+                            <button id="toggleColumnsBtn" class="px-4 py-2 bg-purple-500 hover:bg-purple-600 text-white rounded-lg font-semibold transition-all shadow-md flex items-center gap-2">
+                                <i class="fas fa-columns"></i>
+                                <span id="toggleColumnsText">Show All Columns</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Additional Filters for Reports Table -->
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6 p-4 bg-gray-50 rounded-lg">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Report Type</label>
+                            <select id="reportTypeFilter" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-sm">
+                                <option value="">All Types</option>
+                                <option value="health">Health</option>
+                                <option value="environmental">Environmental</option>
+                                <option value="weather">Weather</option>
+                                <option value="emergency">Emergency</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Severity</label>
+                            <select id="severityFilter" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-sm">
+                                <option value="">All Severities</option>
+                                <option value="low">Low</option>
+                                <option value="moderate">Moderate</option>
+                                <option value="high">High</option>
+                                <option value="critical">Critical</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                            <select id="statusFilter" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-sm">
+                                <option value="">All Statuses</option>
+                                <option value="pending">Pending</option>
+                                <option value="reviewed">Reviewed</option>
+                                <option value="resolved">Resolved</option>
+                                <option value="closed">Closed</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Timeframe</label>
+                            <select id="timeframeFilter" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-sm">
+                                <option value="">All Timeframes</option>
+                                <option value="now">Happening Now</option>
+                                <option value="1hour">Within 1 Hour</option>
+                                <option value="today">Today</option>
+                                <option value="yesterday">Yesterday</option>
+                                <option value="week">This Week</option>
+                                <option value="ongoing">Ongoing</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Search and Filter Actions -->
+                    <div class="flex gap-4 mb-6">
+                        <div class="flex-1">
+                            <input 
+                                type="text" 
+                                id="searchInput" 
+                                placeholder="Search reports by description, location, type..." 
+                                class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                            >
+                        </div>
+                        <button id="applyFiltersBtn" class="px-6 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg font-semibold transition-all shadow-md">
+                            <i class="fas fa-search mr-2"></i>
+                            Apply Filters
+                        </button>
+                        <button id="clearFiltersBtn" class="px-6 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg font-semibold transition-all shadow-md">
+                            <i class="fas fa-times mr-2"></i>
+                            Clear All
+                        </button>
+                    </div>
+
+                    <!-- Stats Summary -->
+                    <div class="grid grid-cols-4 gap-4 mb-6">
+                        <div class="bg-blue-50 rounded-lg p-4 border border-blue-200">
+                            <p class="text-sm text-blue-600 font-semibold">Total Reports</p>
+                            <p id="totalReportsCount" class="text-3xl font-bold text-blue-700 mt-1">0</p>
+                        </div>
+                        <div class="bg-red-50 rounded-lg p-4 border border-red-200">
+                            <p class="text-sm text-red-600 font-semibold">Critical/High</p>
+                            <p id="criticalReportsCount" class="text-3xl font-bold text-red-700 mt-1">0</p>
+                        </div>
+                        <div class="bg-yellow-50 rounded-lg p-4 border border-yellow-200">
+                            <p class="text-sm text-yellow-700 font-semibold">Pending Review</p>
+                            <p id="pendingReportsCount" class="text-3xl font-bold text-yellow-800 mt-1">0</p>
+                        </div>
+                        <div class="bg-green-50 rounded-lg p-4 border border-green-200">
+                            <p class="text-sm text-green-600 font-semibold">Resolved</p>
+                            <p id="resolvedReportsCount" class="text-3xl font-bold text-green-700 mt-1">0</p>
+                        </div>
+                    </div>
+
+                    <!-- Reports Table -->
+                    <div class="overflow-x-auto rounded-lg border border-gray-200">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead id="reportsTableHead" class="bg-gradient-to-r from-emerald-500 to-emerald-600">
+                                <!-- Table headers will be dynamically inserted here -->
+                            </thead>
+                            <tbody id="reportsTableBody" class="bg-white divide-y divide-gray-200">
+                                <!-- Table rows will be dynamically inserted here -->
+                                <tr>
+                                    <td colspan="10" class="px-6 py-12 text-center text-gray-500">
+                                        <i class="fas fa-spinner fa-spin text-4xl mb-3 text-gray-300"></i>
+                                        <p class="text-lg font-semibold">Loading reports...</p>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Pagination -->
+                    <div class="mt-6 flex items-center justify-between">
+                        <div class="text-sm text-gray-600">
+                            <span id="currentPageInfo">Loading...</span>
+                        </div>
+                        <div class="flex gap-2">
+                            <button id="prevPageBtn" class="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+                                <i class="fas fa-chevron-left mr-2"></i>
+                                Previous
+                            </button>
+                            <button id="nextPageBtn" class="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+                                Next
+                                <i class="fas fa-chevron-right ml-2"></i>
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
     </div>
 
+    <!-- Report Detail Modal -->
+    <div id="reportDetailModal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden items-center justify-center p-4">
+        <div class="bg-white rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <div class="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between rounded-t-2xl">
+                <h2 class="text-2xl font-bold text-navy-800">Report Details</h2>
+                <button onclick="closeReportDetailModal()" class="text-gray-400 hover:text-gray-600 transition-colors">
+                    <i class="fas fa-times text-2xl"></i>
+                </button>
+            </div>
+            <div id="reportDetailBody" class="p-6">
+                <!-- Report details will be inserted here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="fixed inset-0 bg-navy-900/90 hidden items-center justify-center z-50">
+        <div class="text-center">
+            <div class="inline-block animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-emerald-500 mb-4"></div>
+            <p class="text-white text-xl font-semibold">Loading...</p>
+        </div>
+    </div>
+
     <!-- Scripts -->
+    <script src="{{ url_for('static', filename='js/officials-dashboard.js') }}"></script>
     <script>
         // Logout function
         function logout() {
@@ -669,8 +891,8 @@
             const aqiCtx = document.getElementById('aqiTrendChart').getContext('2d');
             const diseasesCtx = document.getElementById('diseaseCasesChart').getContext('2d');
             
-            // Initialize with placeholder data
-            aqiChart = new Chart(aqiCtx, {
+            // Initialize with placeholder data - store on window for access
+            window.aqiChart = new Chart(aqiCtx, {
                 type: 'line',
                 data: {
                     labels: [],
@@ -689,12 +911,17 @@
                         pointBorderWidth: 2
                     }]
                 },
+                plugins: [ChartZoom],
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
                     interaction: {
                         intersect: false,
                         mode: 'index'
+                    },
+                    animation: {
+                        duration: 750,
+                        easing: 'easeInOutQuart'
                     },
                     plugins: {
                         legend: {
@@ -709,7 +936,7 @@
                         },
                         title: {
                             display: true,
-                            text: 'Loading EPA Data...',
+                            text: 'Loading Data...',
                             font: {
                                 size: 16,
                                 weight: 'bold'
@@ -726,6 +953,25 @@
                             },
                             padding: 12,
                             displayColors: true
+                        },
+                        zoom: {
+                            zoom: {
+                                wheel: {
+                                    enabled: true,
+                                    speed: 0.1
+                                },
+                                pinch: {
+                                    enabled: true
+                                },
+                                mode: 'x',
+                            },
+                            pan: {
+                                enabled: true,
+                                mode: 'x',
+                            },
+                            limits: {
+                                x: {min: 'original', max: 'original'},
+                            }
                         }
                     },
                     scales: {
@@ -740,7 +986,8 @@
                                     size: 11
                                 },
                                 maxRotation: 45,
-                                minRotation: 0
+                                minRotation: 0,
+                                autoSkip: true
                             },
                             title: {
                                 display: true,
@@ -778,25 +1025,137 @@
                 }
             });
             
-            diseasesChart = new Chart(diseasesCtx, {
+            window.diseasesChart = new Chart(diseasesCtx, {
                 type: 'doughnut',
                 data: {
                     labels: ['Loading...'],
                     datasets: [{
                         data: [1],
-                        backgroundColor: ['#gray']
+                        backgroundColor: ['#gray'],
+                        borderWidth: 3,
+                        borderColor: '#fff',
+                        hoverBorderWidth: 5,
+                        hoverBorderColor: '#fff',
+                        hoverOffset: 15
                     }]
                 },
+                plugins: [ChartDataLabels],
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
+                    animation: {
+                        animateRotate: true,
+                        animateScale: true,
+                        duration: 1000,
+                        easing: 'easeInOutQuart'
+                    },
                     plugins: {
                         legend: {
-                            position: 'bottom'
+                            position: 'bottom',
+                            labels: {
+                                padding: 15,
+                                font: {
+                                    size: 13,
+                                    weight: '500'
+                                },
+                                usePointStyle: true,
+                                pointStyle: 'circle'
+                            }
                         },
                         title: {
                             display: true,
-                            text: 'Loading Data...'
+                            text: 'Loading Data...',
+                            font: {
+                                size: 16,
+                                weight: 'bold'
+                            },
+                            padding: 10
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(0, 0, 0, 0.9)',
+                            titleFont: {
+                                size: 16,
+                                weight: 'bold'
+                            },
+                            bodyFont: {
+                                size: 14
+                            },
+                            padding: 16,
+                            displayColors: true,
+                            boxWidth: 20,
+                            boxHeight: 20
+                        },
+                        datalabels: {
+                            display: false // Will be enabled dynamically
+                        }
+                    }
+                }
+            });
+            
+            // Initialize ZIP codes chart
+            const zipCtx = document.getElementById('zipCodesChart').getContext('2d');
+            window.zipCodesChart = new Chart(zipCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Loading...'],
+                    datasets: [{
+                        data: [1],
+                        backgroundColor: ['#gray'],
+                        borderWidth: 3,
+                        borderColor: '#fff',
+                        hoverBorderWidth: 5,
+                        hoverBorderColor: '#fff',
+                        hoverOffset: 15
+                    }]
+                },
+                plugins: [ChartDataLabels],
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    animation: {
+                        animateRotate: true,
+                        animateScale: true,
+                        duration: 1000,
+                        easing: 'easeInOutQuart'
+                    },
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: {
+                                padding: 15,
+                                font: {
+                                    size: 11,
+                                    weight: '500'
+                                },
+                                usePointStyle: true,
+                                pointStyle: 'circle'
+                            }
+                        },
+                        title: {
+                            display: true,
+                            text: 'Loading Data...',
+                            font: {
+                                size: 16,
+                                weight: 'bold'
+                            },
+                            padding: 10
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(0, 0, 0, 0.9)',
+                            titleFont: {
+                                size: 16,
+                                weight: 'bold'
+                            },
+                            bodyFont: {
+                                size: 14
+                            },
+                            padding: 16,
+                            displayColors: true,
+                            boxWidth: 20,
+                            boxHeight: 20
+                        },
+                        datalabels: {
+                            display: false // Will be enabled dynamically
                         }
                     }
                 }
@@ -859,6 +1218,10 @@
             console.log('updateChartsWithData called with:', airQualityData.length, 'items');
             console.log('First item:', airQualityData[0]);
             console.log('Current time period:', currentTimePeriod);
+            
+            // Skip chart updates - community reports will handle this
+            // Charts are now populated by officials-dashboard.js with community data
+            return;
             
             if (airQualityData.length > 0) {
                 // Update AQI chart
@@ -954,6 +1317,25 @@
                     else if (stats.avg_aqi <= 300) aqiLevelElement.textContent = 'Very Unhealthy';
                     else aqiLevelElement.textContent = 'Hazardous';
                 }
+            }
+        }
+        
+        // Function to update chart granularity (called from buttons)
+        function updateChartGranularity(granularity) {
+            // This will be called by officials-dashboard.js
+            const event = new CustomEvent('chartGranularityChange', { detail: { granularity } });
+            document.dispatchEvent(event);
+            
+            // Update button states
+            document.getElementById('hourBtn').classList.remove('active');
+            document.getElementById('dayBtn').classList.remove('active');
+            document.getElementById(granularity + 'Btn').classList.add('active');
+        }
+        
+        // Function to reset chart zoom
+        function resetChartZoom() {
+            if (window.aqiChart) {
+                window.aqiChart.resetZoom();
             }
         }
     </script>
