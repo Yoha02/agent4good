@@ -18,6 +18,7 @@ document.addEventListener('DOMContentLoaded', function() {
     let totalReports = 0;
     let allReports = [];
     let chartGranularity = 'day'; // 'hour' or 'day'
+    let locationGroupBy = 'zipcode'; // 'zipcode', 'city', 'county', or 'state'
     let cachedChartReports = []; // Cache reports for chart updates
     let showAllColumns = false; // Column toggle state
     
@@ -1373,8 +1374,45 @@ document.addEventListener('DOMContentLoaded', function() {
                     timeCounts[hourKey].count++;
                 }
             });
+        } else if (chartGranularity === 'week') {
+            // Last 12 weeks by week
+            timeRange = new Date();
+            timeRange.setDate(timeRange.getDate() - 84); // 12 weeks
+            timeLabel = 'Last 12 Weeks';
+            
+            allChartReports.forEach(report => {
+                const date = new Date(report.timestamp);
+                if (date >= timeRange) {
+                    // Get week start (Sunday)
+                    const weekStart = new Date(date);
+                    weekStart.setDate(date.getDate() - date.getDay());
+                    const weekKey = weekStart.toISOString().split('T')[0];
+                    const displayKey = weekStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                    if (!timeCounts[weekKey]) {
+                        timeCounts[weekKey] = { display: displayKey, count: 0 };
+                    }
+                    timeCounts[weekKey].count++;
+                }
+            });
+        } else if (chartGranularity === 'month') {
+            // Last 12 months by month
+            timeRange = new Date();
+            timeRange.setMonth(timeRange.getMonth() - 12);
+            timeLabel = 'Last 12 Months';
+            
+            allChartReports.forEach(report => {
+                const date = new Date(report.timestamp);
+                if (date >= timeRange) {
+                    const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+                    const displayKey = date.toLocaleDateString('en-US', { year: 'numeric', month: 'short' });
+                    if (!timeCounts[monthKey]) {
+                        timeCounts[monthKey] = { display: displayKey, count: 0 };
+                    }
+                    timeCounts[monthKey].count++;
+                }
+            });
         } else {
-            // Last 30 days by day
+            // Last 30 days by day (default)
             timeRange = new Date();
             timeRange.setDate(timeRange.getDate() - 30);
             timeLabel = 'Last 30 Days';
@@ -1408,7 +1446,8 @@ document.addEventListener('DOMContentLoaded', function() {
             window.aqiChart.data.datasets[0].label = 'Number of Reports';
             window.aqiChart.options.plugins.title.text = `Community Reports Over Time (${timeLabel})`;
             window.aqiChart.options.scales.y.title.text = 'Number of Reports';
-            window.aqiChart.options.scales.x.title.text = chartGranularity === 'hour' ? 'Hour' : 'Date';
+            window.aqiChart.options.scales.y.max = 25; // Set max Y-axis to 25
+            window.aqiChart.options.scales.x.title.text = chartGranularity === 'hour' ? 'Hour' : chartGranularity === 'week' ? 'Week' : chartGranularity === 'month' ? 'Month' : 'Date';
             
             // Adjust X-axis display for readability
             if (chartGranularity === 'hour') {
@@ -1416,6 +1455,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 window.aqiChart.options.scales.x.ticks.minRotation = 45;
                 window.aqiChart.options.scales.x.ticks.autoSkip = true;
                 window.aqiChart.options.scales.x.ticks.maxTicksLimit = 12; // Show max 12 labels
+            } else if (chartGranularity === 'week' || chartGranularity === 'month') {
+                window.aqiChart.options.scales.x.ticks.maxRotation = 45;
+                window.aqiChart.options.scales.x.ticks.minRotation = 0;
+                window.aqiChart.options.scales.x.ticks.autoSkip = true;
+                window.aqiChart.options.scales.x.ticks.maxTicksLimit = 12;
             } else {
                 window.aqiChart.options.scales.x.ticks.maxRotation = 45;
                 window.aqiChart.options.scales.x.ticks.minRotation = 0;
@@ -1477,16 +1521,16 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             };
             
-            // Show percentages on the chart
+            // Show category labels on the chart instead of percentages
             window.diseasesChart.options.plugins.datalabels = {
                 color: '#fff',
                 font: {
                     weight: 'bold',
-                    size: 14
+                    size: 12
                 },
                 formatter: (value, ctx) => {
-                    const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
-                    return percentage > 5 ? `${percentage}%` : ''; // Only show if > 5%
+                    const label = ctx.chart.data.labels[ctx.dataIndex];
+                    return label; // Show category name
                 }
             };
             
@@ -1496,37 +1540,71 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Update ZIP codes chart
     function updateZipChart(allChartReports) {
-        const zipCounts = {};
-        allChartReports.forEach(report => {
-            const zip = report.zip_code || 'Unknown';
-            zipCounts[zip] = (zipCounts[zip] || 0) + 1;
-        });
+        const locationCounts = {};
+        let locationKey, locationLabel;
         
-        // Get top 10 ZIP codes
-        const sortedZips = Object.entries(zipCounts)
+        // Determine which field to group by
+        switch(locationGroupBy) {
+            case 'city':
+                locationKey = 'city';
+                locationLabel = 'City';
+                allChartReports.forEach(report => {
+                    const location = report.city && report.state ? `${report.city}, ${report.state}` : 'Unknown';
+                    locationCounts[location] = (locationCounts[location] || 0) + 1;
+                });
+                break;
+            case 'county':
+                locationKey = 'county';
+                locationLabel = 'County';
+                allChartReports.forEach(report => {
+                    const location = report.county && report.state ? `${report.county}, ${report.state}` : 'Unknown';
+                    locationCounts[location] = (locationCounts[location] || 0) + 1;
+                });
+                break;
+            case 'state':
+                locationKey = 'state';
+                locationLabel = 'State';
+                allChartReports.forEach(report => {
+                    const location = report.state || 'Unknown';
+                    locationCounts[location] = (locationCounts[location] || 0) + 1;
+                });
+                break;
+            case 'zipcode':
+            default:
+                locationKey = 'zip_code';
+                locationLabel = 'ZIP Code';
+                allChartReports.forEach(report => {
+                    const location = report.zip_code || 'Unknown';
+                    locationCounts[location] = (locationCounts[location] || 0) + 1;
+                });
+                break;
+        }
+        
+        // Get top 10 locations
+        const sortedLocations = Object.entries(locationCounts)
             .sort((a, b) => b[1] - a[1])
             .slice(0, 10);
         
-        const zipLabels = sortedZips.length > 0 ? 
-            sortedZips.map(([zip, count]) => `${zip}`) : 
+        const locationLabels = sortedLocations.length > 0 ? 
+            sortedLocations.map(([location, count]) => `${location}`) : 
             ['No Data'];
-        const zipData = sortedZips.length > 0 ? 
-            sortedZips.map(([zip, count]) => count) : 
+        const locationData = sortedLocations.length > 0 ? 
+            sortedLocations.map(([location, count]) => count) : 
             [0];
         
-        const zipColors = [
+        const locationColors = [
             '#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', 
             '#ec4899', '#14b8a6', '#f97316', '#06b6d4', '#84cc16'
         ];
         
-        const total = zipData.reduce((sum, val) => sum + val, 0);
+        const total = locationData.reduce((sum, val) => sum + val, 0);
         
-        // Update ZIP codes chart
+        // Update location chart
         if (window.zipCodesChart) {
-            window.zipCodesChart.data.labels = zipLabels;
-            window.zipCodesChart.data.datasets[0].data = zipData;
-            window.zipCodesChart.data.datasets[0].backgroundColor = zipColors.slice(0, zipLabels.length);
-            window.zipCodesChart.options.plugins.title.text = `Top 10 ZIP Codes (Total: ${total} reports)`;
+            window.zipCodesChart.data.labels = locationLabels;
+            window.zipCodesChart.data.datasets[0].data = locationData;
+            window.zipCodesChart.data.datasets[0].backgroundColor = locationColors.slice(0, locationLabels.length);
+            window.zipCodesChart.options.plugins.title.text = `Top 10 ${locationLabel}s (Total: ${total} reports)`;
             
             // Add percentage and value labels
             window.zipCodesChart.options.plugins.tooltip = {
@@ -1545,28 +1623,48 @@ document.addEventListener('DOMContentLoaded', function() {
                         const label = context.label || '';
                         const value = context.parsed || 0;
                         const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
+                        const prefix = locationGroupBy === 'zipcode' ? 'ZIP ' : '';
                         return [
-                            `ZIP ${label}: ${value} reports`,
+                            `${prefix}${label}: ${value} reports`,
                             `${percentage}% of total`
                         ];
                     }
                 }
             };
             
-            // Show percentages on the chart
+            // Show location labels on the chart instead of percentages
             window.zipCodesChart.options.plugins.datalabels = {
                 color: '#fff',
                 font: {
                     weight: 'bold',
-                    size: 12
+                    size: 11
                 },
                 formatter: (value, ctx) => {
-                    const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
-                    return percentage > 5 ? `${percentage}%` : ''; // Only show if > 5%
+                    const label = ctx.chart.data.labels[ctx.dataIndex];
+                    // Truncate long labels
+                    if (label.length > 15) {
+                        return label.substring(0, 13) + '...';
+                    }
+                    return label;
                 }
             };
             
             window.zipCodesChart.update();
         }
     }
+    
+    // Make updateLocationGrouping available globally
+    window.updateLocationGrouping = function(grouping) {
+        locationGroupBy = grouping;
+        
+        // Update button states
+        document.querySelectorAll('.location-grouping-btn').forEach(btn => {
+            btn.classList.remove('active');
+        });
+        document.getElementById(`${grouping}Btn`).classList.add('active');
+        
+        if (cachedChartReports.length > 0) {
+            updateZipChart(cachedChartReports);
+        }
+    };
 });
