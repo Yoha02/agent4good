@@ -318,6 +318,12 @@ function initializeApp() {
         currentState = 'California';
     }
     
+    // Set default date range (2024 to 2025)
+    setDefaultDateRange();
+    
+    // Update date range display
+    updateDateRangeDisplay();
+    
     updateAPIStatus('loading', 'Initializing...', 'Loading location data');
     
     // Load cities for current state on startup
@@ -331,6 +337,20 @@ function initializeApp() {
         console.log('[APP] Initializing pollutant charts on page load');
         // Call with null/empty to show empty charts
         initializePollutantCharts(null, null, null);
+    }
+}
+
+// Set default date range (2024 to 2025)
+function setDefaultDateRange() {
+    const startDateInput = document.getElementById('startDate');
+    const endDateInput = document.getElementById('endDate');
+    
+    if (startDateInput && endDateInput) {
+        // Set default dates to 2024-2025
+        startDateInput.value = '2024-01-01';
+        endDateInput.value = '2025-12-31';
+        
+        console.log('[APP] Default date range set: 2024-01-01 to 2025-12-31');
     }
 }
 
@@ -517,6 +537,7 @@ function setupEventListeners() {
     if (startDateInput) {
         startDateInput.addEventListener('change', function() {
             console.log('[Date Picker] Start date changed:', this.value);
+            updateDateRangeDisplay();
             // Refresh charts if we have a location
             if (currentZip || (currentCity && currentState)) {
                 console.log('[Date Picker] Refreshing charts with new date range');
@@ -528,6 +549,7 @@ function setupEventListeners() {
     if (endDateInput) {
         endDateInput.addEventListener('change', function() {
             console.log('[Date Picker] End date changed:', this.value);
+            updateDateRangeDisplay();
             // Refresh charts if we have a location
             if (currentZip || (currentCity && currentState)) {
                 console.log('[Date Picker] Refreshing charts with new date range');
@@ -628,6 +650,37 @@ function updateLocationDisplay(location) {
     const locationText = document.getElementById('currentLocationText');
     if (locationText) {
         locationText.textContent = location;
+    }
+    
+    // Update date range display
+    updateDateRangeDisplay();
+}
+
+// Update date range display
+function updateDateRangeDisplay() {
+    const startDateInput = document.getElementById('startDate');
+    const endDateInput = document.getElementById('endDate');
+    const dateRangeText = document.getElementById('dateRangeText');
+    
+    if (startDateInput && endDateInput && dateRangeText) {
+        const startDate = startDateInput.value;
+        const endDate = endDateInput.value;
+        
+        if (startDate && endDate) {
+            // Format dates for display
+            const startFormatted = new Date(startDate).toLocaleDateString('en-US', { 
+                year: 'numeric', 
+                month: 'short' 
+            });
+            const endFormatted = new Date(endDate).toLocaleDateString('en-US', { 
+                year: 'numeric', 
+                month: 'short' 
+            });
+            
+            dateRangeText.textContent = `(${startFormatted} - ${endFormatted})`;
+        } else {
+            dateRangeText.textContent = '';
+        }
     }
 }
 
@@ -740,6 +793,20 @@ async function loadAirQualityData() {
         const params = new URLSearchParams({
             days: currentDays
         });
+        
+        // Add date range parameters
+        const startDateInput = document.getElementById('startDate');
+        const endDateInput = document.getElementById('endDate');
+        
+        if (startDateInput && startDateInput.value) {
+            params.append('start_date', startDateInput.value);
+            console.log('Using start date:', startDateInput.value);
+        }
+        
+        if (endDateInput && endDateInput.value) {
+            params.append('end_date', endDateInput.value);
+            console.log('Using end date:', endDateInput.value);
+        }
         
         if (currentZip) {
             params.append('zipCode', currentZip);
@@ -861,6 +928,18 @@ async function loadHealthRecommendations() {
         const params = new URLSearchParams();
         if (currentState) {
             params.append('state', currentState);
+        }
+        
+        // Add date range parameters
+        const startDateInput = document.getElementById('startDate');
+        const endDateInput = document.getElementById('endDate');
+        
+        if (startDateInput && startDateInput.value) {
+            params.append('start_date', startDateInput.value);
+        }
+        
+        if (endDateInput && endDateInput.value) {
+            params.append('end_date', endDateInput.value);
         }
 
         const response = await fetch(`/api/health-recommendations?${params}`);
@@ -1591,6 +1670,18 @@ async function loadWeatherData() {
             params.append('state', currentState);
         }
         
+        // Add date range parameters
+        const startDateInput = document.getElementById('startDate');
+        const endDateInput = document.getElementById('endDate');
+        
+        if (startDateInput && startDateInput.value) {
+            params.append('start_date', startDateInput.value);
+        }
+        
+        if (endDateInput && endDateInput.value) {
+            params.append('end_date', endDateInput.value);
+        }
+        
         const url = `/api/weather?${params.toString()}`;
         console.log('[Weather] Fetching from:', url);
         
@@ -1629,6 +1720,18 @@ async function loadPollenData() {
         else if (currentCity && currentState) {
             params.append('city', currentCity);
             params.append('state', currentState);
+        }
+        
+        // Add date range parameters
+        const startDateInput = document.getElementById('startDate');
+        const endDateInput = document.getElementById('endDate');
+        
+        if (startDateInput && startDateInput.value) {
+            params.append('start_date', startDateInput.value);
+        }
+        
+        if (endDateInput && endDateInput.value) {
+            params.append('end_date', endDateInput.value);
         }
         
         const url = `/api/pollen?${params.toString()}`;
