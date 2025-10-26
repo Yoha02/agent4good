@@ -6,6 +6,20 @@ from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
 from google.genai import types
 from google.adk.tools import google_search
+import google.generativeai as genai
+
+# Configure Gemini API key - ADK uses GOOGLE_API_KEY
+# Ensure GOOGLE_API_KEY is set for ADK framework
+if not os.getenv('GOOGLE_API_KEY') and os.getenv('GEMINI_API_KEY'):
+    os.environ['GOOGLE_API_KEY'] = os.getenv('GEMINI_API_KEY')
+    print("[ADK] Using GEMINI_API_KEY as GOOGLE_API_KEY for ADK framework")
+
+GEMINI_API_KEY = os.getenv('GOOGLE_API_KEY') or os.getenv('GEMINI_API_KEY')
+if GEMINI_API_KEY:
+    genai.configure(api_key=GEMINI_API_KEY)
+    print(f"[ADK] Gemini API configured with key: {GEMINI_API_KEY[:10]}...")
+else:
+    print("[WARNING] No API key found - ADK agent may not work properly")
 
 # === Import all sub-agents and tools ===
 from .agents.air_quality_agent import air_quality_agent

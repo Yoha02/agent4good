@@ -3,11 +3,215 @@ let aqiChart = null;
 let currentState = '';
 let currentCity = '';
 let currentZip = '';
+
+// Voice control variables
+let recognition = null;
+let isListening = false;
+let speechEnabled = false;
+let currentUtterance = null;
+let selectedVoice = 'en-US-Neural2-F'; // Google Cloud TTS voice (Female Neural2)
+let currentAudio = null;
+
+// Initialize speech recognition
+function initializeSpeechRecognition() {
+    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        recognition = new SpeechRecognition();
+        recognition.continuous = false;
+        recognition.interimResults = false;
+        recognition.lang = 'en-US';
+
+        recognition.onstart = function() {
+            isListening = true;
+            updateMicrophoneButton();
+            console.log('[VOICE] Speech recognition started');
+        };
+
+        recognition.onresult = function(event) {
+            const transcript = event.results[0][0].transcript;
+            console.log('[VOICE] Recognized:', transcript);
+            document.getElementById('questionInput').value = transcript;
+            // Automatically ask the question
+            setTimeout(() => askAI(), 500);
+        };
+
+        recognition.onerror = function(event) {
+            console.error('[VOICE] Speech recognition error:', event.error);
+            isListening = false;
+            updateMicrophoneButton();
+            if (event.error === 'not-allowed') {
+                alert('Microphone access denied. Please enable microphone permissions.');
+            }
+        };
+
+        recognition.onend = function() {
+            isListening = false;
+            updateMicrophoneButton();
+            console.log('[VOICE] Speech recognition ended');
+        };
+
+        return true;
+    } else {
+        console.warn('[VOICE] Speech recognition not supported');
+        return false;
+    }
+}
+
+// Toggle voice input
+function toggleVoiceInput() {
+    if (!recognition) {
+        if (!initializeSpeechRecognition()) {
+            alert('Voice input is not supported in your browser. Please use Chrome, Edge, or Safari.');
+            return;
+        }
+    }
+
+    if (isListening) {
+        recognition.stop();
+    } else {
+        recognition.start();
+    }
+}
+
+// Update microphone button state
+function updateMicrophoneButton() {
+    const micButton = document.getElementById('micButton');
+    if (micButton) {
+        if (isListening) {
+            micButton.classList.add('bg-red-500', 'hover:bg-red-600');
+            micButton.classList.remove('bg-gray-500', 'hover:bg-gray-600');
+            micButton.innerHTML = '<i class="fas fa-microphone-slash"></i>';
+        } else {
+            micButton.classList.add('bg-gray-500', 'hover:bg-gray-600');
+            micButton.classList.remove('bg-red-500', 'hover:bg-red-600');
+            micButton.innerHTML = '<i class="fas fa-microphone"></i>';
+        }
+    }
+}
+
+// Toggle speech output
+function toggleSpeechOutput() {
+    speechEnabled = !speechEnabled;
+    
+    // Stop any current speech
+    if (!speechEnabled && currentAudio) {
+        currentAudio.pause();
+        currentAudio = null;
+    }
+    
+    // Update button state
+    const speakerButton = document.getElementById('speakerButton');
+    if (speakerButton) {
+        if (speechEnabled) {
+            speakerButton.classList.add('bg-emerald-500', 'hover:bg-emerald-600');
+            speakerButton.classList.remove('bg-gray-500', 'hover:bg-gray-600');
+            speakerButton.innerHTML = '<i class="fas fa-volume-up"></i>';
+        } else {
+            speakerButton.classList.add('bg-gray-500', 'hover:bg-gray-600');
+            speakerButton.classList.remove('bg-emerald-500', 'hover:bg-emerald-600');
+            speakerButton.innerHTML = '<i class="fas fa-volume-mute"></i>';
+        }
+    }
+    
+    console.log('[VOICE] Speech output:', speechEnabled ? 'enabled (Google Cloud TTS)' : 'disabled');
+}
+
+// Change voice selection
+function changeVoice(voiceName) {
+    selectedVoice = voiceName;
+    console.log('[VOICE] Voice changed to:', voiceName);
+}
+
+// Preview the selected voice
+async function previewVoice() {
+    const previewText = "Hello! I'm your AI health advisor. This is how I sound with the selected voice.";
+    
+    // Temporarily enable speech for preview if disabled
+    const wasEnabled = speechEnabled;
+    speechEnabled = true;
+    
+    await speakText(previewText);
+    
+    // Restore original state
+    speechEnabled = wasEnabled;
+}
+
+// Speak text using Google Cloud Text-to-Speech
+async function speakText(text) {
+    if (!speechEnabled) return;
+    
+    // Stop any ongoing speech
+    if (currentAudio) {
+        currentAudio.pause();
+        currentAudio = null;
+    }
+    
+    // Remove HTML tags for clean text
+    const cleanText = text.replace(/<[^>]*>/g, '').replace(/via.*$/, '').trim();
+    
+    if (!cleanText) return;
+    
+    try {
+        console.log('[VOICE] Requesting Google TTS for:', cleanText.substring(0, 50) + '...');
+        
+        // Call backend API for Google TTS
+        const response = await fetch('/api/text-to-speech', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                text: cleanText,
+                voice: selectedVoice
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success && data.audio) {
+            // Convert base64 to audio blob
+            const audioBlob = base64ToBlob(data.audio, 'audio/mp3');
+            const audioUrl = URL.createObjectURL(audioBlob);
+            
+            // Create and play audio
+            currentAudio = new Audio(audioUrl);
+            currentAudio.onended = () => {
+                URL.revokeObjectURL(audioUrl);
+                currentAudio = null;
+            };
+            
+            currentAudio.onerror = (error) => {
+                console.error('[VOICE] Audio playback error:', error);
+                URL.revokeObjectURL(audioUrl);
+                currentAudio = null;
+            };
+            
+            await currentAudio.play();
+            console.log('[VOICE] Playing Google TTS audio with voice:', data.voice);
+        } else {
+            console.error('[VOICE] TTS failed:', data.error);
+        }
+    } catch (error) {
+        console.error('[VOICE] Text-to-Speech error:', error);
+    }
+}
+
+// Helper function to convert base64 to blob
+function base64ToBlob(base64, mimeType) {
+    const byteCharacters = atob(base64);
+    const byteNumbers = new Array(byteCharacters.length);
+    
+    for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
+    }
+    
+    const byteArray = new Uint8Array(byteNumbers);
+    return new Blob([byteArray], { type: mimeType });
+}
 let currentDays = 7;
 let locationData = {}; // Cache location data
 let autocomplete = null; // Google Places Autocomplete
 let geocoder = null; // Google Geocoder
-let lastVideoData = null; // Store video data for Twitter posting
 
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', function() {
@@ -277,6 +481,9 @@ function initializeApp() {
     currentState = 'California';
     updateAPIStatus('loading', 'Initializing...', 'Loading default location data');
     
+    // Initialize chat location context with default
+    updateChatLocationContext('California');
+    
     // Load cities for California on startup
     onStateChange();
     
@@ -493,6 +700,9 @@ function applyLocationFilter() {
     }
     
     updateLocationDisplay(locationText);
+    
+    // Update chat location context indicator
+    updateChatLocationContext(locationText);
     
     console.log('Applying filter - State:', currentState, 'City:', currentCity, 'ZIP:', currentZip);
     loadAirQualityData();
@@ -1139,6 +1349,21 @@ function updateChart(data) {
     console.log('Chart created successfully');
 }
 
+// Update chat location context indicator
+function updateChatLocationContext(locationText) {
+    const contextDiv = document.getElementById('chatLocationContext');
+    const contextTextSpan = document.getElementById('chatLocationText');
+    
+    if (contextDiv && contextTextSpan) {
+        if (locationText && locationText !== 'California') {
+            contextTextSpan.textContent = locationText;
+            contextDiv.classList.remove('hidden');
+        } else {
+            contextDiv.classList.add('hidden');
+        }
+    }
+}
+
 // Ask AI function
 async function askAI() {
     const questionInput = document.getElementById('questionInput');
@@ -1149,13 +1374,6 @@ async function askAI() {
     const question = questionInput.value.trim();
     if (!question) return;
 
-    // Check if user is approving Twitter post
-    if (lastVideoData && isTwitterApproval(question)) {
-        await postToTwitter(lastVideoData);
-        questionInput.value = '';
-        return;
-    }
-
     // Add user message
     addMessage(question, 'user');
     questionInput.value = '';
@@ -1164,7 +1382,14 @@ async function askAI() {
     const loadingMsg = addMessage('Thinking...', 'bot');
     
     try {
-        // Try ADK agent first
+        // Get current location context
+        const locationContext = {
+            state: currentState,
+            city: currentCity,
+            zipcode: currentZip
+        };
+        
+        // Try ADK agent first with location context
         const response = await fetch('/api/agent-chat', {
             method: 'POST',
             headers: {
@@ -1173,6 +1398,8 @@ async function askAI() {
             body: JSON.stringify({
                 question: question,
                 state: currentState,
+                city: currentCity,
+                zipcode: currentZip,
                 days: currentDays
             })
         });
@@ -1183,14 +1410,11 @@ async function askAI() {
         loadingMsg.remove();
 
         if (data.success) {
+            // Add location context badge if available
+            const locationBadge = data.location ? `<div class="text-xs text-emerald-600 font-medium mt-1"><i class="fas fa-map-marker-alt mr-1"></i>${data.location}</div>` : '';
             // Add agent badge if available
             const agentBadge = data.agent ? `<div class="text-xs text-gray-500 mt-1">via ${data.agent}</div>` : '';
-            addMessage(data.response + agentBadge, 'bot');
-            
-            // If video generation started, begin polling
-            if (data.task_id) {
-                pollForVideoCompletion(data.task_id);
-            }
+            addMessage(data.response + locationBadge + agentBadge, 'bot');
         } else {
             addMessage('Sorry, I encountered an error. Please try again.', 'bot');
         }
@@ -1201,134 +1425,34 @@ async function askAI() {
     }
 }
 
-// Check if user message is Twitter approval
-function isTwitterApproval(message) {
-    const lowerMsg = message.toLowerCase().trim();
-    const approvalPhrases = ['yes', 'yeah', 'sure', 'ok', 'okay', 'post it', 'post to twitter', 'tweet it', 'share it'];
-    return approvalPhrases.some(phrase => lowerMsg === phrase || lowerMsg.includes(phrase));
-}
-
-// Post video to Twitter
-async function postToTwitter(videoData) {
-    const questionInput = document.getElementById('questionInput');
+// Clear chat history
+function clearChat() {
+    const chatMessages = document.getElementById('chatMessages');
+    if (!chatMessages) return;
     
-    // Add user's approval message
-    addMessage('Yes, post to Twitter', 'user');
-    
-    // Show posting message
-    const loadingMsg = addMessage('Posting to Twitter... (This may take 60-90 seconds: downloading video, uploading to Twitter, processing)', 'bot');
-    
-    try {
-        // Create abort controller for timeout (2 minutes)
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 120000); // 2 minutes
-        
-        const response = await fetch('/api/post-to-twitter', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                video_url: videoData.video_url,
-                message: videoData.action_line,
-                hashtags: ['HealthAlert', 'PublicHealth', 'CommunityHealth', 'AirQuality']
-            }),
-            signal: controller.signal
-        });
-        
-        clearTimeout(timeoutId);
-        const result = await response.json();
-        
-        // Remove loading message
-        loadingMsg.remove();
-        
-        if (result.success) {
-            const successMessage = `✓ Posted to Twitter successfully!\n\nView your post: ${result.tweet_url}\n\n${result.message}`;
-            addMessage(successMessage, 'bot');
-            
-            // Clear video data after posting
-            lastVideoData = null;
-        } else {
-            addMessage(`Sorry, I couldn't post to Twitter: ${result.error}`, 'bot');
-        }
-        
-    } catch (error) {
-        loadingMsg.remove();
-        if (error.name === 'AbortError') {
-            addMessage('Twitter posting timed out. The video may still have been posted. Please check your Twitter feed at https://twitter.com/AI_mmunity', 'bot');
-        } else {
-            addMessage('Sorry, there was an error posting to Twitter. Please try again.', 'bot');
-        }
-        console.error('Twitter posting error:', error);
+    // Stop any ongoing speech
+    if (currentAudio) {
+        currentAudio.pause();
+        currentAudio = null;
     }
     
-    // Clear input
-    if (questionInput) {
-        questionInput.value = '';
-    }
-}
-
-// Poll for video generation completion
-const activeVideoPolls = new Set();
-
-async function pollForVideoCompletion(taskId) {
-    // Prevent duplicate polling
-    if (activeVideoPolls.has(taskId)) return;
-    activeVideoPolls.add(taskId);
+    // Clear all messages
+    chatMessages.innerHTML = '';
     
-    console.log(`[VIDEO] Starting poll for task: ${taskId}`);
+    // Add welcome message back
+    const welcomeDiv = document.createElement('div');
+    welcomeDiv.className = 'flex items-start space-x-3';
+    welcomeDiv.innerHTML = `
+        <div class="w-10 h-10 bg-emerald-500 rounded-full flex items-center justify-center flex-shrink-0">
+            <i class="fas fa-robot text-white"></i>
+        </div>
+        <div class="bg-white rounded-2xl rounded-tl-none p-4 shadow-md max-w-lg">
+            <p class="text-gray-700">Hello! I'm your AI health advisor. Ask me anything about air quality, disease risks, or health recommendations for your community.</p>
+        </div>
+    `;
+    chatMessages.appendChild(welcomeDiv);
     
-    const maxAttempts = 30; // 30 * 5 sec = 2.5 minutes
-    
-    for (let i = 0; i < maxAttempts; i++) {
-        await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5 seconds
-        
-        try {
-            const response = await fetch(`/api/check-video-task/${taskId}`);
-            const status = await response.json();
-            
-            console.log(`[VIDEO] Poll ${i + 1}: ${status.status} - ${status.progress || 0}%`);
-            
-            if (status.status === 'complete') {
-                // Store video data for potential Twitter posting
-                lastVideoData = {
-                    video_url: status.video_url,
-                    action_line: status.action_line,
-                    task_id: taskId
-                };
-                
-                // Video is ready! Add new message with video
-                const videoMessage = `✓ Your PSA video is ready!
-
-[VIDEO:${status.video_url}]
-
-Action: "${status.action_line}"
-
-Would you like me to post this to Twitter?`;
-                
-                addMessage(videoMessage, 'bot');
-                activeVideoPolls.delete(taskId);
-                console.log(`[VIDEO] Task ${taskId} complete!`);
-                console.log('[VIDEO] Video data stored for Twitter posting');
-                return;
-            } else if (status.status === 'error') {
-                // Generation failed
-                addMessage(`Sorry, video generation encountered an error: ${status.error}`, 'bot');
-                activeVideoPolls.delete(taskId);
-                console.error(`[VIDEO] Task ${taskId} failed:`, status.error);
-                return;
-            }
-            // Continue polling if still processing
-        } catch (error) {
-            console.error('[VIDEO] Polling error:', error);
-            // Continue polling despite errors
-        }
-    }
-    
-    // Timeout
-    activeVideoPolls.delete(taskId);
-    addMessage('Video generation timed out. Please try again.', 'bot');
-    console.error(`[VIDEO] Task ${taskId} timeout`);
+    console.log('[CHAT] Chat history cleared');
 }
 
 
@@ -1340,45 +1464,20 @@ function addMessage(text, type) {
     const messageDiv = document.createElement('div');
     messageDiv.className = `flex items-start space-x-3 ${type === 'user' ? 'justify-end' : ''}`;
     
-    // Parse video markers for bot messages
-    let messageContent = text;
-    let videoHtml = '';
-    
-    if (type === 'bot' && text.includes('[VIDEO:')) {
-        const videoMatch = text.match(/\[VIDEO:(.*?)\]/);
-        if (videoMatch) {
-            const videoUrl = videoMatch[1];
-            
-            // Remove video marker from text
-            messageContent = text.replace(/\[VIDEO:.*?\]/, '').trim();
-            
-            // Create video player
-            videoHtml = `
-                <div class="my-3">
-                    <video 
-                        controls 
-                        class="w-full rounded-lg shadow-lg" 
-                        style="max-width: 300px; max-height: 533px;"
-                        preload="metadata"
-                    >
-                        <source src="${videoUrl}" type="video/mp4">
-                        Your browser doesn't support video playback.
-                    </video>
-                </div>
-            `;
-        }
-    }
-    
     if (type === 'bot') {
         messageDiv.innerHTML = `
             <div class="w-10 h-10 bg-emerald-500 rounded-full flex items-center justify-center flex-shrink-0">
                 <i class="fas fa-robot text-white"></i>
             </div>
-            <div class="bg-white rounded-2xl rounded-tl-none p-4 shadow-md max-w-2xl">
-                ${videoHtml}
-                <p class="text-gray-700 leading-relaxed whitespace-pre-line">${messageContent}</p>
+            <div class="bg-white rounded-2xl rounded-tl-none p-4 shadow-md max-w-lg">
+                <p class="text-gray-700 leading-relaxed">${text}</p>
             </div>
         `;
+        
+        // Speak the bot's response if speech is enabled
+        if (speechEnabled) {
+            speakText(text);
+        }
     } else {
         messageDiv.innerHTML = `
             <div class="bg-navy-700 text-white rounded-2xl rounded-tr-none p-4 shadow-md max-w-lg">
