@@ -72,34 +72,47 @@ def get_infectious_disease_data(county: Optional[str] = None, state: Optional[st
             Year,
             Month,
             State,
-            Source_Type,
+            `Source Type` as Source_Type,
             Pathogen,
-            Serotype_or_Species,
-            SUM(Number_of_isolates) as total_cases
+            `Serotype or Species` as Serotype_or_Species,
+            SUM(`Number of isolates`) as total_cases
         FROM `{project_id}.beam_report_data_folder.beam_report_data`
         WHERE {where_clause}
-        GROUP BY Year, Month, State, Source_Type, Pathogen, Serotype_or_Species
+        GROUP BY Year, Month, State, `Source Type`, Pathogen, `Serotype or Species`
         ORDER BY total_cases DESC
         LIMIT 50
         """
         
-        # Execute query
+        # Execute query using standard BigQuery client with ADK credentials
         try:
+            from google.cloud import bigquery
+            
             application_default_credentials, _ = google.auth.default()
-            credentials_config = BigQueryCredentialsConfig(
+            
+            # Use standard BigQuery client (ADK's BigQueryToolset.execute_sql doesn't exist)
+            client = bigquery.Client(
+                project=project_id,
                 credentials=application_default_credentials
             )
-            tool_config = BigQueryToolConfig(write_mode=WriteMode.BLOCKED)
             
-            bigquery_toolset = BigQueryToolset(
-                credentials_config=credentials_config, 
-                bigquery_tool_config=tool_config
-            )
+            print(f"[DISEASE] Executing BigQuery query...")
+            query_job = client.query(query)
+            results = query_job.result()
             
-            result = bigquery_toolset.execute_sql(
-                project_id=project_id,
-                query=query
-            )
+            # Convert to expected format
+            result_data = []
+            for row in results:
+                result_data.append(dict(row))
+            
+            print(f"[DISEASE] Query returned {len(result_data)} rows from CDC BEAM dataset")
+            
+            # Create result object matching expected format
+            class QueryResult:
+                def __init__(self, data):
+                    self.status = "success" if data else "no_data"
+                    self.data = data
+            
+            result = QueryResult(result_data)
             
             if result.status == "success" and result.data:
                 # Process real data

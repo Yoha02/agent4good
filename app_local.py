@@ -18,6 +18,14 @@ from google.cloud import storage, bigquery, texttospeech
 import google.generativeai as genai
 import base64
 
+# PSA Video Integration
+try:
+    from multi_tool_agent_bquery_tools.async_video_manager import VideoGenerationManager
+    PSA_VIDEO_AVAILABLE = True
+except ImportError as e:
+    print(f"[INFO] PSA Video features not available: {e}")
+    PSA_VIDEO_AVAILABLE = False
+
 # Load environment variables
 load_dotenv()
 
@@ -102,6 +110,17 @@ except Exception as e:
     location_service = ComprehensiveLocationService()  # Location service can work independently
     weather_service = None
     pollen_service = None
+
+# Initialize PSA Video Manager
+video_manager = None
+if PSA_VIDEO_AVAILABLE:
+    try:
+        video_manager = VideoGenerationManager()
+        print("[OK] PSA Video Manager initialized")
+    except Exception as e:
+        print(f"[WARNING] PSA Video Manager initialization failed: {e}")
+        video_manager = None
+        PSA_VIDEO_AVAILABLE = False
 
 # Import ADK agent (optional, for backwards compatibility)
 try:
@@ -986,29 +1005,121 @@ def agent_chat():
         elif state:
             location_context = state
         
+        # Check for PSA video generation keywords
+        video_keywords = [
+            'create video', 'generate video', 'make video', 'produce video',
+            'create psa', 'generate psa', 'make psa',
+            'psa video', 'public service announcement', 'health alert video',
+            'create announcement', 'make announcement'
+        ]
+        
+        wants_video = any(keyword in question.lower() for keyword in video_keywords)
+        
+        if wants_video and PSA_VIDEO_AVAILABLE and video_manager:
+            print(f"[PSA-VIDEO] Video generation requested for: {location_context or state or 'Unknown location'}")
+            try:
+                # Create video generation task
+                task_id = video_manager.create_task({
+                    'question': question,
+                    'state': state,
+                    'city': city,
+                    'zipcode': zipcode,
+                    'location_context': location_context
+                })
+                
+                # Start background video generation
+                from multi_tool_agent_bquery_tools.integrations.veo3_client import get_veo3_client
+                from multi_tool_agent_bquery_tools.tools.video_gen import generate_action_line, create_veo_prompt
+                
+                # Get current health data for video context
+                health_data_for_video = agent.query_air_quality_data(state=state, days=1)
+                
+                if health_data_for_video:
+                    df = pd.DataFrame(health_data_for_video)
+                    avg_aqi = int(df['aqi'].mean()) if 'aqi' in df and not df['aqi'].empty else 50
+                    
+                    # Determine severity
+                    if avg_aqi <= 50:
+                        severity = "good"
+                    elif avg_aqi <= 100:
+                        severity = "moderate"
+                    elif avg_aqi <= 150:
+                        severity = "unhealthy for sensitive groups"
+                    elif avg_aqi <= 200:
+                        severity = "unhealthy"
+                    elif avg_aqi <= 300:
+                        severity = "very unhealthy"
+                    else:
+                        severity = "hazardous"
+                else:
+                    avg_aqi = 75
+                    severity = "moderate"
+                
+                health_data = {
+                    'type': 'air_quality',
+                    'severity': severity,
+                    'metric': avg_aqi,
+                    'location': state or 'Unknown',
+                    'specific_concern': 'PM2.5'
+                }
+                
+                veo_client = get_veo3_client()
+                video_manager.start_video_generation(
+                    task_id=task_id,
+                    health_data=health_data,
+                    veo_client=veo_client,
+                    action_line_func=generate_action_line,
+                    veo_prompt_func=create_veo_prompt
+                )
+                
+                print(f"[PSA-VIDEO] Task {task_id} created and started")
+                
+                return jsonify({
+                    'success': True,
+                    'response': f"I'll generate a health alert video for {location_context or state or 'your area'}. This takes about 60 seconds.\n\nYou can continue chatting while I work on this. I'll notify you when it's ready!\n\nIs there anything else I can help you with?",
+                    'task_id': task_id,
+                    'estimated_time': 60,
+                    'agent': 'PSA Video Generator',
+                    'location': location_context
+                })
+                
+            except Exception as video_error:
+                print(f"[PSA-VIDEO] Error starting video generation: {video_error}")
+                import traceback
+                traceback.print_exc()
+                # Fall through to normal chat
+        
         # Try ADK agent first if available (only if model is working)
         if ADK_AGENT_AVAILABLE and model:
             try:
+                print(f"[AGENT-CHAT] Using ADK agent for question: {question}")
                 # Enhance question with location context if not already mentioned
                 enhanced_question = question
                 if location_context and location_context.lower() not in question.lower():
                     enhanced_question = f"For {location_context}: {question}"
                 
+                print(f"[AGENT-CHAT] Enhanced question: {enhanced_question}")
                 response = call_adk_agent(enhanced_question)
+                print(f"[AGENT-CHAT] ADK response received: {response[:100]}...")
                 
                 # Check if response indicates an API key error
                 if "API key is not set up" in response or "cannot fulfill this request" in response:
                     print(f"[WARNING] ADK agent has API key issue, falling back to Gemini AI")
                     raise Exception("ADK agent API key error")
                 
-                return jsonify({
+                result = {
                     'success': True,
                     'response': response,
                     'agent': 'ADK Multi-Agent System',
                     'location': location_context
-                })
+                }
+                print(f"[AGENT-CHAT] Returning successful response via ADK")
+                return jsonify(result)
             except Exception as adk_error:
-                print(f"[WARNING] ADK agent failed: {adk_error}, falling back to Gemini AI")
+                print(f"[ERROR] ADK agent failed: {adk_error}")
+                import traceback
+                traceback.print_exc()
+                print(f"[AGENT-CHAT] Falling back to Gemini AI")
         
         # Fallback to Gemini AI with comprehensive environmental data
         # Gather all available environmental data for the location
@@ -1115,20 +1226,28 @@ def agent_chat():
         environmental_context = " | ".join([p for p in context_parts if p])
         enhanced_question = f"{environmental_context}\n\nQuestion: {question}"
         
-        print(f"[CHATBOT] Enhanced context: {environmental_context}")
+        print(f"[AGENT-CHAT] Using Gemini fallback")
+        print(f"[AGENT-CHAT] Enhanced context: {environmental_context}")
         
         analysis = agent.analyze_with_ai(historical_data, enhanced_question)
         
-        return jsonify({
+        print(f"[AGENT-CHAT] Gemini response received: {analysis[:100]}...")
+        
+        result = {
             'success': True,
             'response': analysis,
             'agent': 'Gemini AI with Comprehensive Environmental Data',
             'data_points': len(historical_data),
             'location': location_context,
             'environmental_data': environmental_data  # Include for debugging/frontend use
-        })
+        }
+        print(f"[AGENT-CHAT] Returning successful response via Gemini")
+        return jsonify(result)
         
     except Exception as e:
+        print(f"[ERROR] Agent chat failed completely: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({
             'success': False,
             'error': str(e)
@@ -2438,6 +2557,204 @@ def get_pollen():
         traceback.print_exc()
         return jsonify({'success': False, 'error': str(e)}), 500
 
+# ===== PSA VIDEO ENDPOINTS =====
+
+@app.route('/api/generate-psa-video', methods=['POST'])
+def generate_psa_video_endpoint():
+    """Generate PSA video from current health data"""
+    if not PSA_VIDEO_AVAILABLE or not video_manager:
+        return jsonify({
+            'success': False,
+            'error': 'PSA video feature not available'
+        }), 503
+    
+    try:
+        request_data = request.get_json()
+        location = request_data.get('location', 'California')
+        data_type = request_data.get('data_type', 'air_quality')  # or 'disease'
+        
+        # Get current health data
+        if data_type == 'air_quality':
+            health_data = agent.query_air_quality_data(state=location, days=1)
+            if health_data:
+                df = pd.DataFrame(health_data)
+                avg_aqi = df['aqi'].mean() if 'aqi' in df else 50
+                severity = "good" if avg_aqi <= 50 else "moderate" if avg_aqi <= 100 else "unhealthy"
+            else:
+                avg_aqi = 50
+                severity = "good"
+        else:
+            # Disease data
+            avg_aqi = 0
+            severity = "moderate"
+        
+        # Call agent to generate action line and video
+        prompt = f"Create a PSA video for {location} about {data_type}. Current severity: {severity}, AQI: {avg_aqi}"
+        
+        if ADK_AGENT_AVAILABLE:
+            response = call_adk_agent(prompt)
+            
+            return jsonify({
+                'success': True,
+                'action_line': 'Generated action line here',  # Extract from response
+                'status': 'processing',
+                'message': response,
+                'note': 'PSA video generation initiated'
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'PSA video generation requires ADK agent'
+            }), 503
+            
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/approve-and-post', methods=['POST'])
+def approve_and_post_video():
+    """Post approved video to Twitter"""
+    if not PSA_VIDEO_AVAILABLE:
+        return jsonify({
+            'success': False,
+            'error': 'PSA video feature not available'
+        }), 503
+    
+    try:
+        request_data = request.get_json()
+        video_uri = request_data.get('video_uri')
+        message = request_data.get('message')
+        hashtags = request_data.get('hashtags', [])
+        
+        # TODO: Implement actual Twitter posting
+        # For now, simulate success
+        
+        return jsonify({
+            'success': True,
+            'tweet_url': 'https://twitter.com/CommunityHealth/status/123456',
+            'message': 'Video posted successfully (simulation mode)',
+            'note': 'Add Twitter API credentials to enable real posting'
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/check-video-task/<task_id>')
+def check_video_task(task_id):
+    """Check status of async video generation task"""
+    if not PSA_VIDEO_AVAILABLE or not video_manager:
+        return jsonify({
+            'status': 'error',
+            'error': 'PSA video feature not available'
+        }), 503
+    
+    try:
+        task = video_manager.get_task(task_id)
+        
+        if task:
+            return jsonify(task)
+        else:
+            return jsonify({
+                'status': 'not_found',
+                'error': 'Task ID not found'
+            }), 404
+            
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/post-to-twitter', methods=['POST'])
+def post_to_twitter():
+    """
+    Post a PSA video to Twitter/X
+    
+    Expected JSON:
+    {
+        "video_url": "https://storage.googleapis.com/...",
+        "message": "Health alert message",
+        "hashtags": ["HealthAlert", "AirQuality"] (optional)
+    }
+    """
+    if not PSA_VIDEO_AVAILABLE:
+        return jsonify({
+            'success': False,
+            'error': 'PSA video feature not available'
+        }), 503
+    
+    try:
+        data = request.get_json()
+        
+        video_url = data.get('video_url')
+        message = data.get('message', '')
+        hashtags = data.get('hashtags', ['HealthAlert', 'PublicHealth', 'CommunityHealth'])
+        
+        if not video_url:
+            return jsonify({
+                'success': False,
+                'error': 'video_url is required'
+            }), 400
+        
+        if not message:
+            return jsonify({
+                'success': False,
+                'error': 'message is required'
+            }), 400
+        
+        # Import Twitter client
+        from multi_tool_agent_bquery_tools.integrations.twitter_client import get_twitter_client
+        
+        twitter_client = get_twitter_client()
+        
+        print(f"\n[TWITTER] ===== Twitter Posting Request =====")
+        print(f"[TWITTER] Video URL: {video_url[:50]}...")
+        print(f"[TWITTER] Message: {message[:100]}...")
+        print(f"[TWITTER] Hashtags: {hashtags}")
+        
+        # Post to Twitter
+        result = twitter_client.post_video_tweet(
+            video_url=video_url,
+            message=message,
+            hashtags=hashtags
+        )
+        
+        if result['status'] == 'success':
+            print(f"[TWITTER] SUCCESS: Tweet posted!")
+            print(f"[TWITTER] URL: {result['tweet_url']}")
+            
+            return jsonify({
+                'success': True,
+                'tweet_url': result['tweet_url'],
+                'tweet_id': result['tweet_id'],
+                'message': result.get('message', 'Posted to Twitter successfully!')
+            })
+        else:
+            print(f"[TWITTER] ERROR: {result.get('error_message')}")
+            return jsonify({
+                'success': False,
+                'error': result.get('error_message', 'Unknown error')
+            }), 500
+        
+    except Exception as e:
+        print(f"[TWITTER] ERROR: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+# ===== END PSA VIDEO ENDPOINTS =====
+
 @app.route('/acknowledgements')
 def acknowledgements():
     """Acknowledgements page"""
@@ -2449,8 +2766,16 @@ def health_check():
     """Health check endpoint"""
     return jsonify({
         'status': 'healthy',
-        'mode': 'local_development',
-        'adk_agent': 'unavailable (local mode)'
+        'mode': 'production',
+        'adk_agent': 'available' if ADK_AGENT_AVAILABLE else 'unavailable',
+        'psa_video_feature': 'enabled' if PSA_VIDEO_AVAILABLE else 'disabled',
+        'services': {
+            'epa': EPA_AVAILABLE,
+            'weather': weather_service is not None,
+            'pollen': pollen_service is not None,
+            'gcs': GCS_AVAILABLE,
+            'tts': TTS_AVAILABLE
+        }
     }), 200
 
 if __name__ == '__main__':

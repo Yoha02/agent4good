@@ -106,21 +106,34 @@ def get_air_quality(county: Optional[str] = None, state: Optional[str] = None, c
         """
         
         try:
+            from google.cloud import bigquery
+            
             application_default_credentials, _ = google.auth.default()
-            credentials_config = BigQueryCredentialsConfig(
+            
+            # Use standard BigQuery client (ADK's BigQueryToolset.execute_sql doesn't exist)
+            client = bigquery.Client(
+                project=os.getenv("GOOGLE_CLOUD_PROJECT", "qwiklabs-gcp-00-4a7d408c735c"),
                 credentials=application_default_credentials
             )
-            tool_config = BigQueryToolConfig(write_mode=WriteMode.BLOCKED)
             
-            bigquery_toolset = BigQueryToolset(
-                credentials_config=credentials_config,
-                bigquery_tool_config=tool_config
-            )
+            print(f"[AIR QUALITY] Executing BigQuery query...")
+            query_job = client.query(query)
+            results = query_job.result()
             
-            result = bigquery_toolset.execute_sql(
-                project_id=os.getenv("GOOGLE_CLOUD_PROJECT", "qwiklabs-gcp-00-4a7d408c735c"),
-                query=query
-            )
+            # Convert to expected format
+            result_data = []
+            for row in results:
+                result_data.append(dict(row))
+            
+            print(f"[AIR QUALITY] Query returned {len(result_data)} rows from EPA dataset")
+            
+            # Create result object matching expected format
+            class QueryResult:
+                def __init__(self, data):
+                    self.status = "success" if data else "no_data"
+                    self.data = data
+            
+            result = QueryResult(result_data)
             
             if result.status == "success" and result.data:
                 data_points = []
@@ -139,6 +152,7 @@ def get_air_quality(county: Optional[str] = None, state: Optional[str] = None, c
                     total_pm25 += pm25
                 
                 avg_concentration = round(total_pm25 / len(data_points), 2) if data_points else 0
+                num_sites = len(set(row.get('site_num', '') for row in result.data if row.get('site_num')))
                 location_desc = f"{county}, {state}" if county and state else state if state else county
             else:
                 raise Exception("No data from BigQuery, using demo")
