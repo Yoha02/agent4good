@@ -2205,16 +2205,25 @@ async function loadSummaryCards() {
     
     try {
         // Load wildfire data
-        const fireResponse = await fetch('/api/wildfires?limit=1');
+        console.log('[Summary Cards] Fetching wildfire data...');
+        const fireResponse = await fetch('/api/wildfires?limit=100');
         const fireData = await fireResponse.json();
-        if (fireData.status === 'success' && fireData.data && fireData.data.length > 0) {
-            const summaryFireEl = document.getElementById('summaryFire');
-            if (summaryFireEl) {
+        console.log('[Summary Cards] Fire data received:', fireData);
+        
+        const summaryFireEl = document.getElementById('summaryFire');
+        if (summaryFireEl) {
+            if (fireData.status === 'success' && fireData.data && fireData.data.length > 0) {
                 summaryFireEl.textContent = fireData.data.length;
+                console.log('[Summary Cards] Fire count:', fireData.data.length);
+            } else {
+                summaryFireEl.textContent = '0';
+                console.log('[Summary Cards] No active fires');
             }
         }
     } catch (error) {
         console.error('[Summary Cards] Error loading fire data:', error);
+        const summaryFireEl = document.getElementById('summaryFire');
+        if (summaryFireEl) summaryFireEl.textContent = '0';
     }
     
     try {
@@ -2223,33 +2232,51 @@ async function loadSummaryCards() {
         if (currentState) params.append('state', currentState);
         params.append('days', '7');
         
+        console.log('[Summary Cards] Fetching COVID data...');
         const covidResponse = await fetch(`/api/covid-hospitalizations?${params.toString()}`);
         const covidData = await covidResponse.json();
-        if (covidData.status === 'success' && covidData.data && covidData.data.length > 0) {
-            const summaryCovidEl = document.getElementById('summaryCovid');
-            if (summaryCovidEl) {
+        console.log('[Summary Cards] COVID data received:', covidData);
+        
+        const summaryCovidEl = document.getElementById('summaryCovid');
+        if (summaryCovidEl) {
+            if (covidData.status === 'success' && covidData.data && covidData.data.length > 0) {
                 // Calculate average weekly admissions per 100K
                 const avgAdmissions = covidData.data.reduce((sum, d) => 
                     sum + (d.weekly_admissions_per_100k || 0), 0) / covidData.data.length;
                 summaryCovidEl.textContent = avgAdmissions.toFixed(1);
+                console.log('[Summary Cards] COVID avg admissions:', avgAdmissions.toFixed(1));
+            } else {
+                summaryCovidEl.textContent = '0.0';
+                console.log('[Summary Cards] No COVID data available');
             }
         }
     } catch (error) {
         console.error('[Summary Cards] Error loading COVID data:', error);
+        const summaryCovidEl = document.getElementById('summaryCovid');
+        if (summaryCovidEl) summaryCovidEl.textContent = '0.0';
     }
     
     try {
         // Load alerts data
+        console.log('[Summary Cards] Fetching alerts data...');
         const alertsResponse = await fetch('/api/alerts');
         const alertsData = await alertsResponse.json();
-        if (alertsData.status === 'success' && alertsData.alerts) {
-            const summaryAlertsEl = document.getElementById('summaryAlerts');
-            if (summaryAlertsEl) {
+        console.log('[Summary Cards] Alerts data received:', alertsData);
+        
+        const summaryAlertsEl = document.getElementById('summaryAlerts');
+        if (summaryAlertsEl) {
+            if (alertsData.status === 'success' && alertsData.alerts && alertsData.alerts.length > 0) {
                 summaryAlertsEl.textContent = alertsData.alerts.length;
+                console.log('[Summary Cards] Alerts count:', alertsData.alerts.length);
+            } else {
+                summaryAlertsEl.textContent = '0';
+                console.log('[Summary Cards] No active alerts');
             }
         }
     } catch (error) {
         console.error('[Summary Cards] Error loading alerts data:', error);
+        const summaryAlertsEl = document.getElementById('summaryAlerts');
+        if (summaryAlertsEl) summaryAlertsEl.textContent = '0';
     }
     
     console.log('[Summary Cards] Data loading complete');
