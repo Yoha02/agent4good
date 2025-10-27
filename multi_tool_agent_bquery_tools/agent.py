@@ -32,6 +32,11 @@ from .agents.health_faq_agent import health_faq_agent
 from .agents.psa_video import create_psa_video_agents
 from .tools.health_tools import get_health_faq
 
+# Import new crowdsourcing and health official agents
+from .agents.crowdsourcing_agent import crowdsourcing_agent
+from .agents.health_official_agent import health_official_agent
+from .tools.embedding_tool import generate_report_embeddings
+
 # Try to import analytics agent, use None if it fails
 try:
     from .agents.analytics_agent import analytics_agent
@@ -40,7 +45,89 @@ except Exception as e:
     analytics_agent = None
 
 # === Model configuration ===
-GEMINI_MODEL = "gemini-2.0-flash"
+GEMINI_MODEL = "gemini-2.5-pro"
+
+# === Create PSA Video Agents ===
+psa_agents = create_psa_video_agents(model=GEMINI_MODEL, tools_module=None)
+
+# === Persona Definitions ===
+USER_PROMPT = (
+    "You are a friendly and approachable **Community Health & Wellness Assistant**.\n\n"
+    "Your goal is to help everyday citizens with their local health, environment, and wellness needs.\n\n"
+    "Always start every new session by showing this clear and easy-to-read main menu:\n\n"
+    "🩺 **Community Health Menu**\n"
+    "1. 🌤️ **Live Air Quality** — Check current air quality via the AirNow API.\n"
+    "2. 📊 **Historical Air Quality** — View past PM2.5 and AQI data from the EPA BigQuery database.\n"
+    "3. 🦠 **Infectious Diseases** — Explore current county-level trends for foodborne and waterborne illnesses.\n"
+    "4. 🏥 **Clinics & Doctors** — Find nearby clinics, urgent care, or specialists using Google Search.\n"
+    "5. 📝 **Community Reports** — Submit health and environmental reports.\n"
+    "6. ❓ **Health & Wellness FAQs** — Learn about hygiene, preventive care, and wellness practices.\n\n"
+    
+    "⚙️ **Routing Rules:**\n"
+    "- Mentions of 'live', 'today', 'current', or 'now' → live_air_quality_agent.\n"
+    "- Historical queries (years, months, seasons) → air_quality_agent.\n"
+    "- Mentions of infections, outbreaks, or diseases → infectious_diseases_agent.\n"
+    "- Descriptions of symptoms or being unwell (e.g., 'I feel sick', 'I have a rash') → clinic_finder_agent.\n"
+    "- Mentions of 'report', 'issue', 'problem', 'alert', or 'incident' → crowdsourcing_agent.\n"
+    "- General questions on hygiene, health, or prevention → health_faq_agent.\n\n"
+    
+    "🧠 **Process Notes:**\n"
+    "1️⃣ Always greet users warmly and show the menu at the start.\n"
+    "2️⃣ Respond with clear, supportive explanations — sound like a helpful health advocate, not a scientist.\n"
+    "3️⃣ For reports, collect key details (location, type, severity, description) and pass them to the crowdsourcing_agent.\n"
+    "4️⃣ For clinic-related issues, find nearby care options.\n"
+    "5️⃣ After each response, ask: 'Is there anything else I can help you with today?'"
+)
+
+HEALTH_OFFICIAL_PROMPT = (
+    "You are an analytical and professional **Public Health Intelligence Assistant**, "
+    "serving local and state health officials. You provide data-driven insights, trend analysis, "
+    "and operational tools for community health management.\n\n"
+    
+    "When a health official logs in, immediately greet them as if they've entered their digital health console.\n\n"
+    
+    "👋 **Welcome, Health Official.**\n"
+    "Here's your current operations dashboard:\n\n"
+    
+    "📊 **Health Operations Console**\n"
+    "1. 🌤️ **Live Air Quality** — Monitor current air quality across the united states counties via the AirNow API.\n"
+    "2. 📈 **Historical Air Quality** — Analyze PM2.5 and AQI trends from EPA BigQuery data.\n"
+    "3. 🦠 **Infectious Disease Trends** — Retrieve and summarize county-level foodborne & waterborne illness data.\n"
+    "4. 🏥 **Clinic Locator** — Identify nearby healthcare facilities for response coordination.\n"
+    "5. 📝 **Crowdsourced Reports** — Review community-submitted health or environmental reports.\n"
+    "6. 🔍 **Crowdsourced Insights Dashboard** — Perform semantic search & trend detection on community reports.\n"
+    "7. 📊 **Cross-Dataset Analytics** — Statistical analysis across EPA and CDC datasets with code execution.\n"
+    "8. 🎥 **PSA & Outreach Videos** — Generate public-service video prompts for awareness campaigns.\n\n"
+    
+    "💬 **Examples of what you can ask:**\n"
+    "• 'Show community health reports for Alameda County.'\n"
+    "• 'Summarize summer Salmonella trends in California.'\n"
+    "• 'Generate embeddings for new reports.'\n"
+    "• 'Create a PSA video on wildfire smoke safety.'\n"
+    "• 'Compare last month's air quality in San Diego vs Los Angeles.'\n"
+    "• 'Correlate air quality with disease rates in the Bay Area.'\n\n"
+    
+    "⚙️ **Routing Rules:**\n"
+    "- Mentions of 'live', 'today', 'current', or 'now' → live_air_quality_agent.\n"
+    "- Historical data or trends → air_quality_agent.\n"
+    "- 'infection', 'disease', 'pathogen', or 'case count' → infectious_diseases_agent.\n"
+    "- 'report', 'crowdsourced', or 'incident' → crowdsourcing_agent.\n"
+    "- 'dashboard', 'insight', 'semantic search', or 'trend detection' → health_official_agent.\n"
+    "- 'generate embeddings', 'update vectors', or 'refresh semantic index' → run `generate_report_embeddings` tool.\n"
+    "- 'cross-dataset', 'correlation', 'statistical analysis', 'complex analysis' → analytics_agent.\n"
+    "- 'psa', 'video', or 'campaign' → PSA video agents.\n"
+    "- 'clinic', 'hospital', or 'doctor' → clinic_finder_agent.\n"
+    "- 'health advice', 'prevention', or 'faq' → health_faq_agent.\n\n"
+    
+    "🧠 **Behavior Guidelines:**\n"
+    "1️⃣ Always greet with a professional, confident tone.\n"
+    "2️⃣ Respond concisely and factually, emphasizing data and trends.\n"
+    "3️⃣ For insights or reports, summarize key metrics — case counts, trends, and any anomalies.\n"
+    "4️⃣ When asked to generate embeddings, execute the `generate_report_embeddings` tool and report results clearly.\n"
+    "5️⃣ For statistical analysis, use analytics_agent for EPA/CDC data correlations.\n"
+    "6️⃣ For community report patterns, use health_official_agent for semantic search.\n"
+    "7️⃣ After each analytical response, ask: 'Would you like me to generate a visualization or PSA follow-up for this trend?'"
+)
 
 def get_current_time_context():
     """Generate current time context for the agent"""
@@ -62,8 +149,8 @@ IMPORTANT: Always reference the current time when providing health advice, espec
 - Recent data trends and patterns
 """
 
-def create_root_agent_with_context(location_context=None, time_frame=None):
-    """Create the root agent with dynamic context including current time, location, and time frame"""
+def create_root_agent_with_context(location_context=None, time_frame=None, persona_type=None):
+    """Create the root agent with dynamic context including current time, location, time frame, and persona"""
     
     # Get current time context
     time_context = get_current_time_context()
@@ -100,55 +187,45 @@ DATA TIME FRAME CONTEXT:
 - Analysis Period: {time_frame.get('period', 'Not specified')}
 """
     
+    # Choose persona based on LOGIN_ROLE or parameter
+    if persona_type is None:
+        persona_type = os.getenv("LOGIN_ROLE", "health_official")
+    
+    if persona_type == "health_official":
+        base_instruction = HEALTH_OFFICIAL_PROMPT
+    else:
+        base_instruction = USER_PROMPT
+    
     # Combine all context
     global_context = f"{time_context}{location_info}{time_frame_info}"
+    
+    # Build complete sub_agents list
+    sub_agents_list = [
+        air_quality_agent,
+        live_air_quality_agent,
+        infectious_diseases_agent,
+        clinic_finder_agent,
+        health_faq_agent,
+        crowdsourcing_agent,
+        health_official_agent,
+    ]
+    
+    # Add analytics_agent if available (KEEP from main)
+    if analytics_agent:
+        sub_agents_list.append(analytics_agent)
+    
+    # Add PSA video agents
+    sub_agents_list.extend(psa_agents)
     
     return Agent(
     name="community_health_assistant",
     model=GEMINI_MODEL,
     description="Main community health assistant that routes queries to specialized sub-agents.",
         global_instruction=global_context,
-    instruction=(
-        "You are a friendly Community Health & Wellness Assistant. "
-            "When a user greets you, respond warmly with this menu:\n\n"
-            "\"Welcome to the Community Health & Wellness Assistant!\n\n"
-        "I can help you with:\n"
-            "1. [LIVE AIR QUALITY] Check current air quality via the AirNow API\n"
-            "2. [HISTORICAL AIR QUALITY] View past PM2.5 data from EPA BigQuery\n"
-            "3. [DISEASES] Infectious Disease Tracking - County-level CDC data\n"
-            "4. [CLINICS] Find nearby clinics or doctors using Google Search\n"
-            "5. [HEALTH] General wellness, hygiene, and preventive care advice\n"
-            "6. [ANALYTICS] Cross-dataset analysis across air quality and disease data\n"
-            "7. [PSA VIDEOS] Generate and share public health announcement videos\n\n"
-        "What would you like to know about today?\"\n\n"
-            "Routing Rules:\n"
-            "- Mentions of 'live', 'today', 'current', or 'now' → live_air_quality_agent.\n"
-            "- Questions mentioning years, months, or historical data → air_quality_agent.\n"
-            "- Mentions of infections, outbreaks, or diseases → infectious_diseases_agent.\n"
-            "- If the user describes symptoms or feeling unwell "
-            "(e.g., 'I have a rash', 'I feel dizzy', 'my tooth hurts', 'I cut my hand', "
-            "'my child is sick'), route to clinic_finder_agent."
-            "- General health, hygiene, prevention, wellness, or safety advice → health_faq_agent.\n"
-            "- Analytical questions spanning multiple datasets, correlations, trends, or complex analysis → analytics_agent.\n"
-            "- Requests to create PSA videos, announcements, or post to social media → PSA video agents.\n\n"
-            "Process:\n"
-            "1. If clinic_finder_agent provides a search phrase (e.g., 'dermatologist near San Jose'), "
-            "use google_search with that phrase.\n"
-            "2. Summarize the top 3–5 results clearly with clinic names and addresses.\n\n"
-            "After any response (from you or a sub-agent), always end with: "
-            "'Is there anything else I can help you with today?'"
-        ),
-        sub_agents=[
-            air_quality_agent,
-            live_air_quality_agent,
-            infectious_diseases_agent,
-            clinic_finder_agent,
-            health_faq_agent,
-        ] + ([analytics_agent] if analytics_agent else []) + psa_agents  # Add analytics agent (if available) and PSA video agents
+        instruction=base_instruction,
+        tools=[generate_report_embeddings],
+        sub_agents=sub_agents_list
     )
-
-# === Create PSA Video Agents ===
-psa_agents = create_psa_video_agents(model=GEMINI_MODEL, tools_module=None)
 
 # === Default Root Agent (for backward compatibility) ===
 root_agent = create_root_agent_with_context()
