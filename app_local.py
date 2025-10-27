@@ -43,20 +43,29 @@ if GEMINI_API_KEY:
 
 print("[OK] Starting Flask app with EPA API integration")
 
-# Initialize GCS client
+# Initialize GCS client with timeout
 try:
+    import socket
+    # Set a global socket timeout to prevent hanging
+    socket.setdefaulttimeout(5)  # 5 second timeout
+    
     storage_client = storage.Client(project=GCP_PROJECT_ID)
     # Try to get bucket, create if doesn't exist
     try:
         bucket = storage_client.get_bucket(GCS_BUCKET_NAME)
         print(f"[OK] Connected to GCS bucket: {GCS_BUCKET_NAME}")
     except Exception as e:
-        print(f"[INFO] Bucket not found, creating: {GCS_BUCKET_NAME}")
-        bucket = storage_client.create_bucket(GCS_BUCKET_NAME, location='us-central1')
-        print(f"[OK] Created GCS bucket: {GCS_BUCKET_NAME}")
-    GCS_AVAILABLE = True
+        print(f"[INFO] Bucket access failed (may need auth or network): {str(e)[:100]}")
+        bucket = None
+        GCS_AVAILABLE = False
+    
+    # Reset socket timeout
+    socket.setdefaulttimeout(None)
+    
+    if bucket:
+        GCS_AVAILABLE = True
 except Exception as e:
-    print(f"[WARNING] GCS initialization failed: {e}")
+    print(f"[WARNING] GCS initialization failed: {str(e)[:100]}")
     GCS_AVAILABLE = False
     storage_client = None
     bucket = None
@@ -72,8 +81,8 @@ except Exception as e:
 # Initialize Gemini AI model
 try:
     if GEMINI_API_KEY:
-        model = genai.GenerativeModel('gemini-pro')
-        print("[OK] Gemini AI model initialized")
+        model = genai.GenerativeModel('gemini-2.0-flash-exp')
+        print("[OK] Gemini AI model initialized (gemini-2.0-flash-exp)")
     else:
         model = None
         print("[WARNING] No Gemini API key, AI features will be limited")
@@ -189,7 +198,7 @@ def analyze_text_with_gemini(description, severity, timeframe, report_type):
         return None
     
     try:
-        model = genai.GenerativeModel('gemini-2.5-flash')  # Updated model name
+        model = genai.GenerativeModel('gemini-2.0-flash-exp')  # Updated to Flash 2.0
         
         prompt = f"""You are an AI assistant helping public health officials analyze environmental and health reports.
 
@@ -321,7 +330,7 @@ class AirQualityAgent:
         self.bq_client = bq_client
         self.model = genai_model
     
-    def query_air_quality_data(self, state=None, days=7):
+    def query_air_quality_data(self, state=None, county=None, city=None, days=7):
         """Query air quality data from public BigQuery EPA dataset"""
         if not self.bq_client:
             print("[BQ] No BigQuery client, using demo data")
@@ -346,9 +355,18 @@ class AirQualityAgent:
             if state:
                 query += f" AND UPPER(state_name) = UPPER('{state}')"
             
+            # Add county filter if provided
+            if county:
+                query += f" AND UPPER(county_name) LIKE UPPER('%{county}%')"
+            
+            # Add city filter if provided (check if city name is in site_name)
+            if city and not county:
+                query += f" AND (UPPER(local_site_name) LIKE UPPER('%{city}%') OR UPPER(county_name) LIKE UPPER('%{city}%'))"
+            
             query += " ORDER BY date_local DESC LIMIT 1000"
             
-            print(f"[BQ] Querying public EPA dataset for {state or 'all states'}, last {days} days")
+            location_str = f"{city or ''} {county or ''} {state or 'all states'}".strip()
+            print(f"[BQ] Querying public EPA dataset for {location_str}, last {days} days")
             query_job = self.bq_client.query(query)
             results = query_job.result()
             
@@ -995,8 +1013,22 @@ def agent_chat():
         days = int(request_data.get('days', 7))
         time_frame = request_data.get('time_frame', None)
         
+        # IMPORTANT: Get the stored location_context object from frontend
+        location_context_data = request_data.get('location_context', None)
+        
+        # Extract location info from location_context if available
+        if location_context_data and isinstance(location_context_data, dict):
+            # Override with stored location data if available
+            if not zipcode and location_context_data.get('zipCode'):
+                zipcode = location_context_data.get('zipCode')
+            if not city and location_context_data.get('city'):
+                city = location_context_data.get('city')
+            if not state and location_context_data.get('state'):
+                state = location_context_data.get('state')
+        
         # Debug: Log received parameters
         print(f"[AGENT-CHAT] Received parameters: state={state}, city={city}, zipcode={zipcode}, days={days}, time_frame={time_frame}")
+        print(f"[AGENT-CHAT] Location context data: {location_context_data}")
         
         # Build location context string for AI
         location_context = ""
@@ -1188,59 +1220,91 @@ def agent_chat():
         except Exception as e:
             print(f"[CHATBOT] Error fetching detailed pollutants: {e}")
         
-        # Get historical air quality data from BigQuery
-        historical_data = agent.query_air_quality_data(state=state, days=days)
+        # Get historical air quality data from BigQuery with city/county filtering
+        # Extract county from location data if available
+        county = None
+        if location_context_data and isinstance(location_context_data, dict):
+            county = location_context_data.get('county')
         
-        # Build comprehensive context for AI
-        context_parts = [f"User is asking about {location_context}." if location_context else ""]
+        print(f"[CHATBOT] Querying BigQuery with: state={state}, city={city}, county={county}, days={days}")
+        historical_data = agent.query_air_quality_data(state=state, county=county, city=city, days=days)
         
-        # Add current air quality info
+        # Build comprehensive context for AI with CURRENT REAL-TIME DATA FIRST
+        context_parts = []
+        
+        # PRIORITY 1: Current location context
+        if location_context:
+            context_parts.append(f"User is asking about {location_context}.")
+        
+        # PRIORITY 2: Real-time current air quality from EPA AirNow API (TODAY'S DATA)
         if environmental_data['air_quality']:
             aqi_data = environmental_data['air_quality']
-            if isinstance(aqi_data, list) and len(aqi_data) > 0:
-                aqi = aqi_data[0].get('AQI', 'N/A')
-                category = aqi_data[0].get('Category', {}).get('Name', 'Unknown')
-                context_parts.append(f"Current AQI: {aqi} ({category})")
+            if isinstance(aqi_data, dict) and aqi_data.get('success') and aqi_data.get('data'):
+                # Handle new format from EPA service
+                readings = aqi_data['data']
+                if readings and len(readings) > 0:
+                    context_parts.append("**CURRENT REAL-TIME AIR QUALITY DATA (from EPA AirNow API - Today's data):**")
+                    for reading in readings[:5]:  # Show first 5 readings
+                        aqi = reading.get('AQI', 'N/A')
+                        category = reading.get('Category', {}).get('Name', 'Unknown')
+                        parameter = reading.get('ParameterName', 'Unknown')
+                        context_parts.append(f"  - {parameter}: AQI {aqi} ({category})")
+            elif isinstance(aqi_data, list) and len(aqi_data) > 0:
+                # Handle legacy format
+                context_parts.append("**CURRENT REAL-TIME AIR QUALITY DATA (from EPA AirNow API - Today's data):**")
+                for reading in aqi_data[:5]:
+                    aqi = reading.get('AQI', 'N/A')
+                    category = reading.get('Category', {}).get('Name', 'Unknown')
+                    parameter = reading.get('ParameterName', 'Unknown')
+                    context_parts.append(f"  - {parameter}: AQI {aqi} ({category})")
         
-        # Add weather info
+        # PRIORITY 3: Current weather conditions
         if environmental_data['weather']:
             weather = environmental_data['weather']
+            context_parts.append("**CURRENT WEATHER:**")
             temp = weather.get('temperature', {})
             if temp:
                 temp_f = temp.get('value', 'N/A')
-                context_parts.append(f"Temperature: {temp_f}°F")
+                context_parts.append(f"  - Temperature: {temp_f}°F")
             humidity = weather.get('relativeHumidity', 'N/A')
             if humidity != 'N/A':
-                context_parts.append(f"Humidity: {humidity}%")
+                context_parts.append(f"  - Humidity: {humidity}%")
         
-        # Add pollen info
+        # PRIORITY 4: Current pollen levels
         if environmental_data['pollen']:
             pollen = environmental_data['pollen']
             pollen_index = pollen.get('index', {}).get('value', 'N/A')
             if pollen_index != 'N/A':
-                context_parts.append(f"Pollen Index: {pollen_index}")
+                context_parts.append(f"**CURRENT POLLEN INDEX:** {pollen_index}")
             # Add specific pollen types
             types = pollen.get('types', [])
             if types:
                 high_pollen = [t['name'] for t in types if t.get('index', {}).get('value', 0) >= 4]
                 if high_pollen:
-                    context_parts.append(f"High pollen: {', '.join(high_pollen)}")
+                    context_parts.append(f"  - High pollen types: {', '.join(high_pollen)}")
         
-        # Add detailed pollutants
+        # PRIORITY 5: Current detailed pollutants from EPA AQS API
         if environmental_data['detailed_pollutants']:
             pollutants = environmental_data['detailed_pollutants']
             pollutant_summary = []
-            for pollutant in pollutants:
+            context_parts.append("**CURRENT DETAILED POLLUTANTS (EPA AQS API):**")
+            for pollutant in pollutants[:5]:  # First 5
                 param = pollutant.get('parameter', 'Unknown')
                 value = pollutant.get('value', 'N/A')
                 unit = pollutant.get('unit', '')
-                pollutant_summary.append(f"{param}: {value} {unit}")
-            if pollutant_summary:
-                context_parts.append(f"Pollutants: {', '.join(pollutant_summary[:5])}")  # First 5
+                context_parts.append(f"  - {param}: {value} {unit}")
         
-        # Combine all context
-        environmental_context = " | ".join([p for p in context_parts if p])
-        enhanced_question = f"{environmental_context}\n\nQuestion: {question}"
+        # PRIORITY 6: Historical trends (BigQuery data - for context only, NOT current data)
+        if historical_data and len(historical_data) > 0:
+            context_parts.append(f"**HISTORICAL TREND DATA (for reference, last {days} days):** {len(historical_data)} data points available from BigQuery (note: this is historical data only, use real-time data above for current conditions)")
+        
+        # Combine all context with clear separation
+        environmental_context = "\n".join([p for p in context_parts if p])
+        enhanced_question = f"""IMPORTANT: When answering questions about CURRENT or REAL-TIME air quality, use ONLY the real-time data from EPA AirNow API marked as "CURRENT REAL-TIME AIR QUALITY DATA" above. The BigQuery historical data is outdated and should only be used for trend analysis.
+
+{environmental_context}
+
+Question: {question}"""
         
         print(f"[AGENT-CHAT] Using Gemini fallback")
         print(f"[AGENT-CHAT] Enhanced context: {environmental_context}")
@@ -2802,4 +2866,4 @@ if __name__ == '__main__':
         print(f"[INFO] Running with EPA/AirNow API integration")
     else:
         print(f"[INFO] Running with mock data (EPA API unavailable)")
-    app.run(host='0.0.0.0', port=port, debug=True)
+    app.run(host='0.0.0.0', port=port, debug=False)

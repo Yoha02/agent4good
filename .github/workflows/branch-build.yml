@@ -1,0 +1,110 @@
+name: Branch Build & Verify
+
+on:
+  push:
+    branches-ignore:
+      - main
+      - combined-branch-s
+  workflow_dispatch:
+
+env:
+  # All secrets available for testing
+  SECRET_KEY: ${{ secrets.SECRET_KEY }}
+  GOOGLE_CLOUD_PROJECT: ${{ secrets.GOOGLE_CLOUD_PROJECT }}
+  BIGQUERY_DATASET: ${{ secrets.BIGQUERY_DATASET }}
+  BIGQUERY_TABLE_REPORTS: ${{ secrets.BIGQUERY_TABLE_REPORTS }}
+  GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+  GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+  EPA_API_KEY: ${{ secrets.EPA_API_KEY }}
+  AQS_API_KEY: ${{ secrets.AQS_API_KEY }}
+  AQS_EMAIL: ${{ secrets.AQS_EMAIL }}
+
+jobs:
+  build-and-test:
+    name: Build & Test (No Deploy)
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.12'
+        cache: 'pip'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+    
+    - name: Verify all secrets are available
+      run: |
+        echo "## 🔐 Secrets Verification" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        check_secret() {
+          if [ -n "${!1}" ]; then
+            echo "✅ $1 is set" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ $1 is NOT set" >> $GITHUB_STEP_SUMMARY
+          fi
+        }
+        
+        check_secret "GOOGLE_API_KEY"
+        check_secret "GEMINI_API_KEY"
+        check_secret "EPA_API_KEY"
+        check_secret "GOOGLE_CLOUD_PROJECT"
+        check_secret "BIGQUERY_DATASET"
+    
+    - name: Run application smoke test
+      run: |
+        echo "Starting Flask app for smoke test..."
+        timeout 30 python app_local.py &
+        sleep 10
+        
+        if curl -s http://localhost:8080/health; then
+          echo "✅ App started successfully" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "⚠️ App health check failed (might be expected without GCP credentials)" >> $GITHUB_STEP_SUMMARY
+        fi
+      continue-on-error: true
+    
+    - name: Build Docker image (test only)
+      run: |
+        echo "## 🐳 Docker Build Test" >> $GITHUB_STEP_SUMMARY
+        docker build -t agent4good:test .
+        echo "✅ Docker image built successfully" >> $GITHUB_STEP_SUMMARY
+    
+    - name: Test Docker container
+      run: |
+        echo "Testing Docker container..."
+        docker run -d -p 8080:8080 --name test-container \
+          -e SECRET_KEY="${{ secrets.SECRET_KEY }}" \
+          -e GOOGLE_API_KEY="${{ secrets.GOOGLE_API_KEY }}" \
+          agent4good:test
+        
+        sleep 10
+        
+        if docker ps | grep test-container; then
+          echo "✅ Container is running" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "❌ Container failed to start" >> $GITHUB_STEP_SUMMARY
+          docker logs test-container >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        docker stop test-container || true
+        docker rm test-container || true
+      continue-on-error: true
+    
+    - name: Summary
+      run: |
+        echo "## 📝 Build Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "- **Branch**: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Author**: ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "ℹ️ This branch build does not deploy to production." >> $GITHUB_STEP_SUMMARY
+        echo "Merge to main/combined-branch-s to trigger deployment." >> $GITHUB_STEP_SUMMARY

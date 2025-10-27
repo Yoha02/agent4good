@@ -1591,11 +1591,22 @@ async function askAI() {
                     <i class="fas fa-map-marker-alt mr-1"></i>
                     Location: ${data.location}
                 </div>`;
-            } else if (actualState || actualCity) {
-                // Show location even if backend doesn't return it
-                const locationParts = [actualCity, actualState];
-                if (actualZip) {
-                    locationParts.push(`(${actualZip})`);
+            } else if (locationContext && (locationContext.city || locationContext.state || locationContext.zipCode)) {
+                // Show location from locationContext
+                const locationParts = [locationContext.city, locationContext.state];
+                if (locationContext.zipCode) {
+                    locationParts.push(`(ZIP: ${locationContext.zipCode})`);
+                }
+                const locationText = locationParts.filter(Boolean).join(', ');
+                contextIndicators += `<div class="text-xs text-emerald-600 font-medium mt-1 flex items-center">
+                    <i class="fas fa-map-marker-alt mr-1"></i>
+                    Location: ${locationText}
+                </div>`;
+            } else if (currentState || currentCity || currentZip) {
+                // Fallback to global variables
+                const locationParts = [currentCity, currentState];
+                if (currentZip) {
+                    locationParts.push(`(ZIP: ${currentZip})`);
                 }
                 const locationText = locationParts.filter(Boolean).join(', ');
                 contextIndicators += `<div class="text-xs text-emerald-600 font-medium mt-1 flex items-center">
