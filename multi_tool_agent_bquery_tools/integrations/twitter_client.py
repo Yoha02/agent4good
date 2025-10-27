@@ -329,13 +329,50 @@ class TwitterClient:
                     "error_message": "Failed to download video"
                 }
             
-            # Upload to Twitter
-            media_id = self.upload_video(temp_file)
+            # Upload to Twitter with retry logic
+            max_retries = 3
+            retry_delay = 30  # Start with 30 seconds
+            media_id = None
+            last_error = None
+            
+            for attempt in range(max_retries):
+                try:
+                    print(f"[TWITTER] Upload attempt {attempt + 1}/{max_retries}")
+                    media_id = self.upload_video(temp_file)
+                    
+                    if media_id:
+                        print(f"[TWITTER] Upload successful on attempt {attempt + 1}")
+                        break  # Success!
+                    
+                    # If upload returns None (failure), retry
+                    last_error = "Upload returned None"
+                    if attempt < max_retries - 1:
+                        print(f"[TWITTER] Upload failed, retrying in {retry_delay}s...")
+                        time.sleep(retry_delay)
+                        retry_delay *= 2  # Exponential backoff
+                        
+                except Exception as e:
+                    last_error = str(e)
+                    error_str = str(e).lower()
+                    
+                    # Check if it's a connection error (rate limit or network issue)
+                    if 'connection' in error_str or 'reset' in error_str or 'aborted' in error_str:
+                        if attempt < max_retries - 1:
+                            print(f"[TWITTER] Connection error on attempt {attempt + 1}, retrying in {retry_delay}s...")
+                            print(f"[TWITTER] Error: {str(e)[:100]}")
+                            time.sleep(retry_delay)
+                            retry_delay *= 2  # Exponential backoff (30s, 60s, 120s)
+                        else:
+                            print(f"[TWITTER] Connection error after {max_retries} attempts")
+                            raise
+                    else:
+                        # For other errors, raise immediately
+                        raise
             
             if not media_id:
                 return {
                     "status": "error",
-                    "error_message": "Failed to upload video to Twitter"
+                    "error_message": f"Failed to upload video to Twitter after {max_retries} attempts: {last_error}"
                 }
             
             # Post tweet
