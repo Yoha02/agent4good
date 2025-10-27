@@ -1668,3 +1668,359 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     };
 });
+
+// ========================================
+// CHAT WIDGET FUNCTIONALITY
+// ========================================
+
+let chatWidgetOpen = false;
+let chatWidgetMinimized = false;
+let lastVideoData = null; // Store video data for Twitter posting
+
+/**
+ * Toggle chat widget visibility
+ */
+function toggleChatWidget() {
+    const widget = document.getElementById('chatWidget');
+    const button = document.getElementById('chatToggleBtn');
+    
+    chatWidgetOpen = !chatWidgetOpen;
+    
+    if (chatWidgetOpen) {
+        widget.classList.remove('hidden');
+        button.classList.add('hidden');
+        initializeChatWidget();
+        updateChatLocationContext();
+    } else {
+        widget.classList.add('hidden');
+        button.classList.remove('hidden');
+        chatWidgetMinimized = false;
+        widget.classList.remove('minimized');
+    }
+}
+
+/**
+ * Initialize chat widget with welcome message
+ */
+function initializeChatWidget() {
+    const messagesDiv = document.getElementById('chatWidgetMessages');
+    if (messagesDiv && messagesDiv.children.length === 0) {
+        addChatMessage(
+            'Hello! I\'m your Health Official AI Assistant. I can help you:\n\n' +
+            '• Analyze community reports and identify trends\n' +
+            '• Search reports semantically\n' +
+            '• Generate PSA videos for public health alerts\n' +
+            '• Provide data-driven recommendations\n' +
+            '• Answer questions about current health data\n\n' +
+            'How can I assist you today?',
+            'bot'
+        );
+    }
+}
+
+/**
+ * Update location context display based on current filters
+ */
+function updateChatLocationContext() {
+    const contextDiv = document.getElementById('chatWidgetLocationContext');
+    const contextText = document.getElementById('chatWidgetLocationText');
+    
+    if (!contextDiv || !contextText) return;
+    
+    const parts = [];
+    if (currentFilters.city) parts.push(currentFilters.city);
+    if (currentFilters.county) parts.push(`${currentFilters.county} County`);
+    if (currentFilters.state) parts.push(currentFilters.state);
+    if (currentFilters.zipcode) parts.push(`ZIP ${currentFilters.zipcode}`);
+    
+    if (parts.length > 0) {
+        contextText.textContent = parts.join(', ');
+        contextDiv.classList.remove('hidden');
+    } else {
+        contextDiv.classList.add('hidden');
+    }
+}
+
+/**
+ * Send chat message
+ */
+async function sendChatWidgetMessage() {
+    const input = document.getElementById('chatWidgetInput');
+    if (!input) return;
+    
+    const question = input.value.trim();
+    if (!question) return;
+    
+    // Check if user is approving Twitter post
+    if (lastVideoData && isTwitterApproval(question)) {
+        await postToTwitterWidget(lastVideoData);
+        input.value = '';
+        return;
+    }
+    
+    // Add user message
+    addChatMessage(question, 'user');
+    input.value = '';
+    
+    // Show loading
+    const loadingMsg = addChatMessage('Analyzing...', 'bot');
+    
+    try {
+        // Build location context from current filters
+        const locationContext = {};
+        if (currentFilters.state) locationContext.state = currentFilters.state;
+        if (currentFilters.city) locationContext.city = currentFilters.city;
+        if (currentFilters.county) locationContext.county = currentFilters.county;
+        if (currentFilters.zipcode) locationContext.zipCode = currentFilters.zipcode;
+        
+        // Call AI agent with Health Official persona
+        const response = await fetch('/api/agent-chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                question: question,
+                location_context: Object.keys(locationContext).length > 0 ? locationContext : null,
+                persona: 'Health Official',  // Always use Health Official persona
+                state: currentFilters.state || '',
+                days: 30  // Default to 30 days for officials
+            })
+        });
+        
+        const data = await response.json();
+        
+        // Remove loading
+        if (loadingMsg && loadingMsg.remove) {
+            loadingMsg.remove();
+        }
+        
+        if (data.success) {
+            // Add context indicators
+            let responseText = data.response;
+            
+            // Add agent badge if available
+            if (data.agent) {
+                responseText += `\n\n<div class="text-xs text-gray-500 mt-2 italic">via ${data.agent}</div>`;
+            }
+            
+            addChatMessage(responseText, 'bot');
+            
+            // If video generation started, begin polling
+            if (data.task_id) {
+                console.log('[VIDEO] Task ID received:', data.task_id);
+                pollForVideoCompletion(data.task_id);
+            }
+        } else {
+            addChatMessage('Sorry, I encountered an error. Please try again.', 'bot');
+        }
+    } catch (error) {
+        if (loadingMsg && loadingMsg.remove) {
+            loadingMsg.remove();
+        }
+        console.error('Chat widget error:', error);
+        addChatMessage('Sorry, I could not connect to the AI service. Please try again.', 'bot');
+    }
+}
+
+/**
+ * Add message to chat widget
+ */
+function addChatMessage(text, type) {
+    const messagesDiv = document.getElementById('chatWidgetMessages');
+    if (!messagesDiv) return null;
+    
+    const messageDiv = document.createElement('div');
+    messageDiv.className = `flex items-start space-x-2 chat-message-enter ${type === 'user' ? 'justify-end' : ''}`;
+    
+    // Parse video markers for bot messages
+    let messageContent = text;
+    let videoHtml = '';
+    
+    if (type === 'bot' && text.includes('[VIDEO:')) {
+        const videoMatch = text.match(/\[VIDEO:(.*?)\]/);
+        if (videoMatch) {
+            const videoUrl = videoMatch[1];
+            
+            // Remove video marker from text
+            messageContent = text.replace(/\[VIDEO:.*?\]/, '').trim();
+            
+            // Create video player
+            videoHtml = `
+                <div class="my-2">
+                    <video 
+                        controls 
+                        class="w-full rounded-lg shadow-lg" 
+                        style="max-width: 280px; max-height: 500px;"
+                        preload="metadata"
+                    >
+                        <source src="${videoUrl}" type="video/mp4">
+                        Your browser doesn't support video playback.
+                    </video>
+                </div>
+            `;
+        }
+    }
+    
+    if (type === 'bot') {
+        messageDiv.innerHTML = `
+            <div class="w-8 h-8 bg-emerald-500 rounded-full flex items-center justify-center flex-shrink-0">
+                <i class="fas fa-robot text-white text-sm"></i>
+            </div>
+            <div class="bg-white rounded-2xl rounded-tl-none p-3 shadow-md max-w-[280px]">
+                ${videoHtml}
+                <p class="text-gray-700 text-sm leading-relaxed whitespace-pre-line">${messageContent}</p>
+            </div>
+        `;
+    } else {
+        messageDiv.innerHTML = `
+            <div class="bg-navy-700 text-white rounded-2xl rounded-tr-none p-3 shadow-md max-w-[280px]">
+                <p class="text-sm leading-relaxed">${text}</p>
+            </div>
+            <div class="w-8 h-8 bg-navy-600 rounded-full flex items-center justify-center flex-shrink-0">
+                <i class="fas fa-user text-white text-sm"></i>
+            </div>
+        `;
+    }
+    
+    messagesDiv.appendChild(messageDiv);
+    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    
+    return messageDiv;
+}
+
+/**
+ * Clear chat history
+ */
+function clearChatWidget() {
+    const messagesDiv = document.getElementById('chatWidgetMessages');
+    if (!messagesDiv) return;
+    
+    messagesDiv.innerHTML = '';
+    initializeChatWidget();
+    console.log('[CHAT WIDGET] Chat history cleared');
+}
+
+/**
+ * Minimize/maximize chat widget
+ */
+function minimizeChatWidget() {
+    const widget = document.getElementById('chatWidget');
+    if (!widget) return;
+    
+    chatWidgetMinimized = !chatWidgetMinimized;
+    
+    if (chatWidgetMinimized) {
+        widget.classList.add('minimized');
+    } else {
+        widget.classList.remove('minimized');
+    }
+}
+
+/**
+ * Close chat widget
+ */
+function closeChatWidget() {
+    toggleChatWidget();
+}
+
+/**
+ * Ask a quick action question
+ */
+function askQuickQuestion(question) {
+    const input = document.getElementById('chatWidgetInput');
+    if (input) {
+        input.value = question;
+        sendChatWidgetMessage();
+    }
+}
+
+/**
+ * Check if user message is Twitter approval
+ */
+function isTwitterApproval(message) {
+    const lowerMsg = message.toLowerCase().trim();
+    return lowerMsg.includes('yes') && (lowerMsg.includes('post') || lowerMsg.includes('twitter'));
+}
+
+/**
+ * Poll for video completion
+ */
+async function pollForVideoCompletion(taskId) {
+    const maxAttempts = 120; // 2 minutes max
+    let attempts = 0;
+    
+    console.log(`[VIDEO] Starting to poll for task ${taskId}`);
+    
+    const pollInterval = setInterval(async () => {
+        attempts++;
+        
+        if (attempts > maxAttempts) {
+            clearInterval(pollInterval);
+            addChatMessage('Video generation is taking longer than expected. Please check back later.', 'bot');
+            return;
+        }
+        
+        try {
+            const response = await fetch(`/api/check-video-task/${taskId}`);
+            const data = await response.json();
+            
+            if (data.status === 'completed' && data.video_url) {
+                clearInterval(pollInterval);
+                console.log(`[VIDEO] Video ready:`, data.video_url);
+                
+                // Store video data for potential Twitter posting
+                lastVideoData = data;
+                
+                // Add video message with approval prompt
+                const videoMessage = `[VIDEO:${data.video_url}]\n\nYour PSA video is ready!\n\nAction: "${data.action_line}"\n\nWould you like me to post this to Twitter?`;
+                addChatMessage(videoMessage, 'bot');
+            } else if (data.status === 'failed') {
+                clearInterval(pollInterval);
+                addChatMessage('Sorry, video generation failed. Please try again.', 'bot');
+            }
+        } catch (error) {
+            console.error(`[VIDEO] Error polling task ${taskId}:`, error);
+        }
+    }, 1000);
+}
+
+/**
+ * Post video to Twitter (widget version)
+ */
+async function postToTwitterWidget(videoData) {
+    try {
+        addChatMessage('Posting to Twitter...', 'bot');
+        
+        const response = await fetch('/api/post-to-twitter', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                video_url: videoData.video_url,
+                action_line: videoData.action_line,
+                health_data: videoData.health_data || {}
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success && data.tweet_url) {
+            addChatMessage(
+                `Posted to Twitter successfully!\n\nView your post: ${data.tweet_url}\n\nTweet posted successfully!`,
+                'bot'
+            );
+            lastVideoData = null; // Clear after posting
+        } else {
+            addChatMessage(`Failed to post to Twitter: ${data.error || 'Unknown error'}`, 'bot');
+        }
+    } catch (error) {
+        console.error('[TWITTER] Error posting:', error);
+        addChatMessage('Error posting to Twitter. Please try again.', 'bot');
+    }
+}
+
+// Make functions globally available
+window.toggleChatWidget = toggleChatWidget;
+window.minimizeChatWidget = minimizeChatWidget;
+window.closeChatWidget = closeChatWidget;
+window.sendChatWidgetMessage = sendChatWidgetMessage;
+window.clearChatWidget = clearChatWidget;
+window.askQuickQuestion = askQuickQuestion;
