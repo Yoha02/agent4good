@@ -990,20 +990,27 @@ def agent_chat():
             }), 400
         
         # Get location context from request
-        location_context = request_data.get('location_context', None)
-        state = location_context.get('state', None)
-        city = location_context.get('city', None)
-        zipcode = location_context.get('zipCode', None)
-        # city = request_data.get('city', None)
-        # zipcode = request_data.get('zipcode', None)
+        location_context_obj = request_data.get('location_context', None)
+        
+        # Extract location fields safely
+        if location_context_obj:
+            state = location_context_obj.get('state', None)
+            city = location_context_obj.get('city', None)
+            zipcode = location_context_obj.get('zipCode', None)
+        else:
+            # Fallback to top-level fields
+            state = request_data.get('state', None)
+            city = request_data.get('city', None)
+            zipcode = request_data.get('zipcode', None)
+        
         days = int(request_data.get('days', 7))
         time_frame = request_data.get('time_frame', None)
-        location_context
+        
         # Debug: Log received parameters
         print(f"[AGENT-CHAT] Received parameters: state={state}, city={city}, zipcode={zipcode}, days={days}, time_frame={time_frame}, persona={persona_type}")
         
         # Build location context string for AI
-        # location_context = ""
+        location_context = None
         
         if zipcode:
             location_context = f"ZIP code {zipcode}"
