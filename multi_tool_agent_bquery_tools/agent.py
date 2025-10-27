@@ -189,7 +189,7 @@ DATA TIME FRAME CONTEXT:
     
     # Choose persona based on LOGIN_ROLE or parameter
     if persona_type is None:
-        persona_type = os.getenv("LOGIN_ROLE", "health_official")
+        persona_type = os.getenv("LOGIN_ROLE", "user")
     
     if persona_type == "health_official":
         base_instruction = HEALTH_OFFICIAL_PROMPT
