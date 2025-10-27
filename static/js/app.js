@@ -219,12 +219,6 @@ document.addEventListener('DOMContentLoaded', function() {
     initializeApp();
     setupEventListeners();
     initializeGoogleAutocomplete();
-    if (sessionStorage.getItem('persona') === null) {
-        sessionStorage.setItem('persona', 'Community Resident');
-        console.log('First time visit detected. Persona initialized to "Community Resident".');
-    } else {
-        console.log('Returning user. Current persona is:', sessionStorage.getItem('persona'));
-    }
 });
 
 // Initialize Google Places Autocomplete

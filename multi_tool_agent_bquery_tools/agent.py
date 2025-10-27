@@ -4,7 +4,10 @@ import os
 import asyncio
 import logging
 from datetime import datetime
+from typing import Optional
 from google.adk.agents import Agent
+from google.adk.agents.readonly_context import ReadonlyContext
+from google.adk.events import EventActions, Event
 from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
 from google.genai import types
@@ -59,7 +62,7 @@ psa_agents = create_psa_video_agents(model=GEMINI_MODEL, tools_module=None)
 USER_PROMPT = (
     "You are a friendly and approachable **Community Health & Wellness Assistant**.\n\n"
     "Your goal is to help everyday citizens with their local health, environment, and wellness needs.\n\n"
-    "Always start every new session by showing this clear and easy-to-read main menu:\n\n"
+    "Always start every new session or when user asks you to show your available options, you should always show this clear and easy-to-read main menu as following:\n\n"
     "🩺 **Community Health Menu**\n"
     "1. 🌤️ **Live Air Quality** — Check current air quality via the AirNow API.\n"
     "2. 📊 **Historical Air Quality** — View past PM2.5 and AQI data from the EPA BigQuery database.\n"
@@ -89,7 +92,7 @@ HEALTH_OFFICIAL_PROMPT = (
     "serving local and state health officials. You provide data-driven insights, trend analysis, "
     "and operational tools for community health management.\n\n"
     
-    "When a health official logs in, immediately greet them as if they've entered their digital health console.\n\n"
+    "When a health official logs in or the health official asks you to show your available options, immediately greet them as if they've entered their digital health console.\n\n"
     
     "👋 **Welcome, Health Official.**\n"
     "Here's your current operations dashboard:\n\n"
@@ -154,6 +157,18 @@ IMPORTANT: Always reference the current time when providing health advice, espec
 - Recent data trends and patterns
 """
 
+def persona_aware_instruction_provider(context: ReadonlyContext) -> str:
+    """
+    Dynamically determine system prompt at runtime based on persona_type.
+    This allows the agent to switch personas without recreating the entire agent.
+    """
+    persona_type = context.state.get("persona_type")
+    # Choose persona based on LOGIN_ROLE or parameter
+    if persona_type is None:
+        persona_type = os.getenv("LOGIN_ROLE", "user")
+    print(f"[Instruction Provider] : Persona_type = {persona_type}")
+    return HEALTH_OFFICIAL_PROMPT if persona_type == "health_official" else USER_PROMPT
+
 def create_root_agent_with_context(location_context=None, time_frame=None, persona_type=None):
     """Create the root agent with dynamic context including current time, location, time frame, and persona"""
     
@@ -192,20 +207,10 @@ DATA TIME FRAME CONTEXT:
 - Analysis Period: {time_frame.get('period', 'Not specified')}
 """
     
-    # Choose persona based on LOGIN_ROLE or parameter
-    if persona_type is None:
-        persona_type = os.getenv("LOGIN_ROLE", "user")
-
-    if persona_type == "health_official":
-        base_instruction = HEALTH_OFFICIAL_PROMPT
-        logger.info(f"[ROOT AGENT] Creating agent with HEALTH_OFFICIAL persona")
-    else:
-        base_instruction = USER_PROMPT
-        logger.info(f"[ROOT AGENT] Creating agent with USER persona")
-
     # Combine all context
     global_context = f"{time_context}{location_info}{time_frame_info}"
-# Build complete sub_agents list
+    
+    # Build complete sub_agents list
     sub_agents_list = [
         air_quality_agent,
         live_air_quality_agent,
@@ -227,11 +232,11 @@ DATA TIME FRAME CONTEXT:
     logger.info(f"[ROOT AGENT] Total sub-agents: {len(sub_agents_list)}")
 
     return Agent(
-    name="community_health_assistant",
-    model=GEMINI_MODEL,
-    description="Main community health assistant that routes queries to specialized sub-agents.",
-    global_instruction=global_context,
-        instruction=base_instruction,
+        name="community_health_assistant",
+        model=GEMINI_MODEL,
+        description="Main community health assistant that routes queries to specialized sub-agents.",
+        global_instruction=global_context,
+        instruction=persona_aware_instruction_provider,
         tools=[generate_report_embeddings],
         sub_agents=sub_agents_list
     )
@@ -244,9 +249,9 @@ APP_NAME = "community_health_app"
 USER_ID = "user1234"
 SESSION_ID = "1234"
 
-_session_service = None
+_session_service: Optional[InMemorySessionService] = None
 _session = None
-_runner = None
+_runner: Optional[Runner] = None
 
 def _initialize_session_and_runner():
     """Initialize session service and runner lazily."""
@@ -321,6 +326,24 @@ def call_agent(query: str, location_context=None, time_frame=None, persona=None)
         persona_info = "\n[USER ROLE: You are speaking with a Community Resident who can report issues and get health information]"
     
     context_prefix = f"{time_context}{location_info}{time_frame_info}{persona_info}\n\nUser Question: "
+
+    # Pass Persona_type to session state
+    state_change = {"persona_type": persona_type}
+    # --- Create Event with Actions ---
+    actions_with_update = EventActions(state_delta=state_change)
+    # This event might represent an internal system action, not just an agent response
+    system_event = Event(
+        invocation_id="inv_login_update",
+        author="system",  # Or 'agent', 'tool' etc.
+        actions=actions_with_update
+    )
+    # --- Append the Event (This updates the state) ---
+    asyncio.run(_session_service.append_event(_session, system_event))
+    # --- Check Updated State ---
+    updated_session = asyncio.run(_session_service.get_session(app_name=APP_NAME,
+                                                        user_id=USER_ID,
+                                                        session_id=SESSION_ID))
+    print(f"[AGENT] : State after event: {updated_session.state}")
     
     # Use the default runner with context injected into query
     enhanced_query = context_prefix + query if context_prefix else query
@@ -332,6 +355,11 @@ def call_agent(query: str, location_context=None, time_frame=None, persona=None)
     for event in events:
         if event.is_final_response():
             logger.info(f"[ROOT AGENT] Received final response from sub-agent")
+            # Check state after invocation for debugging
+            updated_session = asyncio.run(_session_service.get_session(app_name=APP_NAME,
+                                                                       user_id=USER_ID,
+                                                                       session_id=SESSION_ID))
+            print(f"[AGENT] : State after invocation: {updated_session.state}")
             return event.content.parts[0].text
     logger.warning("[ROOT AGENT] No response received from agent")
     return "No response received from agent."
