@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 import os
 import asyncio
+import logging
 from datetime import datetime
 from google.adk.agents import Agent
 from google.adk.runners import Runner
@@ -9,6 +10,10 @@ from google.adk.sessions import InMemorySessionService
 from google.genai import types
 from google.adk.tools import google_search
 import google.generativeai as genai
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 # Configure Gemini API key - ADK uses GOOGLE_API_KEY
 # Ensure GOOGLE_API_KEY is set for ADK framework
@@ -193,8 +198,10 @@ DATA TIME FRAME CONTEXT:
 
     if persona_type == "health_official":
         base_instruction = HEALTH_OFFICIAL_PROMPT
+        logger.info(f"[ROOT AGENT] Creating agent with HEALTH_OFFICIAL persona")
     else:
         base_instruction = USER_PROMPT
+        logger.info(f"[ROOT AGENT] Creating agent with USER persona")
 
     # Combine all context
     global_context = f"{time_context}{location_info}{time_frame_info}"
@@ -212,9 +219,12 @@ DATA TIME FRAME CONTEXT:
     # Add analytics_agent if available (KEEP from main)
     if analytics_agent:
         sub_agents_list.append(analytics_agent)
+        logger.info(f"[ROOT AGENT] Added analytics_agent to sub-agents list")
 
     # Add PSA video agents
     sub_agents_list.extend(psa_agents)
+    logger.info(f"[ROOT AGENT] Added {len(psa_agents)} PSA video agents to sub-agents list")
+    logger.info(f"[ROOT AGENT] Total sub-agents: {len(sub_agents_list)}")
 
     return Agent(
     name="community_health_assistant",
@@ -242,6 +252,7 @@ def _initialize_session_and_runner():
     """Initialize session service and runner lazily."""
     global _session_service, _session, _runner
     if _session_service is None:
+        logger.info(f"[ROOT AGENT] Initializing session service and runner")
         _session_service = InMemorySessionService()
         _session = asyncio.run(
             _session_service.create_session(
@@ -249,9 +260,13 @@ def _initialize_session_and_runner():
             )
         )
         _runner = Runner(agent=root_agent, app_name=APP_NAME, session_service=_session_service)
+        logger.info(f"[ROOT AGENT] Session and runner initialized successfully")
 
 def call_agent(query: str, location_context=None, time_frame=None, persona=None) -> str:
     """Helper function to call the agent with a query and return the response."""
+    logger.info(f"[ROOT AGENT] Starting query processing: '{query[:100]}...'")
+    logger.info(f"[ROOT AGENT] Context - Persona: {persona}, Location: {location_context}, TimeFrame: {time_frame}")
+    
     _initialize_session_and_runner()
     
     # Build context string and inject it into the query instead of creating new agent
@@ -287,12 +302,15 @@ def call_agent(query: str, location_context=None, time_frame=None, persona=None)
     # Use the default runner with context injected into query
     enhanced_query = context_prefix + query if context_prefix else query
     content = types.Content(role="user", parts=[types.Part(text=enhanced_query)])
+    logger.info(f"[ROOT AGENT] Enhanced query prepared, sending to runner")
     print(content)
     events = _runner.run(user_id=USER_ID, session_id=SESSION_ID, new_message=content)
 
     for event in events:
         if event.is_final_response():
+            logger.info(f"[ROOT AGENT] Received final response from sub-agent")
             return event.content.parts[0].text
+    logger.warning("[ROOT AGENT] No response received from agent")
     return "No response received from agent."
 
 # === Interactive Runner ===
