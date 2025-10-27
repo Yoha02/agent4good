@@ -79,15 +79,15 @@ function generateMockData(days = 7) {
 async function initializePollutantCharts(zipCode, city, state, days = 7) {
     try {
         console.log('');
-        console.log('ΓòöΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòù');
-        console.log('Γòæ [PM2.5 POLLUTANT CHARTS] Starting initialization     Γòæ');
-        console.log('ΓòáΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòú');
-        console.log('Γòæ FUNCTION CALLED WITH:                                 Γòæ');
-        console.log('Γòæ  - zipCode parameter:', zipCode || '(null/empty)');
-        console.log('Γòæ  - city parameter:', city || '(null/empty)');
-        console.log('Γòæ  - state parameter:', state || '(null/empty)');
-        console.log('Γòæ  - days parameter:', days, 'days');
-        console.log('ΓòÜΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓò¥');
+        console.log('╔═══════════════════════════════════════════════════════╗');
+        console.log('║ [PM2.5 POLLUTANT CHARTS] Starting initialization     ║');
+        console.log('╠═══════════════════════════════════════════════════════╣');
+        console.log('║ FUNCTION CALLED WITH:                                 ║');
+        console.log('║  - zipCode parameter:', zipCode || '(null/empty)');
+        console.log('║  - city parameter:', city || '(null/empty)');
+        console.log('║  - state parameter:', state || '(null/empty)');
+        console.log('║  - days parameter:', days, 'days');
+        console.log('╚═══════════════════════════════════════════════════════╝');
         console.log('');
         
         // Show loading indicator for pollutant charts
