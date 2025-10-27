@@ -2023,9 +2023,23 @@ async function pollForVideoCompletion(taskId) {
 /**
  * Post video to Twitter (widget version)
  */
+const isPostingToTwitterWidget = { value: false }; // Flag to prevent duplicate posts
+
 async function postToTwitterWidget(videoData) {
+    // Prevent duplicate posting
+    if (isPostingToTwitterWidget.value) {
+        console.log('[TWITTER WIDGET] Already posting, ignoring duplicate call');
+        return;
+    }
+    isPostingToTwitterWidget.value = true;
+    
     try {
-        addChatMessage('Posting to Twitter...', 'bot');
+        // Show posting message with expected time
+        const loadingMsg = addChatMessage('Posting to Twitter... (This may take 60-90 seconds: downloading video, uploading to Twitter, processing)', 'bot');
+        
+        // Create abort controller for timeout (2 minutes)
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 120000); // 2 minutes
         
         const response = await fetch('/api/post-to-twitter', {
             method: 'POST',
@@ -2033,24 +2047,36 @@ async function postToTwitterWidget(videoData) {
             body: JSON.stringify({
                 video_url: videoData.video_url,
                 message: videoData.action_line,  // Backend expects 'message' field
-                health_data: videoData.health_data || {}
-            })
+                hashtags: ['HealthAlert', 'PublicHealth', 'CommunityHealth', 'AirQuality']
+            }),
+            signal: controller.signal
         });
         
+        clearTimeout(timeoutId);
         const data = await response.json();
         
+        // Remove loading message
+        if (loadingMsg && loadingMsg.remove) {
+            loadingMsg.remove();
+        }
+        
         if (data.success && data.tweet_url) {
-            addChatMessage(
-                `Posted to Twitter successfully!\n\nView your post: ${data.tweet_url}\n\nTweet posted successfully!`,
-                'bot'
-            );
+            const successMessage = `Posted to Twitter successfully!\n\nView your post: ${data.tweet_url}\n\n${data.message || 'Tweet posted successfully!'}`;
+            addChatMessage(successMessage, 'bot');
             lastVideoData = null; // Clear after posting
         } else {
-            addChatMessage(`Failed to post to Twitter: ${data.error || 'Unknown error'}`, 'bot');
+            addChatMessage(`Sorry, I couldn't post to Twitter: ${data.error || 'Unknown error'}`, 'bot');
         }
     } catch (error) {
-        console.error('[TWITTER] Error posting:', error);
-        addChatMessage('Error posting to Twitter. Please try again.', 'bot');
+        if (error.name === 'AbortError') {
+            addChatMessage('Twitter posting timed out. The video may still have been posted. Please check the Twitter feed at https://twitter.com/AI_mmunity', 'bot');
+        } else {
+            addChatMessage('Sorry, there was an error posting to Twitter. Please try again.', 'bot');
+        }
+        console.error('[TWITTER WIDGET] Error posting:', error);
+    } finally {
+        // Reset posting flag
+        isPostingToTwitterWidget.value = false;
     }
 }
 
