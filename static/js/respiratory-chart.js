@@ -849,10 +849,18 @@ async function updateDiseaseCards(days) {
     event?.target.classList.remove('bg-gray-200', 'text-gray-700');
     event?.target.classList.add('active', 'bg-blue-500', 'text-white');
     
-    // Get current state
-    const state = currentState || '';
+    // Get current state - try multiple sources
+    let state = '';
+    if (typeof window.currentState !== 'undefined') {
+        state = window.currentState;
+    } else if (typeof currentState !== 'undefined') {
+        state = currentState;
+    }
+    
     const locationText = state || 'National';
-    console.log('[DISEASE CARDS] State:', state, 'Location text:', locationText);
+    console.log('[DISEASE CARDS] Current state from window:', window.currentState);
+    console.log('[DISEASE CARDS] Current state from local:', typeof currentState !== 'undefined' ? currentState : 'undefined');
+    console.log('[DISEASE CARDS] Using state:', state, 'Location text:', locationText);
     
     // Update location indicator
     const locationEl = document.getElementById('diseaseCardsLocation');
@@ -872,6 +880,7 @@ async function updateDiseaseCards(days) {
         console.log('[DISEASE CARDS] Response status:', response.status);
         const result = await response.json();
         console.log('[DISEASE CARDS] BigQuery Result status:', result.status);
+        console.log('[DISEASE CARDS] Full API Response:', JSON.stringify(result, null, 2));
         
         if (result.status === 'success') {
             console.log('[DISEASE CARDS] Γ£ô BigQuery data received');
@@ -880,13 +889,21 @@ async function updateDiseaseCards(days) {
             if (result.nrevss_data && result.nrevss_data.length > 0) {
                 const avgRsvPositivity = result.nrevss_data.reduce((sum, d) => 
                     sum + (d.pcr_percent_positive || 0), 0) / result.nrevss_data.length;
-                console.log('[DISEASE CARDS] RSV avg positivity from BigQuery:', avgRsvPositivity);
+                console.log('[DISEASE CARDS] RSV avg positivity from BigQuery:', avgRsvPositivity.toFixed(2) + '%');
                 
                 updateDiseaseCard('rsv', {
                     positivity: avgRsvPositivity,
                     name: 'RSV',
                     color: 'blue',
                     trend: calculateTrend(result.nrevss_data, 'pcr_percent_positive')
+                });
+            } else {
+                console.log('[DISEASE CARDS] No RSV data available - showing 0');
+                updateDiseaseCard('rsv', { 
+                    positivity: 0, 
+                    name: 'RSV', 
+                    color: 'blue', 
+                    trend: 'stable' 
                 });
             }
             
@@ -916,13 +933,21 @@ async function updateDiseaseCards(days) {
             
             if (fluRates.length > 0) {
                 const avgFluRate = fluRates.reduce((sum, d) => sum + (d.rate || 0), 0) / fluRates.length;
-                console.log('[DISEASE CARDS] Flu avg rate from BigQuery:', avgFluRate);
+                console.log('[DISEASE CARDS] Flu avg rate from BigQuery:', avgFluRate.toFixed(2));
                 
                 updateDiseaseCard('flu', {
                     positivity: avgFluRate,
                     name: 'Influenza',
                     color: 'amber',
                     trend: calculateTrend(fluRates, 'rate')
+                });
+            } else {
+                console.log('[DISEASE CARDS] No Flu data available - showing 0');
+                updateDiseaseCard('flu', { 
+                    positivity: 0, 
+                    name: 'Influenza', 
+                    color: 'amber', 
+                    trend: 'stable' 
                 });
             }
             
