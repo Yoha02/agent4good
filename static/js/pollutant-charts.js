@@ -378,7 +378,7 @@ function createDashboardContainer() {
         <div class="mb-8">
             <h2 class="text-4xl font-bold text-gray-800 mb-3">
                 <span class="bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                    ≡ƒôè Air Quality Parameters
+                    📊 Air Quality Parameters
                 </span>
             </h2>
             <p class="text-gray-600 text-lg">Detailed pollutant levels and trends over time</p>
@@ -387,16 +387,16 @@ function createDashboardContainer() {
         <!-- Time Period Controls at the Top -->
         <div id="pollutant-controls" class="mb-6 flex justify-center gap-4 flex-wrap">
             <button class="chart-control-btn active px-6 py-3 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition-all duration-300 transform hover:scale-105" data-days="7">
-                ≡ƒôà Last 7 Days
+                📊 Last 7 Days
             </button>
             <button class="chart-control-btn px-6 py-3 bg-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-300 transition-all duration-300 transform hover:scale-105" data-days="14">
-                ≡ƒôà Last 14 Days
+                📊 Last 14 Days
             </button>
             <button class="chart-control-btn px-6 py-3 bg-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-300 transition-all duration-300 transform hover:scale-105" data-days="30">
-                ≡ƒôà Last 30 Days
+                📊 Last 30 Days
             </button>
             <button class="chart-control-btn px-6 py-3 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-700 transition-all duration-300 transform hover:scale-105" data-export="true">
-                ≡ƒôè Export Data
+                📥 Export Data
             </button>
         </div>
         
@@ -438,8 +438,8 @@ function createPollutantChart(pollutantKey, data, isRealData = false) {
     
     // Add data source badge
     const dataBadge = isRealData 
-        ? '<span class="inline-block px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">≡ƒôí Real-time EPA Data</span>'
-        : '<span class="inline-block px-2 py-1 text-xs font-semibold rounded-full bg-amber-100 text-amber-800">≡ƒôè Estimated Data</span>';
+        ? '<span class="inline-block px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">✅ Real-time EPA Data</span>'
+        : '<span class="inline-block px-2 py-1 text-xs font-semibold rounded-full bg-amber-100 text-amber-800">📊 Estimated Data</span>';
     
     card.innerHTML = `
         <div class="flex items-center justify-between mb-4">
