@@ -537,11 +537,21 @@ function initializeApp() {
     loadAirQualityData();
     loadHealthRecommendations();
     
-    // Initialize pollutant charts immediately on page load (even without location)
+    // Initialize pollutant charts immediately on page load
     if (typeof initializePollutantCharts === 'function') {
         console.log('[APP] Initializing pollutant charts on page load');
-        // Call with null/empty to show empty charts
-        initializePollutantCharts(null, null, null);
+        // Use default location (San Francisco) if no location selected yet
+        const defaultZip = '94102';
+        const defaultCity = 'San Francisco';
+        const defaultState = 'California';
+        
+        if (!currentZip && !currentCity) {
+            console.log('[APP] Using default location for initial data load:', defaultCity);
+            initializePollutantCharts(defaultZip, defaultCity, defaultState);
+        } else {
+            console.log('[APP] Using current location:', currentCity || currentZip);
+            initializePollutantCharts(currentZip, currentCity, currentState);
+        }
     }
 }
 
