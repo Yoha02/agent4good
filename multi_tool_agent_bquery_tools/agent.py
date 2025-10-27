@@ -255,6 +255,9 @@ def call_agent(query: str, location_context=None, time_frame=None, persona=None)
     """Helper function to call the agent with a query and return the response."""
     global _runner
     
+    # Initialize runner if not already done
+    _initialize_session_and_runner()
+    
     # Determine effective persona (frontend > env var > default)
     effective_persona = persona if persona else os.getenv("LOGIN_ROLE", "user")
     
@@ -267,48 +270,43 @@ def call_agent(query: str, location_context=None, time_frame=None, persona=None)
     }
     persona_type = persona_mapping.get(effective_persona, "user")
     
-    # Check if we need to recreate runner due to persona change
-    if _runner is None or not hasattr(_runner, '_persona_type') or _runner._persona_type != persona_type:
-        print(f"[AGENT] Creating/updating runner with persona: {persona_type}")
-        # Initialize session service if needed
-        _initialize_session_and_runner()
-        # Create agent with the correct persona
-        agent_with_persona = create_root_agent_with_context(persona_type=persona_type)
-        _runner = Runner(agent=agent_with_persona, app_name=APP_NAME, session_service=_session_service)
-        _runner._persona_type = persona_type  # Track current persona
-    else:
-        # Just ensure session is initialized
-        _initialize_session_and_runner()
+    print(f"[AGENT] Using persona: {persona_type} (from: {effective_persona})")
     
     # Build context string and inject it into the query instead of creating new agent
     context_prefix = ""
     
-    if location_context or time_frame:
-        # Get time context
-        time_context = get_current_time_context()
+    # Get time context
+    time_context = get_current_time_context()
+    
+    # Build location context
+    location_info = ""
+    if location_context:
+        location_parts = []
+        if location_context.get('city'):
+            location_parts.append(f"City: {location_context['city']}")
+        if location_context.get('state'):
+            location_parts.append(f"State: {location_context['state']}")
+        if location_context.get('county'):
+            location_parts.append(f"County: {location_context['county']}")
+        if location_context.get('zipCode'):
+            location_parts.append(f"ZIP Code: {location_context['zipCode']}")
         
-        # Build location context
-        location_info = ""
-        if location_context:
-            location_parts = []
-            if location_context.get('city'):
-                location_parts.append(f"City: {location_context['city']}")
-            if location_context.get('state'):
-                location_parts.append(f"State: {location_context['state']}")
-            if location_context.get('county'):
-                location_parts.append(f"County: {location_context['county']}")
-            if location_context.get('zipCode'):
-                location_parts.append(f"ZIP Code: {location_context['zipCode']}")
-            
-            if location_parts:
-                location_info = f"\n[LOCATION CONTEXT: {', '.join(location_parts)}]"
-        
-        # Build time frame context
-        time_frame_info = ""
-        if time_frame:
-            time_frame_info = f"\n[TIME FRAME: {time_frame.get('start_date', '')} to {time_frame.get('end_date', '')}]"
-        
-        context_prefix = f"{time_context}{location_info}{time_frame_info}\n\nUser Question: "
+        if location_parts:
+            location_info = f"\n[LOCATION CONTEXT: {', '.join(location_parts)}]"
+    
+    # Build time frame context
+    time_frame_info = ""
+    if time_frame:
+        time_frame_info = f"\n[TIME FRAME: {time_frame.get('start_date', '')} to {time_frame.get('end_date', '')}]"
+    
+    # Build persona context
+    persona_info = ""
+    if persona_type == "health_official":
+        persona_info = "\n[USER ROLE: You are speaking with a Health Official who has access to semantic search, analytics, and PSA video generation tools]"
+    else:
+        persona_info = "\n[USER ROLE: You are speaking with a Community Resident who can report issues and get health information]"
+    
+    context_prefix = f"{time_context}{location_info}{time_frame_info}{persona_info}\n\nUser Question: "
     
     # Use the default runner with context injected into query
     enhanced_query = context_prefix + query if context_prefix else query
