@@ -2504,7 +2504,7 @@ def get_air_quality_map():
     try:
         # Get state filter (optional)
         state_name = request.args.get('state')
-        limit = int(request.args.get('limit', 100))  # Default to 100 locations
+        limit = int(request.args.get('limit', 10))  # Reduced from 100 to 10 to prevent EPA rate limiting
         
         print(f"[HEATMAP API] Request - State: {state_name}, Limit: {limit}")
         

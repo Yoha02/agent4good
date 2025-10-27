@@ -130,7 +130,8 @@ function initAirQualityMap() {
                         });
                         
                         // Load data for this location (will use state from global vars if available)
-                        loadHeatmapData(null);
+                        // DISABLED: Auto-load causes 100+ EPA API calls. User must click "Load Map" button
+                        // loadHeatmapData(null);
                     },
                     (error) => {
                         console.warn('[HEATMAP DEBUG] Geolocation error:', error.message);
@@ -151,7 +152,8 @@ function initAirQualityMap() {
                                 },
                                 duration: 3
                             });
-                            loadHeatmapData(null);
+                            // DISABLED: Auto-load causes 100+ EPA API calls
+                            // loadHeatmapData(null);
                         }
                     }
                 );
@@ -239,7 +241,8 @@ function geocodeZipCode(zipCode) {
                 duration: 3
             });
             
-            loadHeatmapData(null);
+            // DISABLED: Auto-load causes 100+ EPA API calls
+            // loadHeatmapData(null);
         } else {
             console.error('[HEATMAP DEBUG] Geocoding failed:', status);
             // Fall back to Golden Gate Bridge
@@ -252,7 +255,8 @@ function geocodeZipCode(zipCode) {
                 },
                 duration: 3
             });
-            loadHeatmapData(null);
+            // DISABLED: Auto-load causes 100+ EPA API calls
+            // loadHeatmapData(null);
         }
     });
 }
