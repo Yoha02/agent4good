@@ -523,6 +523,9 @@ function initializeApp() {
         currentState = 'California';
     }
     
+    // Make currentState globally accessible for other scripts (like respiratory-chart.js)
+    window.currentState = currentState;
+    
     // Set default date range (2024 to 2025)
     setDefaultDateRange();
     
@@ -572,6 +575,16 @@ function initializeApp() {
     
     // Load summary cards data
     loadSummaryCards();
+    
+    // Initialize disease cards after a short delay to ensure respiratory-chart.js is loaded
+    setTimeout(() => {
+        if (typeof window.updateDiseaseCards === 'function') {
+            console.log('[APP] Calling updateDiseaseCards for initial load');
+            window.updateDiseaseCards(7);
+        } else {
+            console.warn('[APP] updateDiseaseCards function not available yet');
+        }
+    }, 1000);
 }
 
 // Set default date range (2024 to 2025)
