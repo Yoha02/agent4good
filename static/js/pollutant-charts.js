@@ -78,7 +78,16 @@ function generateMockData(days = 7) {
  */
 async function initializePollutantCharts(zipCode, city, state) {
     try {
-        console.log('[Pollutant Charts] Initializing for:', zipCode, city, state);
+        console.log('');
+        console.log('╔═══════════════════════════════════════════════════════╗');
+        console.log('║ [PM2.5 POLLUTANT CHARTS] Starting initialization     ║');
+        console.log('╠═══════════════════════════════════════════════════════╣');
+        console.log('║ FUNCTION CALLED WITH:                                 ║');
+        console.log('║  - zipCode parameter:', zipCode || '(null/empty)');
+        console.log('║  - city parameter:', city || '(null/empty)');
+        console.log('║  - state parameter:', state || '(null/empty)');
+        console.log('╚═══════════════════════════════════════════════════════╝');
+        console.log('');
         
         // Clear existing dashboard first
         const existingDashboard = document.getElementById('pollutant-dashboard');
