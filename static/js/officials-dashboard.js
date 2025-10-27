@@ -2001,8 +2001,13 @@ async function pollForVideoCompletion(taskId) {
                 clearInterval(pollInterval);
                 console.error(`[VIDEO WIDGET] Video generation failed`);
                 addChatMessage('Sorry, video generation failed. Please try again.', 'bot');
-            } else if (data.status === 'processing' || data.status === 'pending') {
-                console.log(`[VIDEO WIDGET] Video still processing (progress: ${data.progress || 'unknown'})`);
+            } else if (data.status === 'initializing' || 
+                       data.status === 'generating_action_line' || 
+                       data.status === 'creating_prompt' || 
+                       data.status === 'generating_video' ||
+                       data.status === 'processing' || 
+                       data.status === 'pending') {
+                console.log(`[VIDEO WIDGET] Video still ${data.status} (progress: ${data.progress || 'unknown'}%)`);
                 // Continue polling
             } else {
                 console.warn(`[VIDEO WIDGET] Unknown status: ${data.status}`);
@@ -2027,7 +2032,7 @@ async function postToTwitterWidget(videoData) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 video_url: videoData.video_url,
-                action_line: videoData.action_line,
+                message: videoData.action_line,  // Backend expects 'message' field
                 health_data: videoData.health_data || {}
             })
         });
