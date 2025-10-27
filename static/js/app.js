@@ -534,25 +534,44 @@ function initializeApp() {
     // Load cities for current state on startup
     onStateChange();
     
+    // Load all data on page load
     loadAirQualityData();
     loadHealthRecommendations();
     
-    // Initialize pollutant charts immediately on page load
-    if (typeof initializePollutantCharts === 'function') {
-        console.log('[APP] Initializing pollutant charts on page load');
-        // Use default location (San Francisco) if no location selected yet
-        const defaultZip = '94102';
-        const defaultCity = 'San Francisco';
-        const defaultState = 'California';
+    // Use default location for initial data if no location is set
+    const defaultZip = '94102';
+    const defaultCity = 'San Francisco';
+    const defaultState = 'California';
+    
+    // Set temporary current location if none exists
+    if (!currentZip && !currentCity) {
+        console.log('[APP] Using default location for initial data load:', defaultCity);
+        currentZip = defaultZip;
+        currentCity = defaultCity;
+        currentState = defaultState;
         
-        if (!currentZip && !currentCity) {
-            console.log('[APP] Using default location for initial data load:', defaultCity);
+        // Load weather and pollen data with default location
+        loadWeatherData();
+        loadPollenData();
+        
+        // Initialize pollutant charts
+        if (typeof initializePollutantCharts === 'function') {
             initializePollutantCharts(defaultZip, defaultCity, defaultState);
-        } else {
-            console.log('[APP] Using current location:', currentCity || currentZip);
+        }
+    } else {
+        console.log('[APP] Using current location:', currentCity || currentZip);
+        // Load weather and pollen data
+        loadWeatherData();
+        loadPollenData();
+        
+        // Initialize pollutant charts
+        if (typeof initializePollutantCharts === 'function') {
             initializePollutantCharts(currentZip, currentCity, currentState);
         }
     }
+    
+    // Load summary cards data
+    loadSummaryCards();
 }
 
 // Set default date range (2024 to 2025)
@@ -1056,6 +1075,12 @@ async function loadAirQualityData() {
             if (data.data && data.data.length > 0) {
                 const latestData = data.data[data.data.length - 1];
                 updateCurrentAQI(latestData.aqi, latestData.location || (currentZip || currentState));
+                
+                // Update summary AQI card
+                const summaryAQIEl = document.getElementById('summaryAQI');
+                if (summaryAQIEl && latestData.aqi) {
+                    summaryAQIEl.textContent = Math.round(latestData.aqi);
+                }
             }
             
             updateStatistics(data.statistics);
@@ -2118,6 +2143,12 @@ function updateWeatherDisplay(weather) {
     document.getElementById('weatherConditions').textContent = current.conditions || 'Unknown';
     document.getElementById('weatherIcon').textContent = getWeatherIcon(current.conditions || '');
     
+    // Update summary card
+    const summaryTempEl = document.getElementById('summaryTemp');
+    if (summaryTempEl) {
+        summaryTempEl.textContent = `${temp}°`;
+    }
+    
     console.log('[Weather] Display updated successfully');
 }
 
@@ -2135,6 +2166,13 @@ function updatePollenDisplay(pollen) {
     const upi = current.upi !== undefined ? current.upi : '--';
     document.getElementById('pollenUPI').textContent = upi;
     document.getElementById('pollenLevel').textContent = current.level || 'Unknown';
+    
+    // Update summary card
+    const summaryPollenEl = document.getElementById('summaryPollen');
+    if (summaryPollenEl) {
+        summaryPollenEl.textContent = upi;
+    }
+    
     
     // Individual indices - handle 0 as valid value
     const treeIndex = current.tree_index !== undefined ? current.tree_index : '--';
@@ -2159,6 +2197,62 @@ function updatePollenDisplay(pollen) {
     document.getElementById('pollenIcon').textContent = getPollenIcon(upi);
     
     console.log('[Pollen] Display updated successfully');
+}
+
+// Load additional summary cards (Fire, COVID, Alerts)
+async function loadSummaryCards() {
+    console.log('[Summary Cards] Loading additional data...');
+    
+    try {
+        // Load wildfire data
+        const fireResponse = await fetch('/api/wildfires?limit=1');
+        const fireData = await fireResponse.json();
+        if (fireData.status === 'success' && fireData.data && fireData.data.length > 0) {
+            const summaryFireEl = document.getElementById('summaryFire');
+            if (summaryFireEl) {
+                summaryFireEl.textContent = fireData.data.length;
+            }
+        }
+    } catch (error) {
+        console.error('[Summary Cards] Error loading fire data:', error);
+    }
+    
+    try {
+        // Load COVID data
+        const params = new URLSearchParams();
+        if (currentState) params.append('state', currentState);
+        params.append('days', '7');
+        
+        const covidResponse = await fetch(`/api/covid-hospitalizations?${params.toString()}`);
+        const covidData = await covidResponse.json();
+        if (covidData.status === 'success' && covidData.data && covidData.data.length > 0) {
+            const summaryCovidEl = document.getElementById('summaryCovid');
+            if (summaryCovidEl) {
+                // Calculate average weekly admissions per 100K
+                const avgAdmissions = covidData.data.reduce((sum, d) => 
+                    sum + (d.weekly_admissions_per_100k || 0), 0) / covidData.data.length;
+                summaryCovidEl.textContent = avgAdmissions.toFixed(1);
+            }
+        }
+    } catch (error) {
+        console.error('[Summary Cards] Error loading COVID data:', error);
+    }
+    
+    try {
+        // Load alerts data
+        const alertsResponse = await fetch('/api/alerts');
+        const alertsData = await alertsResponse.json();
+        if (alertsData.status === 'success' && alertsData.alerts) {
+            const summaryAlertsEl = document.getElementById('summaryAlerts');
+            if (summaryAlertsEl) {
+                summaryAlertsEl.textContent = alertsData.alerts.length;
+            }
+        }
+    } catch (error) {
+        console.error('[Summary Cards] Error loading alerts data:', error);
+    }
+    
+    console.log('[Summary Cards] Data loading complete');
 }
 
 // Helper functions
