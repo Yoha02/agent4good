@@ -59,7 +59,7 @@ class WildfireDataFetcher:
                 longitude = None
                 if 'Latitude:' in summary and 'Longitude:' in summary:
                     try:
-                        # Format: "Latitude: 42° 41 15  Longitude: 123° 54 55"
+                        # Format: "Latitude: 42┬░ 41 15  Longitude: 123┬░ 54 55"
                         coord_line = [line for line in summary.split('\n') if 'Latitude:' in line]
                         if coord_line:
                             coords = coord_line[0].strip()
@@ -67,8 +67,8 @@ class WildfireDataFetcher:
                             lon_part = coords.split('Longitude:')[1].strip()
                             
                             # Convert degrees/minutes/seconds to decimal
-                            lat_parts = lat_part.replace('°', ' ').split()
-                            lon_parts = lon_part.replace('°', ' ').split()
+                            lat_parts = lat_part.replace('┬░', ' ').split()
+                            lon_parts = lon_part.replace('┬░', ' ').split()
                             
                             if len(lat_parts) >= 1:
                                 latitude = float(lat_parts[0])
@@ -412,36 +412,38 @@ class DrugAvailabilityFetcher:
 
 
 class CDCCovidDataFetcher:
-    """Fetch CDC COVID data from XML feed with proper column structure"""
+    """Fetch CDC COVID data from Socrata API - Updated endpoint"""
     
-    FEED_URL = "https://data.cdc.gov/api/views/gvsb-yw6g/rows.xml?accessType=DOWNLOAD"
+    FEED_URL = "https://data.cdc.gov/resource/6jg4-xsqq.json"
     TABLE_NAME = "cdc_covid_data"
     
     def fetch_data(self) -> List[Dict[str, Any]]:
-        """Fetch and parse CDC COVID XML data into columns"""
+        """Fetch and parse CDC COVID JSON data"""
         try:
             logger.info(f"Fetching CDC COVID data from {self.FEED_URL}")
-            response = requests.get(self.FEED_URL, timeout=60)
+            
+            # Query parameters to get recent data
+            params = {
+                '$limit': 15000,
+                '$order': '_weekenddate DESC'
+            }
+            
+            response = requests.get(self.FEED_URL, params=params, timeout=60)
             response.raise_for_status()
             
-            # Parse XML
-            data = xmltodict.parse(response.text)
+            # Parse JSON
+            data = response.json()
             
             covid_records = []
-            rows = data.get('response', {}).get('row', {}).get('row', [])
             
-            # Ensure rows is a list
-            if not isinstance(rows, list):
-                rows = [rows] if rows else []
-            
-            for row in rows[:200]:  # Limit to 200 records
+            for idx, row in enumerate(data):
                 # Generate unique record ID
                 record_id = hashlib.md5(
-                    f"{row.get('@_id', '')}_{row.get('mmwrweek_end', '')}".encode()
+                    f"{row.get('_weekenddate', '')}_{row.get('state', '')}_{row.get('season', '')}_{idx}".encode()
                 ).hexdigest()
                 
                 # Parse dates safely
-                def parse_timestamp(date_str):
+                def parse_date(date_str):
                     if not date_str:
                         return None
                     try:
@@ -450,25 +452,41 @@ class CDCCovidDataFetcher:
                     except:
                         return None
                 
+                # Convert numeric fields safely
+                def safe_float(value):
+                    if value is None or value == '':
+                        return None
+                    try:
+                        return float(value)
+                    except (ValueError, TypeError):
+                        return None
+                
+                def safe_int(value):
+                    if value is None or value == '':
+                        return None
+                    try:
+                        return int(float(value))
+                    except (ValueError, TypeError):
+                        return None
+                
                 # Convert to proper data types
                 covid_record = {
                     'record_id': record_id,
-                    'row_id': row.get('@_id'),
-                    'level': row.get('level'),
-                    'perc_diff': float(row.get('perc_diff')) if row.get('perc_diff') else None,
-                    'percent_pos': float(row.get('percent_pos')) if row.get('percent_pos') else None,
-                    'percent_pos_2_week': float(row.get('percent_pos_2_week')) if row.get('percent_pos_2_week') else None,
-                    'percent_pos_4_week': float(row.get('percent_pos_4_week')) if row.get('percent_pos_4_week') else None,
-                    'number_tested': int(row.get('number_tested')) if row.get('number_tested') else None,
-                    'number_tested_2_week': int(row.get('number_tested_2_week')) if row.get('number_tested_2_week') else None,
-                    'number_tested_4_week': int(row.get('number_tested_4_week')) if row.get('number_tested_4_week') else None,
-                    'posted': parse_timestamp(row.get('posted')),
-                    'mmwr_week_end': parse_timestamp(row.get('mmwrweek_end')),
+                    'weekenddate': parse_date(row.get('_weekenddate')),
+                    'state': row.get('state'),
+                    'season': row.get('season'),
+                    'agecategory': row.get('agecategory_legend'),
+                    'sex': row.get('sex_label'),
+                    'race': row.get('race_label'),
+                    'weekly_rate': safe_float(row.get('weekly_rate')),
+                    'cumulative_rate': safe_float(row.get('cumulative_rate')),
                     'created_at': datetime.now(timezone.utc).isoformat()
                 }
                 covid_records.append(covid_record)
             
             logger.info(f"Fetched {len(covid_records)} CDC COVID records")
+            if covid_records:
+                logger.info(f"Date range: {covid_records[-1].get('weekenddate')} to {covid_records[0].get('weekenddate')}")
             return covid_records
             
         except Exception as e:

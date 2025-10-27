@@ -523,6 +523,9 @@ function initializeApp() {
         currentState = 'California';
     }
     
+    // Make currentState globally accessible for other scripts (like respiratory-chart.js)
+    window.currentState = currentState;
+    
     // Set default date range (2024 to 2025)
     setDefaultDateRange();
     
@@ -534,15 +537,54 @@ function initializeApp() {
     // Load cities for current state on startup
     onStateChange();
     
+    // Load all data on page load
     loadAirQualityData();
     loadHealthRecommendations();
     
-    // Initialize pollutant charts immediately on page load (even without location)
-    if (typeof initializePollutantCharts === 'function') {
-        console.log('[APP] Initializing pollutant charts on page load');
-        // Call with null/empty to show empty charts
-        initializePollutantCharts(null, null, null);
+    // Use default location for initial data if no location is set
+    const defaultZip = '94102';
+    const defaultCity = 'San Francisco';
+    const defaultState = 'California';
+    
+    // Set temporary current location if none exists
+    if (!currentZip && !currentCity) {
+        console.log('[APP] Using default location for initial data load:', defaultCity);
+        currentZip = defaultZip;
+        currentCity = defaultCity;
+        currentState = defaultState;
+        
+        // Load weather and pollen data with default location
+        loadWeatherData();
+        loadPollenData();
+        
+        // Initialize pollutant charts
+        if (typeof initializePollutantCharts === 'function') {
+            initializePollutantCharts(defaultZip, defaultCity, defaultState);
+        }
+    } else {
+        console.log('[APP] Using current location:', currentCity || currentZip);
+        // Load weather and pollen data
+        loadWeatherData();
+        loadPollenData();
+        
+        // Initialize pollutant charts
+        if (typeof initializePollutantCharts === 'function') {
+            initializePollutantCharts(currentZip, currentCity, currentState);
+        }
     }
+    
+    // Load summary cards data
+    loadSummaryCards();
+    
+    // Initialize disease cards after a short delay to ensure respiratory-chart.js is loaded
+    setTimeout(() => {
+        if (typeof window.updateDiseaseCards === 'function') {
+            console.log('[APP] Calling updateDiseaseCards for initial load');
+            window.updateDiseaseCards(7);
+        } else {
+            console.warn('[APP] updateDiseaseCards function not available yet');
+        }
+    }, 1000);
 }
 
 // Set default date range (2024 to 2025)
@@ -1046,6 +1088,12 @@ async function loadAirQualityData() {
             if (data.data && data.data.length > 0) {
                 const latestData = data.data[data.data.length - 1];
                 updateCurrentAQI(latestData.aqi, latestData.location || (currentZip || currentState));
+                
+                // Update summary AQI card
+                const summaryAQIEl = document.getElementById('summaryAQI');
+                if (summaryAQIEl && latestData.aqi) {
+                    summaryAQIEl.textContent = Math.round(latestData.aqi);
+                }
             }
             
             updateStatistics(data.statistics);
@@ -2108,6 +2156,12 @@ function updateWeatherDisplay(weather) {
     document.getElementById('weatherConditions').textContent = current.conditions || 'Unknown';
     document.getElementById('weatherIcon').textContent = getWeatherIcon(current.conditions || '');
     
+    // Update summary card
+    const summaryTempEl = document.getElementById('summaryTemp');
+    if (summaryTempEl) {
+        summaryTempEl.textContent = `${temp}°`;
+    }
+    
     console.log('[Weather] Display updated successfully');
 }
 
@@ -2125,6 +2179,13 @@ function updatePollenDisplay(pollen) {
     const upi = current.upi !== undefined ? current.upi : '--';
     document.getElementById('pollenUPI').textContent = upi;
     document.getElementById('pollenLevel').textContent = current.level || 'Unknown';
+    
+    // Update summary card
+    const summaryPollenEl = document.getElementById('summaryPollen');
+    if (summaryPollenEl) {
+        summaryPollenEl.textContent = upi;
+    }
+    
     
     // Individual indices - handle 0 as valid value
     const treeIndex = current.tree_index !== undefined ? current.tree_index : '--';
@@ -2149,6 +2210,87 @@ function updatePollenDisplay(pollen) {
     document.getElementById('pollenIcon').textContent = getPollenIcon(upi);
     
     console.log('[Pollen] Display updated successfully');
+}
+
+// Load additional summary cards (Fire, COVID, Alerts)
+async function loadSummaryCards() {
+    console.log('[Summary Cards] Loading additional data...');
+    
+    try {
+        // Load wildfire data - uses 'count' field from API
+        const fireUrl = currentState 
+            ? `/api/wildfires?state=${encodeURIComponent(currentState)}`
+            : `/api/wildfires`;
+        
+        console.log('[Summary Cards] Fetching wildfire data from:', fireUrl);
+        const fireResponse = await fetch(fireUrl);
+        const fireData = await fireResponse.json();
+        console.log('[Summary Cards] Fire data received:', fireData);
+        
+        const summaryFireEl = document.getElementById('summaryFire');
+        if (summaryFireEl) {
+            // API returns 'count' field directly
+            summaryFireEl.textContent = fireData.count || '0';
+            console.log('[Summary Cards] Fire count:', fireData.count || '0');
+        }
+    } catch (error) {
+        console.error('[Summary Cards] Error loading fire data:', error);
+        const summaryFireEl = document.getElementById('summaryFire');
+        if (summaryFireEl) summaryFireEl.textContent = '0';
+    }
+    
+    try {
+        // Load COVID data - use /api/covid which returns cases_per_100k
+        const url = currentState 
+            ? `/api/covid?state=${encodeURIComponent(currentState)}`
+            : `/api/covid`;
+        
+        console.log('[Summary Cards] Fetching COVID data from:', url);
+        const covidResponse = await fetch(url);
+        const covidData = await covidResponse.json();
+        console.log('[Summary Cards] COVID data received:', covidData);
+        
+        const summaryCovidEl = document.getElementById('summaryCovid');
+        if (summaryCovidEl) {
+            // API returns cases_per_100k directly
+            if (covidData.cases_per_100k && covidData.cases_per_100k !== '-') {
+                summaryCovidEl.textContent = covidData.cases_per_100k;
+                console.log('[Summary Cards] COVID cases per 100K:', covidData.cases_per_100k);
+            } else {
+                summaryCovidEl.textContent = '-';
+                console.log('[Summary Cards] No COVID data available');
+            }
+        }
+    } catch (error) {
+        console.error('[Summary Cards] Error loading COVID data:', error);
+        const summaryCovidEl = document.getElementById('summaryCovid');
+        if (summaryCovidEl) summaryCovidEl.textContent = '-';
+    }
+    
+    try {
+        // Load alerts data - uses 'count' field from API
+        const alertsUrl = currentState 
+            ? `/api/alerts?state=${encodeURIComponent(currentState)}`
+            : `/api/alerts`;
+        
+        console.log('[Summary Cards] Fetching alerts data from:', alertsUrl);
+        const alertsResponse = await fetch(alertsUrl);
+        const alertsData = await alertsResponse.json();
+        console.log('[Summary Cards] Alerts data received:', alertsData);
+        
+        const summaryAlertsEl = document.getElementById('summaryAlerts');
+        if (summaryAlertsEl) {
+            // API returns 'count' field directly
+            summaryAlertsEl.textContent = alertsData.count || '0';
+            console.log('[Summary Cards] Alerts count:', alertsData.count || '0');
+        }
+    } catch (error) {
+        console.error('[Summary Cards] Error loading alerts data:', error);
+        const summaryAlertsEl = document.getElementById('summaryAlerts');
+        if (summaryAlertsEl) summaryAlertsEl.textContent = '0';
+    }
+    
+    console.log('[Summary Cards] Data loading complete');
 }
 
 // Helper functions

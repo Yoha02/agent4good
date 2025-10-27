@@ -50,6 +50,9 @@
     <!-- Anime.js for animations -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.1/anime.min.js"></script>
     
+    <!-- Google Maps API -->
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyALQGawG7iVNjJhG8v5w3Z_eyt5oRdMCvk&libraries=places&callback=initializeGoogleMaps" async defer></script>
+    
     <!-- Custom CSS -->
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     
@@ -331,26 +334,21 @@
                         Location
                     </h3>
                     
-                    <!-- ZIP Code Input (Primary - Required) -->
+                    <!-- Location Search with Autocomplete (Primary - Required) -->
                     <div class="mb-6">
                         <label class="block text-sm font-medium text-gray-700 mb-2">
-                            ZIP Code <span class="text-red-500">*</span>
+                            Search Location <span class="text-red-500">*</span>
                         </label>
                         <div class="flex gap-3">
                             <div class="flex-1 relative">
                                 <input 
                                     type="text" 
-                                    name="zipCode" 
-                                    id="zipCode"
+                                    id="locationSearchInput"
                                     class="form-input w-full px-4 py-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all text-lg" 
-                                    placeholder="Enter 5-digit ZIP code" 
-                                    pattern="[0-9]{5}" 
-                                    maxlength="5"
+                                    placeholder="Enter address, city, ZIP code, or landmark..." 
                                     required
                                 >
-                                <div id="zipLoadingIndicator" class="hidden absolute right-3 top-1/2 transform -translate-y-1/2">
-                                    <i class="fas fa-spinner fa-spin text-blue-600"></i>
-                                </div>
+                                <i class="fas fa-search absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
                             </div>
                             <button 
                                 type="button"
@@ -363,50 +361,40 @@
                         </div>
                         <p class="text-sm text-gray-500 mt-2">
                             <i class="fas fa-info-circle mr-1"></i>
-                            Enter your ZIP code and we'll auto-fill city, state, and county
+                            Search powered by Google Maps - supports addresses, landmarks, ZIP codes, cities
                         </p>
                     </div>
 
                     <!-- Auto-populated Location Info (Read-only) -->
                     <div id="autoLocationInfo" class="hidden mb-6 p-4 bg-emerald-50 border border-emerald-200 rounded-lg">
-                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 text-sm">
+                            <div>
+                                <span class="text-gray-600">Address:</span>
+                                <span id="detectedAddress" class="font-semibold text-gray-800 ml-2 block mt-1">-</span>
+                            </div>
                             <div>
                                 <span class="text-gray-600">City:</span>
-                                <span id="detectedCity" class="font-semibold text-gray-800 ml-2">-</span>
+                                <span id="detectedCity" class="font-semibold text-gray-800 ml-2 block mt-1">-</span>
                             </div>
                             <div>
                                 <span class="text-gray-600">State:</span>
-                                <span id="detectedState" class="font-semibold text-gray-800 ml-2">-</span>
+                                <span id="detectedState" class="font-semibold text-gray-800 ml-2 block mt-1">-</span>
                             </div>
                             <div>
-                                <span class="text-gray-600">County:</span>
-                                <span id="detectedCounty" class="font-semibold text-gray-800 ml-2">-</span>
+                                <span class="text-gray-600">ZIP:</span>
+                                <span id="detectedZip" class="font-semibold text-gray-800 ml-2 block mt-1">-</span>
                             </div>
                         </div>
                     </div>
 
                     <!-- Hidden fields for form submission -->
+                    <input type="hidden" name="address" id="addressInput">
                     <input type="hidden" name="city" id="cityInput" required>
                     <input type="hidden" name="state" id="stateInput" required>
                     <input type="hidden" name="county" id="countyInput">
-
-                    <!-- Optional Street Address -->
-                    <div class="mb-4">
-                        <label class="block text-sm font-medium text-gray-700 mb-2">
-                            Street Address or Landmark <span class="text-gray-400">(Optional)</span>
-                        </label>
-                        <input 
-                            type="text" 
-                            name="address" 
-                            id="address" 
-                            class="form-input w-full px-4 py-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all" 
-                            placeholder="e.g., Near Central Park, 123 Main St (optional)"
-                        >
-                        <p class="text-sm text-gray-500 mt-1">
-                            <i class="fas fa-lock mr-1"></i>
-                            Optional - only provide if you want to share a specific location
-                        </p>
-                    </div>
+                    <input type="hidden" name="zipCode" id="zipCodeInput" required>
+                    <input type="hidden" name="latitude" id="latitudeInput">
+                    <input type="hidden" name="longitude" id="longitudeInput">
                 </div>
 
                 <!-- Report Type Selection -->
@@ -687,9 +675,286 @@
     </div>
 
     <!-- Scripts -->
-    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
     <script src="{{ url_for('static', filename='js/three-bg.js') }}"></script>
     <script src="{{ url_for('static', filename='js/animations.js') }}"></script>
     <script src="{{ url_for('static', filename='js/report-form.js') }}"></script>
+
+    <!-- Google Maps Autocomplete & Auto-Location Script -->
+    <script>
+        // Report page location handling - variables in global scope for Google Maps callback
+        let reportAutocomplete;
+        let reportGeocoder;
+
+        // Initialize Google Maps Places Autocomplete - MUST be global for callback
+        function initializeGoogleMaps() {
+            console.log('≡ƒù║∩╕Å Initializing Google Maps autocomplete for report page...');
+            
+            const input = document.getElementById('locationSearchInput');
+            if (!input) {
+                console.error('Γ¥î Location search input not found!');
+                return;
+            }
+
+            // Initialize autocomplete
+            reportAutocomplete = new google.maps.places.Autocomplete(input, {
+                componentRestrictions: { country: 'us' },
+                fields: ['address_components', 'formatted_address', 'geometry', 'name'],
+                types: ['geocode', 'establishment']
+            });
+
+            // Initialize geocoder for reverse geocoding
+            reportGeocoder = new google.maps.Geocoder();
+
+            // Handle place selection
+            reportAutocomplete.addListener('place_changed', handlePlaceSelect);
+
+            console.log('Γ£à Google Maps autocomplete initialized');
+        }
+
+        // Handle place selection from autocomplete
+        function handlePlaceSelect() {
+            const place = reportAutocomplete.getPlace();
+            
+            if (!place.geometry) {
+                console.error('Γ¥î No geometry data for selected place');
+                return;
+            }
+
+            console.log('≡ƒôì Place selected:', place);
+
+            // Extract address components
+            let streetNumber = '';
+            let route = '';
+            let city = '';
+            let state = '';
+            let county = '';
+            let zipCode = '';
+            let country = '';
+
+            if (place.address_components) {
+                place.address_components.forEach(component => {
+                    const types = component.types;
+                    
+                    if (types.includes('street_number')) {
+                        streetNumber = component.long_name;
+                    }
+                    if (types.includes('route')) {
+                        route = component.long_name;
+                    }
+                    if (types.includes('locality')) {
+                        city = component.long_name;
+                    }
+                    if (types.includes('administrative_area_level_2')) {
+                        county = component.long_name;
+                    }
+                    if (types.includes('administrative_area_level_1')) {
+                        state = component.short_name;
+                    }
+                    if (types.includes('postal_code')) {
+                        zipCode = component.long_name;
+                    }
+                    if (types.includes('country')) {
+                        country = component.short_name;
+                    }
+                });
+            }
+
+            // Build street address
+            const streetAddress = [streetNumber, route].filter(x => x).join(' ');
+
+            // Update form fields
+            updateLocationFields({
+                address: streetAddress || place.formatted_address || place.name,
+                city: city,
+                state: state,
+                county: county,
+                zipCode: zipCode,
+                latitude: place.geometry.location.lat(),
+                longitude: place.geometry.location.lng()
+            });
+        }
+
+        // Auto-detect user's location on page load
+        function autoDetectLocation() {
+            console.log('≡ƒîì Attempting auto-location detection...');
+
+            if (!navigator.geolocation) {
+                console.warn('ΓÜá∩╕Å Geolocation not supported by browser');
+                return;
+            }
+
+            const useMyLocationBtn = document.getElementById('useMyLocationBtn');
+            if (useMyLocationBtn) {
+                useMyLocationBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Detecting...';
+                useMyLocationBtn.disabled = true;
+            }
+
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    console.log('Γ£à Geolocation successful:', position.coords);
+                    
+                    // Wait for geocoder to be ready before reverse geocoding
+                    const waitForGeocoder = setInterval(() => {
+                        if (reportGeocoder) {
+                            clearInterval(waitForGeocoder);
+                            reverseGeocode(position.coords.latitude, position.coords.longitude);
+                        } else {
+                            console.log('ΓÅ│ Waiting for Google Maps geocoder to initialize...');
+                        }
+                    }, 100);
+                    
+                    // Timeout after 10 seconds
+                    setTimeout(() => {
+                        clearInterval(waitForGeocoder);
+                        if (!reportGeocoder) {
+                            console.error('Γ¥î Geocoder initialization timeout');
+                            if (useMyLocationBtn) {
+                                useMyLocationBtn.innerHTML = '<i class="fas fa-location-arrow"></i> Use My Location';
+                                useMyLocationBtn.disabled = false;
+                            }
+                        }
+                    }, 10000);
+                },
+                (error) => {
+                    console.error('Γ¥î Geolocation error:', error.message);
+                    if (useMyLocationBtn) {
+                        useMyLocationBtn.innerHTML = '<i class="fas fa-location-arrow"></i> Use My Location';
+                        useMyLocationBtn.disabled = false;
+                    }
+                },
+                { timeout: 10000, enableHighAccuracy: true }
+            );
+        }
+
+        // Reverse geocode coordinates to address
+        function reverseGeocode(lat, lng) {
+            console.log(`≡ƒöä Reverse geocoding: ${lat}, ${lng}`);
+
+            if (!reportGeocoder) {
+                console.error('Γ¥î Geocoder not initialized');
+                return;
+            }
+
+            reportGeocoder.geocode({ location: { lat, lng } }, (results, status) => {
+                const useMyLocationBtn = document.getElementById('useMyLocationBtn');
+                
+                if (status === 'OK' && results[0]) {
+                    console.log('Γ£à Reverse geocode successful:', results[0]);
+
+                    // Extract components from first result
+                    let streetNumber = '';
+                    let route = '';
+                    let city = '';
+                    let state = '';
+                    let county = '';
+                    let zipCode = '';
+
+                    results[0].address_components.forEach(component => {
+                        const types = component.types;
+                        
+                        if (types.includes('street_number')) streetNumber = component.long_name;
+                        if (types.includes('route')) route = component.long_name;
+                        if (types.includes('locality')) city = component.long_name;
+                        if (types.includes('administrative_area_level_2')) county = component.long_name;
+                        if (types.includes('administrative_area_level_1')) state = component.short_name;
+                        if (types.includes('postal_code')) zipCode = component.long_name;
+                    });
+
+                    const streetAddress = [streetNumber, route].filter(x => x).join(' ');
+
+                    // Update location search input
+                    const input = document.getElementById('locationSearchInput');
+                    if (input) {
+                        input.value = results[0].formatted_address;
+                    }
+
+                    // Update form fields
+                    updateLocationFields({
+                        address: streetAddress || results[0].formatted_address,
+                        city: city,
+                        state: state,
+                        county: county,
+                        zipCode: zipCode,
+                        latitude: lat,
+                        longitude: lng
+                    });
+
+                    if (useMyLocationBtn) {
+                        useMyLocationBtn.innerHTML = '<i class="fas fa-check"></i> Location Set';
+                        setTimeout(() => {
+                            useMyLocationBtn.innerHTML = '<i class="fas fa-location-arrow"></i> Use My Location';
+                            useMyLocationBtn.disabled = false;
+                        }, 2000);
+                    }
+                } else {
+                    console.error('Γ¥î Reverse geocoding failed:', status);
+                    if (useMyLocationBtn) {
+                        useMyLocationBtn.innerHTML = '<i class="fas fa-location-arrow"></i> Use My Location';
+                        useMyLocationBtn.disabled = false;
+                    }
+                }
+            });
+        }
+
+        // Update all location fields in the form
+        function updateLocationFields(data) {
+            console.log('≡ƒô¥ Updating location fields:', data);
+
+            // Update visible display fields
+            const displayElements = {
+                detectedAddress: data.address,
+                detectedCity: data.city,
+                detectedState: data.state,
+                detectedZip: data.zipCode
+            };
+
+            Object.entries(displayElements).forEach(([id, value]) => {
+                const elem = document.getElementById(id);
+                if (elem) {
+                    elem.textContent = value || '-';
+                }
+            });
+
+            // Update hidden form inputs
+            const inputFields = {
+                addressInput: data.address,
+                cityInput: data.city,
+                stateInput: data.state,
+                countyInput: data.county,
+                zipCodeInput: data.zipCode,
+                latitudeInput: data.latitude,
+                longitudeInput: data.longitude
+            };
+
+            Object.entries(inputFields).forEach(([id, value]) => {
+                const elem = document.getElementById(id);
+                if (elem) {
+                    elem.value = value || '';
+                }
+            });
+
+            // Show the auto-populated info panel
+            const autoLocationInfo = document.getElementById('autoLocationInfo');
+            if (autoLocationInfo && (data.city || data.state || data.zipCode)) {
+                autoLocationInfo.classList.remove('hidden');
+            }
+
+            console.log('Γ£à Location fields updated successfully');
+        }
+
+        // Wire up "Use My Location" button and auto-detect on load
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('≡ƒÜÇ Report page loaded, initializing location features...');
+            
+            const useMyLocationBtn = document.getElementById('useMyLocationBtn');
+            if (useMyLocationBtn) {
+                useMyLocationBtn.addEventListener('click', autoDetectLocation);
+            }
+            
+            // Auto-detect location on page load
+            console.log('≡ƒÄ» Starting auto-location detection on page load...');
+            autoDetectLocation();
+        });
+    </script>
 </body>
 </html>
