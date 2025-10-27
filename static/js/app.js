@@ -1605,10 +1605,10 @@ async function askAI() {
             }
             
             // Add time frame indicator if we have time frame data
-            if (timeFrame) {
+            if (data.time_frame) {
                 contextIndicators += `<div class="text-xs text-blue-600 font-medium mt-1 flex items-center">
                     <i class="fas fa-calendar-alt mr-1"></i>
-                    Time Frame: ${timeFrame.period}
+                    Time Frame: ${data.time_frame.period || data.time_frame}
                 </div>`;
             }
             
@@ -1647,10 +1647,13 @@ async function askAI() {
                 pollForVideoCompletion(data.task_id);
             }
         } else {
+            console.error('[ERROR] Response success=false or missing:', data);
             addMessage('Sorry, I encountered an error. Please try again.', 'bot');
         }
     } catch (error) {
         loadingMsg.remove();
+        console.error('[ERROR] Exception in askAI:', error);
+        console.error('[ERROR] Error stack:', error.stack);
         addMessage('Sorry, I could not connect to the AI service.', 'bot');
         console.error('Error asking AI:', error);
     }

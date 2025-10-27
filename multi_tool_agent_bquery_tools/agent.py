@@ -178,17 +178,40 @@ def call_agent(query: str, location_context=None, time_frame=None) -> str:
     """Helper function to call the agent with a query and return the response."""
     _initialize_session_and_runner()
     
-    # Create agent with context if provided
-    if location_context or time_frame:
-        agent_with_context = create_root_agent_with_context(location_context, time_frame)
-        # Create a new runner with the context-aware agent
-        context_runner = Runner(agent=agent_with_context, app_name=APP_NAME, session_service=_session_service)
-        runner_to_use = context_runner
-    else:
-        runner_to_use = _runner
+    # Build context string and inject it into the query instead of creating new agent
+    context_prefix = ""
     
-    content = types.Content(role="user", parts=[types.Part(text=query)])
-    events = runner_to_use.run(user_id=USER_ID, session_id=SESSION_ID, new_message=content)
+    if location_context or time_frame:
+        # Get time context
+        time_context = get_current_time_context()
+        
+        # Build location context
+        location_info = ""
+        if location_context:
+            location_parts = []
+            if location_context.get('city'):
+                location_parts.append(f"City: {location_context['city']}")
+            if location_context.get('state'):
+                location_parts.append(f"State: {location_context['state']}")
+            if location_context.get('county'):
+                location_parts.append(f"County: {location_context['county']}")
+            if location_context.get('zipCode'):
+                location_parts.append(f"ZIP Code: {location_context['zipCode']}")
+            
+            if location_parts:
+                location_info = f"\n[LOCATION CONTEXT: {', '.join(location_parts)}]"
+        
+        # Build time frame context
+        time_frame_info = ""
+        if time_frame:
+            time_frame_info = f"\n[TIME FRAME: {time_frame.get('start_date', '')} to {time_frame.get('end_date', '')}]"
+        
+        context_prefix = f"{time_context}{location_info}{time_frame_info}\n\nUser Question: "
+    
+    # Use the default runner with context injected into query
+    enhanced_query = context_prefix + query if context_prefix else query
+    content = types.Content(role="user", parts=[types.Part(text=enhanced_query)])
+    events = _runner.run(user_id=USER_ID, session_id=SESSION_ID, new_message=content)
 
     for event in events:
         if event.is_final_response():
