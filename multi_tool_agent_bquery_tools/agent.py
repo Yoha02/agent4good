@@ -190,16 +190,15 @@ DATA TIME FRAME CONTEXT:
     # Choose persona based on LOGIN_ROLE or parameter
     if persona_type is None:
         persona_type = os.getenv("LOGIN_ROLE", "user")
-    
+
     if persona_type == "health_official":
         base_instruction = HEALTH_OFFICIAL_PROMPT
     else:
         base_instruction = USER_PROMPT
-    
+
     # Combine all context
     global_context = f"{time_context}{location_info}{time_frame_info}"
-    
-    # Build complete sub_agents list
+# Build complete sub_agents list
     sub_agents_list = [
         air_quality_agent,
         live_air_quality_agent,
@@ -209,19 +208,19 @@ DATA TIME FRAME CONTEXT:
         crowdsourcing_agent,
         health_official_agent,
     ]
-    
+
     # Add analytics_agent if available (KEEP from main)
     if analytics_agent:
         sub_agents_list.append(analytics_agent)
-    
+
     # Add PSA video agents
     sub_agents_list.extend(psa_agents)
-    
+
     return Agent(
     name="community_health_assistant",
     model=GEMINI_MODEL,
     description="Main community health assistant that routes queries to specialized sub-agents.",
-        global_instruction=global_context,
+    global_instruction=global_context,
         instruction=base_instruction,
         tools=[generate_report_embeddings],
         sub_agents=sub_agents_list
@@ -251,7 +250,7 @@ def _initialize_session_and_runner():
         )
         _runner = Runner(agent=root_agent, app_name=APP_NAME, session_service=_session_service)
 
-def call_agent(query: str, location_context=None, time_frame=None) -> str:
+def call_agent(query: str, location_context=None, time_frame=None, persona=None) -> str:
     """Helper function to call the agent with a query and return the response."""
     _initialize_session_and_runner()
     
@@ -282,12 +281,13 @@ def call_agent(query: str, location_context=None, time_frame=None) -> str:
         time_frame_info = ""
         if time_frame:
             time_frame_info = f"\n[TIME FRAME: {time_frame.get('start_date', '')} to {time_frame.get('end_date', '')}]"
-        
-        context_prefix = f"{time_context}{location_info}{time_frame_info}\n\nUser Question: "
+        persona_info = f"\n[PERSONA TYPE: {persona}]"
+        context_prefix = f"{time_context}{location_info}{time_frame_info}{persona_info}\n\nUser Question: "
     
     # Use the default runner with context injected into query
     enhanced_query = context_prefix + query if context_prefix else query
     content = types.Content(role="user", parts=[types.Part(text=enhanced_query)])
+    print(content)
     events = _runner.run(user_id=USER_ID, session_id=SESSION_ID, new_message=content)
 
     for event in events:

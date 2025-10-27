@@ -338,6 +338,7 @@ def agent_chat():
         request_data = request.get_json()
         question = request_data.get('question', '')
         location_context = request_data.get('location_context', None)
+        persona_type = request_data.get("persona" , None)
         
         if not question:
             return jsonify({

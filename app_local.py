@@ -981,6 +981,7 @@ def agent_chat():
     try:
         request_data = request.get_json()
         question = request_data.get('question', '')
+        persona_type = request_data.get("persona" , None)
         
         if not question:
             return jsonify({
@@ -996,7 +997,7 @@ def agent_chat():
         time_frame = request_data.get('time_frame', None)
         
         # Debug: Log received parameters
-        print(f"[AGENT-CHAT] Received parameters: state={state}, city={city}, zipcode={zipcode}, days={days}, time_frame={time_frame}")
+        print(f"[AGENT-CHAT] Received parameters: state={state}, city={city}, zipcode={zipcode}, days={days}, time_frame={time_frame}, persona={persona_type}")
         
         # Build location context string for AI
         location_context = ""
@@ -1115,7 +1116,7 @@ def agent_chat():
                     }
                 
                 # Call ADK agent with context
-                response = call_adk_agent(enhanced_question, location_context=location_context_dict, time_frame=time_frame)
+                response = call_adk_agent(enhanced_question, location_context=location_context_dict, time_frame=time_frame,persona= persona_type if persona_type else "Community Resident")
                 print(f"[AGENT-CHAT] ADK response received: {response[:100]}...")
                 
                 # Check if response indicates an API key error
