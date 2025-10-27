@@ -1025,17 +1025,17 @@ function updateDiseaseCard(disease, data) {
     if (positivity < 3) {
         riskLevel = 'Low Risk';
         riskClass = `bg-${color}-100 text-${color}-700`;
-        trendIcon = 'Γåô';
+        trendIcon = '<i class="fas fa-arrow-down"></i>';
         trendText = 'Below threshold';
     } else if (positivity < 7) {
         riskLevel = 'Moderate';
         riskClass = `bg-amber-100 text-amber-700`;
-        trendIcon = 'ΓåÆ';
+        trendIcon = '<i class="fas fa-minus"></i>';
         trendText = 'Stable';
     } else {
         riskLevel = 'High';
         riskClass = `bg-red-100 text-red-700`;
-        trendIcon = 'Γåæ';
+        trendIcon = '<i class="fas fa-arrow-up"></i>';
         trendText = 'Elevated levels';
     }
     
