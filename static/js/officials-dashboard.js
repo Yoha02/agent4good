@@ -1961,24 +1961,35 @@ async function pollForVideoCompletion(taskId) {
     const maxAttempts = 120; // 2 minutes max
     let attempts = 0;
     
-    console.log(`[VIDEO] Starting to poll for task ${taskId}`);
+    console.log(`[VIDEO WIDGET] Starting to poll for task ${taskId}`);
     
     const pollInterval = setInterval(async () => {
         attempts++;
         
+        console.log(`[VIDEO WIDGET] Poll attempt ${attempts}/${maxAttempts} for task ${taskId}`);
+        
         if (attempts > maxAttempts) {
             clearInterval(pollInterval);
+            console.error(`[VIDEO WIDGET] Timeout after ${maxAttempts} attempts`);
             addChatMessage('Video generation is taking longer than expected. Please check back later.', 'bot');
             return;
         }
         
         try {
             const response = await fetch(`/api/check-video-task/${taskId}`);
+            console.log(`[VIDEO WIDGET] Response status: ${response.status}`);
+            
+            if (!response.ok) {
+                console.error(`[VIDEO WIDGET] HTTP error: ${response.status}`);
+                return; // Continue polling
+            }
+            
             const data = await response.json();
+            console.log(`[VIDEO WIDGET] Poll response:`, data);
             
             if (data.status === 'completed' && data.video_url) {
                 clearInterval(pollInterval);
-                console.log(`[VIDEO] Video ready:`, data.video_url);
+                console.log(`[VIDEO WIDGET] Video ready:`, data.video_url);
                 
                 // Store video data for potential Twitter posting
                 lastVideoData = data;
@@ -1988,10 +1999,18 @@ async function pollForVideoCompletion(taskId) {
                 addChatMessage(videoMessage, 'bot');
             } else if (data.status === 'failed') {
                 clearInterval(pollInterval);
+                console.error(`[VIDEO WIDGET] Video generation failed`);
                 addChatMessage('Sorry, video generation failed. Please try again.', 'bot');
+            } else if (data.status === 'processing' || data.status === 'pending') {
+                console.log(`[VIDEO WIDGET] Video still processing (progress: ${data.progress || 'unknown'})`);
+                // Continue polling
+            } else {
+                console.warn(`[VIDEO WIDGET] Unknown status: ${data.status}`);
+                // Continue polling
             }
         } catch (error) {
-            console.error(`[VIDEO] Error polling task ${taskId}:`, error);
+            console.error(`[VIDEO WIDGET] Error polling task ${taskId}:`, error);
+            // Continue polling despite error
         }
     }, 1000);
 }
