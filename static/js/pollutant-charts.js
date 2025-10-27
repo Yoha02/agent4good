@@ -76,7 +76,7 @@ function generateMockData(days = 7) {
 /**
  * Initialize all pollutant charts
  */
-async function initializePollutantCharts(zipCode, city, state) {
+async function initializePollutantCharts(zipCode, city, state, days = 7) {
     try {
         console.log('');
         console.log('╔═══════════════════════════════════════════════════════╗');
@@ -86,14 +86,48 @@ async function initializePollutantCharts(zipCode, city, state) {
         console.log('║  - zipCode parameter:', zipCode || '(null/empty)');
         console.log('║  - city parameter:', city || '(null/empty)');
         console.log('║  - state parameter:', state || '(null/empty)');
+        console.log('║  - days parameter:', days, 'days');
         console.log('╚═══════════════════════════════════════════════════════╝');
         console.log('');
         
-        // Clear existing dashboard first
-        const existingDashboard = document.getElementById('pollutant-dashboard');
-        if (existingDashboard) {
-            console.log('[Pollutant Charts] Clearing existing dashboard');
-            existingDashboard.remove();
+        // Show loading indicator for pollutant charts
+        let loadingEl = document.getElementById('pollutant-loading');
+        if (!loadingEl) {
+            loadingEl = document.createElement('div');
+            loadingEl.id = 'pollutant-loading';
+            loadingEl.className = 'w-full text-center py-6';
+            loadingEl.innerHTML = '<div class="inline-flex items-center gap-3"><div class="animate-spin rounded-full h-6 w-6 border-t-2 border-b-2 border-blue-600"></div><div class="text-sm text-gray-600">Loading pollutant charts...</div></div>';
+            
+            // Insert into pollutant section if it exists, otherwise in body
+            const pollutantSection = document.getElementById('pollutant-dashboard') || document.querySelector('#air-quality');
+            if (pollutantSection) {
+                pollutantSection.appendChild(loadingEl);
+                console.log('[Pollutant Charts] Loading indicator added to pollutant section');
+            } else {
+                document.body.appendChild(loadingEl);
+                console.log('[Pollutant Charts] Loading indicator added to body');
+            }
+        }
+        loadingEl.style.display = 'block';
+        console.log('[Pollutant Charts] Loading indicator shown');
+
+        // Check if dashboard already exists
+        let existingDashboard = document.getElementById('pollutant-dashboard');
+        const isReload = existingDashboard !== null;
+        
+        if (isReload) {
+            console.log('[Pollutant Charts] Reloading existing dashboard - preserving controls');
+            // Only clear the chart grid, not the entire dashboard
+            const chartGrid = document.getElementById('pollutant-grid');
+            if (chartGrid) {
+                chartGrid.innerHTML = '';
+            }
+        } else {
+            console.log('[Pollutant Charts] Creating new dashboard');
+            // Clear existing dashboard first
+            if (existingDashboard) {
+                existingDashboard.remove();
+            }
         }
         
         // Destroy existing chart instances
@@ -107,7 +141,7 @@ async function initializePollutantCharts(zipCode, city, state) {
         // If no location provided, show empty charts immediately
         if (!zipCode && !city) {
             console.log('[Pollutant Charts] No location - showing empty charts');
-            createDashboardContainer();
+            if (!isReload) createDashboardContainer();
             let chartsCreated = 0;
             Object.keys(POLLUTANTS).forEach(pollutant => {
                 const emptyData = {
@@ -123,19 +157,19 @@ async function initializePollutantCharts(zipCode, city, state) {
                 chartsCreated++;
             });
             console.log(`[Pollutant Charts] Created ${chartsCreated} empty charts (no location)`);
-            if (chartsCreated > 0) {
+            if (chartsCreated > 0 && !isReload) {
                 addChartControls();
             }
             return;
         }
         
-        // Fetch data for all parameters
-        const data = await fetchPollutantData(zipCode, city, state);
+        // Fetch data for all parameters with the specified time period
+    const data = await fetchPollutantData(zipCode, city, state, days);
         
         console.log('[Pollutant Charts] Received data:', data);
         
-        // ALWAYS create dashboard, even if API fails
-        createDashboardContainer();
+        // ALWAYS create dashboard, even if API fails (unless it's a reload)
+        if (!isReload) createDashboardContainer();
         
         if (!data || !data.success) {
             console.error('[Pollutant Charts] Failed to fetch data:', data?.error || 'Unknown error');
@@ -157,9 +191,11 @@ async function initializePollutantCharts(zipCode, city, state) {
                 chartsCreated++;
             });
             console.log(`[Pollutant Charts] Created ${chartsCreated} empty charts`);
-            if (chartsCreated > 0) {
+            if (chartsCreated > 0 && !isReload) {
                 addChartControls();
             }
+            // Hide loading
+            if (loadingEl) loadingEl.style.display = 'none';
             return;
         }
         
@@ -172,8 +208,8 @@ async function initializePollutantCharts(zipCode, city, state) {
         console.log('[Pollutant Charts] Parameters object:', data.parameters);
         console.log('[Pollutant Charts] Parameter keys:', Object.keys(data.parameters));
         
-        // Create dashboard container
-        createDashboardContainer();
+        // Create dashboard container (only if first time)
+        if (!isReload) createDashboardContainer();
         
         // Create charts for each pollutant
         let chartsCreated = 0;
@@ -207,54 +243,96 @@ async function initializePollutantCharts(zipCode, city, state) {
         
         console.log(`[Pollutant Charts] Created ${chartsCreated} charts`);
         
-        // Add chart controls
-        if (chartsCreated > 0) {
+        // Add chart controls (only if first time)
+        if (chartsCreated > 0 && !isReload) {
             addChartControls();
         }
+            // Hide loading indicator
+            if (loadingEl) loadingEl.style.display = 'none';
         
     } catch (error) {
         console.error('[Pollutant Charts] Error initializing:', error);
+        
+        // Hide loading indicator on error
+        const loadingEl = document.getElementById('pollutant-loading');
+        if (loadingEl) loadingEl.style.display = 'none';
+        
+        // Create empty dashboard so something shows (only if doesn't exist)
+        const existingDashboard = document.getElementById('pollutant-dashboard');
+        if (!existingDashboard) {
+            createDashboardContainer();
+            Object.keys(POLLUTANTS).forEach(pollutant => {
+                const emptyData = {
+                    values: [],
+                    dates: [],
+                    current: 0,
+                    min: 0,
+                    max: 0,
+                    avg: 0,
+                    unit: POLLUTANTS[pollutant].unit
+                };
+                createPollutantChart(pollutant, emptyData, false);
+            });
+            addChartControls();
+        }
     }
 }
 
 /**
  * Fetch data for all pollutants
  */
-async function fetchPollutantData(zipCode, city, state) {
+async function fetchPollutantData(zipCode, city, state, days = 1) {
+    console.log('[Pollutant Charts] 🔄 fetchPollutantData CALLED');
+    console.log('[Pollutant Charts]   - zipCode:', zipCode);
+    console.log('[Pollutant Charts]   - city:', city);
+    console.log('[Pollutant Charts]   - state:', state);
+    console.log('[Pollutant Charts]   - days:', days);
+    
     const params = new URLSearchParams();
     if (zipCode) params.append('zipCode', zipCode);
     else if (city && state) {
         params.append('city', city);
         params.append('state', state);
     }
-    
-    // Get date range from date picker inputs
-    const startDateInput = document.getElementById('startDate');
-    const endDateInput = document.getElementById('endDate');
-    
-    if (startDateInput && startDateInput.value) {
-        params.append('startDate', startDateInput.value);
-    }
-    if (endDateInput && endDateInput.value) {
-        params.append('endDate', endDateInput.value);
-    }
-    
-    // If no dates specified, default to 7 days
-    if (!startDateInput?.value && !endDateInput?.value) {
-        params.append('days', 7);
-    }
-    
+
+    // Use the days parameter for time range (reduced to 1 day to prevent timeout)
+    params.append('days', days);
     params.append('detailed', 'true'); // Request parameter-specific data
-    
+
     const url = `/api/air-quality-detailed?${params.toString()}`;
-    console.log('[Pollutant Charts] Fetching from:', url);
-    
-    const response = await fetch(url);
-    const data = await response.json();
-    
-    console.log('[Pollutant Charts] Response:', data);
-    
-    return data;
+    console.log(`[Pollutant Charts] 📡 Fetching from: ${url}`);
+
+    // Use AbortController to implement a fetch timeout so UI doesn't hang
+    const controller = new AbortController();
+    const timeoutMs = 15000; // 15s timeout (increased from 10s)
+    const timeoutId = setTimeout(() => {
+        console.log('[Pollutant Charts] ⏱️ Timeout reached, aborting fetch');
+        controller.abort();
+    }, timeoutMs);
+
+    try {
+        console.log('[Pollutant Charts] 🌐 Starting fetch...');
+        const response = await fetch(url, { signal: controller.signal });
+        clearTimeout(timeoutId);
+        console.log('[Pollutant Charts] ✅ Fetch completed, status:', response.status);
+
+        if (!response.ok) {
+            console.error('[Pollutant Charts] ❌ Fetch failed, status:', response.status);
+            return { success: false, error: `HTTP ${response.status}` };
+        }
+
+        const data = await response.json();
+        console.log('[Pollutant Charts] 📦 Response data received:', data);
+        return data;
+    } catch (err) {
+        clearTimeout(timeoutId);
+        if (err.name === 'AbortError') {
+            console.error('[Pollutant Charts] ⏹️ Fetch aborted due to timeout');
+            return { success: false, error: 'Request timed out' };
+        }
+        console.error('[Pollutant Charts] ❌ Fetch error:', err);
+        return { success: false, error: err.message || String(err) };
+    }
 }
 
 /**
@@ -305,6 +383,23 @@ function createDashboardContainer() {
             </h2>
             <p class="text-gray-600 text-lg">Detailed pollutant levels and trends over time</p>
         </div>
+        
+        <!-- Time Period Controls at the Top -->
+        <div id="pollutant-controls" class="mb-6 flex justify-center gap-4 flex-wrap">
+            <button class="chart-control-btn active px-6 py-3 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition-all duration-300 transform hover:scale-105" data-days="7">
+                📅 Last 7 Days
+            </button>
+            <button class="chart-control-btn px-6 py-3 bg-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-300 transition-all duration-300 transform hover:scale-105" data-days="14">
+                📅 Last 14 Days
+            </button>
+            <button class="chart-control-btn px-6 py-3 bg-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-300 transition-all duration-300 transform hover:scale-105" data-days="30">
+                📅 Last 30 Days
+            </button>
+            <button class="chart-control-btn px-6 py-3 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-700 transition-all duration-300 transform hover:scale-105" data-export="true">
+                📊 Export Data
+            </button>
+        </div>
+        
         <div id="pollutant-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8"></div>
     `;
     
@@ -502,30 +597,16 @@ function createPollutantChart(pollutantKey, data, isRealData = false) {
  * Add controls for chart interactions
  */
 function addChartControls() {
-    const dashboard = document.getElementById('pollutant-dashboard');
-    if (!dashboard) return;
+    const controlsContainer = document.getElementById('pollutant-controls');
+    if (!controlsContainer) {
+        console.error('[Chart Controls] Controls container not found');
+        return;
+    }
     
-    const controls = document.createElement('div');
-    controls.className = 'mt-8 flex justify-center gap-4 flex-wrap';
-    controls.innerHTML = `
-        <button class="chart-control-btn active" data-days="7">
-            7 Days
-        </button>
-        <button class="chart-control-btn" data-days="14">
-            14 Days
-        </button>
-        <button class="chart-control-btn" data-days="30">
-            30 Days
-        </button>
-        <button class="chart-control-btn" data-export="true">
-            📊 Export Data
-        </button>
-    `;
+    console.log('[Chart Controls] Attaching event listeners to time period buttons');
     
-    dashboard.appendChild(controls);
-    
-    // Add event listeners
-    controls.querySelectorAll('.chart-control-btn').forEach(btn => {
+    // Add event listeners to the existing buttons
+    controlsContainer.querySelectorAll('.chart-control-btn').forEach(btn => {
         btn.addEventListener('click', handleControlClick);
     });
 }
@@ -533,25 +614,73 @@ function addChartControls() {
 /**
  * Handle control button clicks
  */
-function handleControlClick(e) {
+async function handleControlClick(e) {
     const btn = e.currentTarget;
+    
+    console.log('[DEBUG] Button clicked:', btn);
+    console.log('[DEBUG] Button classes before:', btn.className);
     
     if (btn.dataset.export) {
         exportChartData();
         return;
     }
     
-    // Update active state
-    document.querySelectorAll('.chart-control-btn').forEach(b => b.classList.remove('active'));
+    const days = parseInt(btn.dataset.days);
+    console.log(`[Chart Controls] 🔄 Time period changed to ${days} days`);
+
+    // Get location from global variables (defined in app.js)
+    const zipCode = typeof currentZip !== 'undefined' ? currentZip : null;
+    const city = typeof currentCity !== 'undefined' ? currentCity : null;
+    const state = typeof currentState !== 'undefined' ? currentState : null;
+
+    console.log(`[Chart Controls] 📍 Location: ZIP=${zipCode}, City=${city}, State=${state}`);
+
+    if (!zipCode && !city) {
+        console.warn('[Chart Controls] ⚠️ No location data available');
+        return;
+    }
+
+    // Update active state FIRST - set all buttons to gray
+    console.log('[DEBUG] Setting all buttons to gray...');
+    document.querySelectorAll('.chart-control-btn[data-days]').forEach(b => {
+        console.log('[DEBUG] Button before reset:', b.className);
+        b.classList.remove('active');
+        // Remove all Tailwind color classes
+        b.classList.remove('bg-blue-600', 'bg-gray-200', 'text-white', 'text-gray-700', 'hover:bg-blue-700', 'hover:bg-gray-300');
+        // Add gray classes
+        b.classList.add('bg-gray-200', 'text-gray-700', 'hover:bg-gray-300');
+        console.log('[DEBUG] Button after reset:', b.className);
+    });
+    
+    // Set clicked button to blue
+    console.log('[DEBUG] Setting clicked button to blue...');
     btn.classList.add('active');
+    // Remove all color classes first
+    btn.classList.remove('bg-gray-200', 'bg-blue-600', 'text-gray-700', 'text-white', 'hover:bg-gray-300', 'hover:bg-blue-700');
+    // Add blue classes
+    btn.classList.add('bg-blue-600', 'text-white', 'hover:bg-blue-700');
+    console.log('[DEBUG] Clicked button classes after:', btn.className);
+
+    // Disable controls while loading to avoid repeated clicks
+    const controls = document.querySelectorAll('.chart-control-btn');
+    controls.forEach(c => c.disabled = true);
     
-    // Reload charts with new timeframe
-    const days = btn.dataset.days;
-    const zipCode = currentZip;
-    const city = currentCity;
-    const state = currentState;
-    
-    initializePollutantCharts(zipCode, city, state);
+    const originalText = btn.innerHTML;
+    btn.innerHTML = `<i class="fas fa-spinner fa-spin mr-2"></i>Loading...`;
+
+    try {
+        await initializePollutantCharts(zipCode, city, state, days);
+        console.log(`[Chart Controls] ✅ Charts reloaded successfully`);
+    } catch (err) {
+        console.error('[Chart Controls] ❌ Error reloading charts:', err);
+    } finally {
+        // Restore button text
+        btn.innerHTML = originalText;
+        console.log('[DEBUG] Button classes after loading:', btn.className);
+        
+        // Re-enable controls
+        controls.forEach(c => c.disabled = false);
+    }
 }
 
 /**

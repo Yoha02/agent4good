@@ -265,9 +265,9 @@ function initializeGoogleAutocomplete() {
         return;
     }
     
-    // Initialize autocomplete for US cities, regions, and postal codes
+    // Initialize autocomplete for US locations including landmarks, cities, regions, and postal codes
     autocomplete = new google.maps.places.Autocomplete(input, {
-        types: ['(regions)'],  // Includes cities, states, counties, and postal codes
+        // Remove type restriction to allow all place types including landmarks
         componentRestrictions: { country: 'us' }
     });
     
@@ -376,7 +376,7 @@ function onPlaceSelected() {
         const lat = place.geometry.location.lat();
         const lng = place.geometry.location.lng();
         console.log('[Location Search] Flying to coordinates:', lat, lng);
-        flyToCoordinates(lat, lng, zipCode ? 50000 : 200000); // Closer for ZIP, further for city
+        flyToCoordinates(lat, lng, 300); // Always use 300m height for close ground view
     }
     
     // Show success message
@@ -468,8 +468,8 @@ function getAutoLocation() {
                             localStorage.setItem('currentLocationData', JSON.stringify(locationData));
                             console.log('[Auto-location] Location data stored for chat agent:', locationData);
                             
-                            // Update search box
-                            document.getElementById('locationSearch').value = `${city}, ${state} ${zipCode}`;
+                            // Update search box with full formatted address
+                            document.getElementById('locationSearch').value = results[0].formatted_address;
                             
                             // Update dropdowns
     const stateSelect = document.getElementById('stateSelect');
@@ -484,9 +484,9 @@ function getAutoLocation() {
                             if (typeof loadHeatmapData === 'function') {
                                 loadHeatmapData(state);
                             }
-                            // Zoom to specific coordinates (city level)
+                            // Zoom to specific coordinates - close ground view
                             if (typeof flyToCoordinates === 'function') {
-                                flyToCoordinates(position.coords.latitude, position.coords.longitude, 50000); // 50km height for city view
+                                flyToCoordinates(position.coords.latitude, position.coords.longitude, 300); // 300m height for close view
                             }
                             
                             updateAPIStatus('success', 'Location Detected', `${city}, ${state} (${zipCode})`);
@@ -2372,14 +2372,14 @@ function updateWeatherDisplay(weather) {
         return;
     }
     
+    // Store weather data for temperature unit conversion
+    weatherData = weather;
+    
     const current = weather.current;
     console.log('[Weather] Current data:', current);
     
-    // Temperature
-    const temp = Math.round(current.temperature || 0);
-    const unit = current.temperature_unit || 'F';
-    document.getElementById('temperature').textContent = `${temp}°${unit}`;
-    document.getElementById('feelsLike').textContent = `Feels like ${Math.round(current.feels_like || 0)}°${unit}`;
+    // Temperature - use conversion function
+    updateTemperatureDisplay();
     
     // Humidity
     document.getElementById('humidity').textContent = `${Math.round(current.humidity || 0)}%`;
@@ -2472,4 +2472,47 @@ function getPollenIcon(upi) {
     if (upi == 3) return '🌺';
     if (upi == 4) return '🌼';
     return '🌻';
+}
+
+// Temperature unit conversion
+let weatherData = null; // Store weather data for unit conversion
+let currentTempUnit = 'F'; // Track current unit
+
+function setTemperatureUnit(unit) {
+    currentTempUnit = unit;
+    
+    // Update button styles
+    const btnF = document.getElementById('tempUnitF');
+    const btnC = document.getElementById('tempUnitC');
+    
+    if (unit === 'F') {
+        btnF.className = 'px-3 py-1 rounded bg-white text-blue-600 font-semibold text-sm transition-all';
+        btnC.className = 'px-3 py-1 rounded text-white font-semibold text-sm transition-all hover:bg-white/20';
+    } else {
+        btnC.className = 'px-3 py-1 rounded bg-white text-blue-600 font-semibold text-sm transition-all';
+        btnF.className = 'px-3 py-1 rounded text-white font-semibold text-sm transition-all hover:bg-white/20';
+    }
+    
+    // Update temperature display
+    updateTemperatureDisplay();
+}
+
+function updateTemperatureDisplay() {
+    if (!weatherData || !weatherData.current) return;
+    
+    const current = weatherData.current;
+    let temp = current.temperature || 0;
+    let feelsLike = current.feels_like || 0;
+    
+    // Convert if needed
+    if (currentTempUnit === 'C' && current.temperature_unit === 'F') {
+        temp = (temp - 32) * 5/9;
+        feelsLike = (feelsLike - 32) * 5/9;
+    } else if (currentTempUnit === 'F' && current.temperature_unit === 'C') {
+        temp = (temp * 9/5) + 32;
+        feelsLike = (feelsLike * 9/5) + 32;
+    }
+    
+    document.getElementById('temperature').textContent = `${Math.round(temp)}°${currentTempUnit}`;
+    document.getElementById('feelsLike').textContent = `Feels like ${Math.round(feelsLike)}°${currentTempUnit}`;
 }
