@@ -1,0 +1,62 @@
+[
+  {
+    "name": "testtype",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Diagnostic Test Type"
+  },
+  {
+    "name": "season",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Surveillance Year"
+  },
+  {
+    "name": "repweekcode",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Week ending Code"
+  },
+  {
+    "name": "repweekdate",
+    "type": "DATE",
+    "mode": "NULLABLE",
+    "description": "Week ending Date"
+  },
+  {
+    "name": "hhs_region",
+    "type": "INTEGER",
+    "mode": "NULLABLE",
+    "description": "HHS region (1-10)"
+  },
+  {
+    "name": "rsvpos",
+    "type": "INTEGER",
+    "mode": "NULLABLE",
+    "description": "RSV Detections"
+  },
+  {
+    "name": "rsvtest",
+    "type": "INTEGER",
+    "mode": "NULLABLE",
+    "description": "RSV Tests"
+  },
+  {
+    "name": "outlier",
+    "type": "INTEGER",
+    "mode": "NULLABLE",
+    "description": "Outlier flag"
+  },
+  {
+    "name": "positivity_rate",
+    "type": "FLOAT",
+    "mode": "NULLABLE",
+    "description": "RSV positivity rate (%)"
+  },
+  {
+    "name": "load_timestamp",
+    "type": "TIMESTAMP",
+    "mode": "REQUIRED",
+    "description": "When this record was loaded"
+  }
+]

@@ -177,57 +177,77 @@
                 </p>
             </div>
             
-            <!-- Stats Cards -->
-            <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-12">
-                <!-- Data Points -->
+            <!-- Stats Cards - Enhanced with environmental and health risk metrics -->
+            <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-12">
+                <!-- Current AQI -->
                 <div class="stat-card bg-white rounded-2xl shadow-xl p-6 border-l-4 border-emerald-500 transform hover:scale-105 transition-all duration-300">
-                    <div class="flex items-center justify-between">
-                        <div>
-                            <p class="text-gray-500 text-sm font-semibold uppercase tracking-wide">Data Points</p>
-                            <h3 id="totalRecords" class="text-4xl font-bold text-navy-700 mt-2">-</h3>
+                    <div class="flex flex-col">
+                        <div class="w-12 h-12 bg-emerald-100 rounded-xl flex items-center justify-center mb-3">
+                            <i class="fas fa-wind text-emerald-600 text-xl"></i>
                         </div>
-                        <div class="w-14 h-14 bg-emerald-100 rounded-xl flex items-center justify-center">
-                            <i class="fas fa-database text-emerald-600 text-2xl"></i>
-                        </div>
+                        <p class="text-gray-500 text-xs font-semibold uppercase tracking-wide">Air Quality</p>
+                        <h3 id="summaryAQI" class="text-3xl font-bold text-navy-700 mt-1">-</h3>
+                        <p class="text-xs text-gray-400 mt-1">Current AQI</p>
                     </div>
                 </div>
                 
-                <!-- Locations -->
-                <div class="stat-card bg-white rounded-2xl shadow-xl p-6 border-l-4 border-blue-500 transform hover:scale-105 transition-all duration-300">
-                    <div class="flex items-center justify-between">
-                        <div>
-                            <p class="text-gray-500 text-sm font-semibold uppercase tracking-wide">Locations</p>
-                            <h3 id="uniqueLocations" class="text-4xl font-bold text-navy-700 mt-2">-</h3>
+                <!-- Wildfire Risk -->
+                <div class="stat-card bg-white rounded-2xl shadow-xl p-6 border-l-4 border-orange-500 transform hover:scale-105 transition-all duration-300">
+                    <div class="flex flex-col">
+                        <div class="w-12 h-12 bg-orange-100 rounded-xl flex items-center justify-center mb-3">
+                            <i class="fas fa-fire text-orange-600 text-xl"></i>
                         </div>
-                        <div class="w-14 h-14 bg-blue-100 rounded-xl flex items-center justify-center">
-                            <i class="fas fa-map-marked-alt text-blue-600 text-2xl"></i>
-                        </div>
+                        <p class="text-gray-500 text-xs font-semibold uppercase tracking-wide">Fire Risk</p>
+                        <h3 id="summaryFire" class="text-3xl font-bold text-navy-700 mt-1">-</h3>
+                        <p class="text-xs text-gray-400 mt-1">Active nearby</p>
                     </div>
                 </div>
                 
-                <!-- Avg AQI -->
-                <div class="stat-card bg-white rounded-2xl shadow-xl p-6 border-l-4 border-amber-500 transform hover:scale-105 transition-all duration-300">
-                    <div class="flex items-center justify-between">
-                        <div>
-                            <p class="text-gray-500 text-sm font-semibold uppercase tracking-wide">Avg AQI</p>
-                            <h3 id="avgAqi" class="text-4xl font-bold text-navy-700 mt-2">-</h3>
+                <!-- COVID-19 Cases -->
+                <div class="stat-card bg-white rounded-2xl shadow-xl p-6 border-l-4 border-red-500 transform hover:scale-105 transition-all duration-300">
+                    <div class="flex flex-col">
+                        <div class="w-12 h-12 bg-red-100 rounded-xl flex items-center justify-center mb-3">
+                            <i class="fas fa-virus text-red-600 text-xl"></i>
                         </div>
-                        <div class="w-14 h-14 bg-amber-100 rounded-xl flex items-center justify-center">
-                            <i class="fas fa-wind text-amber-600 text-2xl"></i>
-                        </div>
+                        <p class="text-gray-500 text-xs font-semibold uppercase tracking-wide">COVID-19</p>
+                        <h3 id="summaryCovid" class="text-3xl font-bold text-navy-700 mt-1">-</h3>
+                        <p class="text-xs text-gray-400 mt-1">Cases/100K</p>
                     </div>
                 </div>
                 
-                <!-- Health Status -->
-                <div class="stat-card bg-white rounded-2xl shadow-xl p-6 border-l-4 border-rose-500 transform hover:scale-105 transition-all duration-300">
-                    <div class="flex items-center justify-between">
-                        <div>
-                            <p class="text-gray-500 text-sm font-semibold uppercase tracking-wide">Health Status</p>
-                            <h3 class="text-2xl font-bold text-emerald-600 mt-2">Good</h3>
+                <!-- Weather Conditions -->
+                <div class="stat-card bg-white rounded-2xl shadow-xl p-6 border-l-4 border-sky-500 transform hover:scale-105 transition-all duration-300">
+                    <div class="flex flex-col">
+                        <div class="w-12 h-12 bg-sky-100 rounded-xl flex items-center justify-center mb-3">
+                            <i class="fas fa-cloud-sun text-sky-600 text-xl"></i>
                         </div>
-                        <div class="w-14 h-14 bg-rose-100 rounded-xl flex items-center justify-center">
-                            <i class="fas fa-heartbeat text-rose-600 text-2xl"></i>
+                        <p class="text-gray-500 text-xs font-semibold uppercase tracking-wide">Weather</p>
+                        <h3 id="summaryTemp" class="text-3xl font-bold text-navy-700 mt-1">--°</h3>
+                        <p class="text-xs text-gray-400 mt-1">Temperature</p>
+                    </div>
+                </div>
+                
+                <!-- Pollen Levels -->
+                <div class="stat-card bg-white rounded-2xl shadow-xl p-6 border-l-4 border-green-500 transform hover:scale-105 transition-all duration-300">
+                    <div class="flex flex-col">
+                        <div class="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center mb-3">
+                            <i class="fas fa-leaf text-green-600 text-xl"></i>
                         </div>
+                        <p class="text-gray-500 text-xs font-semibold uppercase tracking-wide">Pollen</p>
+                        <h3 id="summaryPollen" class="text-3xl font-bold text-navy-700 mt-1">-</h3>
+                        <p class="text-xs text-gray-400 mt-1">UPI Level</p>
+                    </div>
+                </div>
+                
+                <!-- Environmental Risk -->
+                <div class="stat-card bg-white rounded-2xl shadow-xl p-6 border-l-4 border-purple-500 transform hover:scale-105 transition-all duration-300">
+                    <div class="flex flex-col">
+                        <div class="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center mb-3">
+                            <i class="fas fa-exclamation-triangle text-purple-600 text-xl"></i>
+                        </div>
+                        <p class="text-gray-500 text-xs font-semibold uppercase tracking-wide">Alerts</p>
+                        <h3 id="summaryAlerts" class="text-3xl font-bold text-navy-700 mt-1">-</h3>
+                        <p class="text-xs text-gray-400 mt-1">Active warnings</p>
                     </div>
                 </div>
             </div>
@@ -773,56 +793,99 @@
                 <p class="text-xl text-gray-600">Monitor and track infectious disease outbreaks in your community</p>
             </div>
             
+            <!-- NREVSS Dashboard Chart -->
+            <div class="mb-12">
+                <div id="respiratoryChartContainer" class="bg-white rounded-3xl shadow-2xl p-8">
+                    <!-- Chart will be inserted here by JavaScript -->
+                    <div class="text-center py-12">
+                        <i class="fas fa-spinner fa-spin text-4xl text-blue-500 mb-4"></i>
+                        <p class="text-gray-600">Loading respiratory surveillance dashboard...</p>
+                    </div>
+                </div>
+            </div>
+            
             <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
+                <!-- Time Period Selector -->
+                <div class="col-span-full mb-4">
+                    <div class="flex items-center gap-4 bg-white rounded-xl shadow-lg p-4">
+                        <span class="text-sm font-semibold text-gray-700">
+                            <i class="fas fa-calendar-alt mr-2"></i>Time Period:
+                        </span>
+                        <div class="btn-group flex gap-2">
+                            <button onclick="updateDiseaseCards(7)" 
+                                    class="disease-period-btn active px-4 py-2 rounded-lg bg-blue-500 text-white hover:bg-blue-600 transition text-sm font-semibold">
+                                7 Days
+                            </button>
+                            <button onclick="updateDiseaseCards(14)" 
+                                    class="disease-period-btn px-4 py-2 rounded-lg bg-gray-200 text-gray-700 hover:bg-gray-300 transition text-sm font-semibold">
+                                14 Days
+                            </button>
+                            <button onclick="updateDiseaseCards(30)" 
+                                    class="disease-period-btn px-4 py-2 rounded-lg bg-gray-200 text-gray-700 hover:bg-gray-300 transition text-sm font-semibold">
+                                30 Days
+                            </button>
+                        </div>
+                        <span id="diseaseCardsLocation" class="ml-auto text-sm text-gray-600">
+                            <i class="fas fa-map-marker-alt mr-1"></i>Loading...
+                        </span>
+                    </div>
+                </div>
+                
                 <!-- Disease Cards -->
-                <div class="disease-card bg-white rounded-2xl shadow-xl p-6 border-t-4 border-rose-500 hover:shadow-2xl transition-all duration-300">
+                <div id="covidCard" class="disease-card bg-white rounded-2xl shadow-xl p-6 border-t-4 border-rose-500 hover:shadow-2xl transition-all duration-300">
                     <div class="flex items-center justify-between mb-4">
                         <h4 class="text-xl font-bold text-navy-700">COVID-19</h4>
-                        <span class="px-3 py-1 bg-emerald-100 text-emerald-700 rounded-full text-sm font-semibold">Low Risk</span>
+                        <span id="covidRiskBadge" class="px-3 py-1 bg-emerald-100 text-emerald-700 rounded-full text-sm font-semibold">Loading...</span>
                     </div>
                     <div class="space-y-3">
                         <div class="flex justify-between items-center">
-                            <span class="text-gray-600">Cases (7d avg)</span>
-                            <span class="font-bold text-navy-700">127</span>
+                            <span class="text-gray-600">Avg Positivity</span>
+                            <span id="covidCases" class="font-bold text-navy-700">-</span>
                         </div>
                         <div class="w-full bg-gray-200 rounded-full h-2">
-                            <div class="bg-emerald-500 h-2 rounded-full" style="width: 25%"></div>
+                            <div id="covidProgress" class="bg-emerald-500 h-2 rounded-full transition-all duration-500" style="width: 0%"></div>
                         </div>
-                        <p class="text-sm text-gray-600">↓ 15% from last week</p>
+                        <p id="covidTrend" class="text-sm text-gray-600">
+                            <i class="fas fa-spinner fa-spin mr-1"></i>Loading...
+                        </p>
                     </div>
                 </div>
                 
-                <div class="disease-card bg-white rounded-2xl shadow-xl p-6 border-t-4 border-amber-500 hover:shadow-2xl transition-all duration-300">
+                <div id="fluCard" class="disease-card bg-white rounded-2xl shadow-xl p-6 border-t-4 border-amber-500 hover:shadow-2xl transition-all duration-300">
                     <div class="flex items-center justify-between mb-4">
                         <h4 class="text-xl font-bold text-navy-700">Influenza</h4>
-                        <span class="px-3 py-1 bg-amber-100 text-amber-700 rounded-full text-sm font-semibold">Moderate</span>
+                        <span id="fluRiskBadge" class="px-3 py-1 bg-amber-100 text-amber-700 rounded-full text-sm font-semibold">Loading...</span>
                     </div>
                     <div class="space-y-3">
                         <div class="flex justify-between items-center">
-                            <span class="text-gray-600">Cases (7d avg)</span>
-                            <span class="font-bold text-navy-700">453</span>
+                            <span class="text-gray-600">Avg Positivity</span>
+                            <span id="fluCases" class="font-bold text-navy-700">-</span>
                         </div>
                         <div class="w-full bg-gray-200 rounded-full h-2">
-                            <div class="bg-amber-500 h-2 rounded-full" style="width: 55%"></div>
+                            <div id="fluProgress" class="bg-amber-500 h-2 rounded-full transition-all duration-500" style="width: 0%"></div>
                         </div>
-                        <p class="text-sm text-gray-600">↑ 8% from last week</p>
+                        <p id="fluTrend" class="text-sm text-gray-600">
+                            <i class="fas fa-spinner fa-spin mr-1"></i>Loading...
+                        </p>
                     </div>
                 </div>
                 
-                <div class="disease-card bg-white rounded-2xl shadow-xl p-6 border-t-4 border-blue-500 hover:shadow-2xl transition-all duration-300">
+                <div id="rsvCard" class="disease-card bg-white rounded-2xl shadow-xl p-6 border-t-4 border-blue-500 hover:shadow-2xl transition-all duration-300">
                     <div class="flex items-center justify-between mb-4">
-                        <h4 class="text-xl font-bold text-navy-700">Respiratory</h4>
-                        <span class="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-semibold">Monitor</span>
+                        <h4 class="text-xl font-bold text-navy-700">RSV</h4>
+                        <span id="rsvRiskBadge" class="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-semibold">Loading...</span>
                     </div>
                     <div class="space-y-3">
                         <div class="flex justify-between items-center">
-                            <span class="text-gray-600">Cases (7d avg)</span>
-                            <span class="font-bold text-navy-700">892</span>
+                            <span class="text-gray-600">Avg Positivity</span>
+                            <span id="rsvCases" class="font-bold text-navy-700">-</span>
                         </div>
                         <div class="w-full bg-gray-200 rounded-full h-2">
-                            <div class="bg-blue-500 h-2 rounded-full" style="width: 35%"></div>
+                            <div id="rsvProgress" class="bg-blue-500 h-2 rounded-full transition-all duration-500" style="width: 0%"></div>
                         </div>
-                        <p class="text-sm text-gray-600">→ Stable</p>
+                        <p id="rsvTrend" class="text-sm text-gray-600">
+                            <i class="fas fa-spinner fa-spin mr-1"></i>Loading...
+                        </p>
                     </div>
                 </div>
             </div>
@@ -929,6 +992,7 @@
     <script src="{{ url_for('static', filename='js/app.js') }}"></script>
     <script src="{{ url_for('static', filename='js/air-quality-map.js') }}"></script>
     <script src="{{ url_for('static', filename='js/pollutant-charts.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/respiratory-chart.js') }}"></script>
     <script src="{{ url_for('static', filename='js/three-bg.js') }}"></script>
     <script src="{{ url_for('static', filename='js/animations.js') }}"></script>
 </body>

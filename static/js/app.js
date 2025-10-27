@@ -3,6 +3,7 @@ let aqiChart = null;
 let currentState = '';
 let currentCity = '';
 let currentZip = '';
+let currentCounty = '';
 let lastVideoData = null; // Store video data for Twitter posting
 
 // Voice control variables
@@ -340,6 +341,7 @@ function onPlaceSelected() {
     currentState = state;
     currentCity = city;
     currentZip = zipCode;
+    currentCounty = county;
     
     // Store location data in browser storage for chat agent
     const locationData = {
@@ -366,6 +368,12 @@ function onPlaceSelected() {
     
     // Load ALL data for this location
     loadAllDataForLocation();
+    
+    // Update summary cards with location-based data (will fetch once state is set)
+    // Note: AQI will be updated separately when AQI data loads
+    if (currentState) {
+        updateSummaryCards(null);
+    }
     
     // Update heatmap and zoom to location
     if (typeof loadHeatmapData === 'function') {
@@ -427,12 +435,16 @@ function getAutoLocation() {
                         let city = '';
                         let state = '';
                         let zipCode = '';
+                        let county = '';
                         
                         for (const component of results[0].address_components) {
                             const types = component.types;
                             
                             if (types.includes('locality')) {
                                 city = component.long_name;
+                            }
+                            if (types.includes('administrative_area_level_2')) {
+                                county = component.long_name;
                             }
                             if (types.includes('administrative_area_level_1')) {
                                 state = component.long_name;
@@ -448,12 +460,13 @@ function getAutoLocation() {
                             currentZip = zipCode;
                             currentState = state;
                             currentCity = city;
+                            currentCounty = county;
                             
                             // Store location data in browser storage for chat agent
                             const locationData = {
                                 city: city,
                                 state: state,
-                                county: '', // Auto-location doesn't provide county
+                                county: county, // Now includes actual county data
                                 zipCode: zipCode,
                                 formattedAddress: results[0].formatted_address,
                                 coordinates: {
@@ -479,6 +492,11 @@ function getAutoLocation() {
                             
                             // Load ALL data for this location
             loadAllDataForLocation();
+                            
+                            // Update summary cards with location-based data
+                            if (currentState) {
+                                updateSummaryCards(null);
+                            }
                             
                             // Update heatmap - fly to specific location instead of just state
                             if (typeof loadHeatmapData === 'function') {
@@ -564,6 +582,11 @@ function initializeApp() {
         // DON'T call onStateChange() - it clears currentCity and currentZip!
         // onStateChange();
         loadAllDataForLocation();
+        
+        // Update summary cards with stored location
+        if (currentState) {
+            updateSummaryCards(null);
+        }
     } else {
         // No stored location - automatically detect user's location
         console.log('[APP] No stored location - auto-detecting...');
@@ -578,6 +601,7 @@ function autoDetectAndLoadLocation() {
         currentState = 'California';
         onStateChange();
         loadAllDataForLocation();
+        updateSummaryCards(null); // Update summary cards with default location
         return;
     }
     
@@ -587,6 +611,7 @@ function autoDetectAndLoadLocation() {
         currentState = 'California';
         onStateChange();
         loadAllDataForLocation();
+        updateSummaryCards(null); // Update summary cards with default location
         return;
     }
     
@@ -637,6 +662,7 @@ function autoDetectAndLoadLocation() {
                             currentZip = zipCode;
                             currentState = state;
                             currentCity = city;
+                            currentCounty = county;
                             
                             // Store location data in browser storage
                             const locationData = {
@@ -673,6 +699,11 @@ function autoDetectAndLoadLocation() {
                             onStateChange();
                             loadAllDataForLocation();
                             
+                            // Update summary cards with auto-detected location
+                            if (currentState) {
+                                updateSummaryCards(null);
+                            }
+                            
                             // Update heatmap and zoom to location
                             if (typeof loadHeatmapData === 'function') {
                                 loadHeatmapData(state);
@@ -687,6 +718,7 @@ function autoDetectAndLoadLocation() {
                             currentState = 'California';
                             onStateChange();
                             loadAllDataForLocation();
+                            updateSummaryCards(null); // Update with default location
                             updateAPIStatus('warning', 'Using Default', 'California');
                         }
                     } else {
@@ -694,6 +726,7 @@ function autoDetectAndLoadLocation() {
                         currentState = 'California';
                         onStateChange();
                         loadAllDataForLocation();
+                        updateSummaryCards(null); // Update with default location
                         updateAPIStatus('warning', 'Using Default', 'California');
                     }
                 }
@@ -704,6 +737,7 @@ function autoDetectAndLoadLocation() {
             currentState = 'California';
             onStateChange();
             loadAllDataForLocation();
+            updateSummaryCards(null); // Update with default location
             updateAPIStatus('warning', 'Using Default', 'California (location denied)');
         },
         {
@@ -726,22 +760,28 @@ function loadAllDataForLocation() {
     console.log('');
     
     // Update location indicators on all components
-    console.log('[1/5] Updating location indicators...');
+    console.log('[1/6] Updating location indicators...');
     updateLocationIndicators();
     
     // Load air quality data and health recommendations
-    console.log('[2/5] Loading air quality data...');
+    console.log('[2/6] Loading air quality data...');
     loadAirQualityData();
     
-    console.log('[3/5] Loading health recommendations...');
+    console.log('[3/6] Loading health recommendations...');
     loadHealthRecommendations();
     
     // Load weather and pollen data
-    console.log('[4/5] Loading weather data...');
+    console.log('[4/6] Loading weather data...');
     loadWeatherData();
     
-    console.log('[5/5] Loading pollen data...');
+    console.log('[5/6] Loading pollen data...');
     loadPollenData();
+    
+    // Load respiratory surveillance chart
+    console.log('[6/6] Loading respiratory surveillance chart...');
+    if (typeof respiratoryChart !== 'undefined' && respiratoryChart) {
+        respiratoryChart.updateLocation(currentState || '');
+    }
     
     console.log('');
     console.log('[DATA LOAD DEBUG] All load functions called');
@@ -765,7 +805,8 @@ function updateLocationIndicators() {
         'trendLocationIndicator',
         'weatherLocationIndicator',
         'pollenLocationIndicator',
-        'dataExplorerLocationIndicator'
+        'dataExplorerLocationIndicator',
+        'chartLocationIndicator'
     ];
     
     indicators.forEach(id => {
@@ -1431,6 +1472,9 @@ function updateAQIDisplay(data) {
     }
     if (aqiLevel) aqiLevel.textContent = data.level;
     if (recommendation) recommendation.textContent = data.recommendation;
+    
+    // Update summary cards with AQI data
+    updateSummaryCards(data);
 }
 
 // Update data table with Tailwind styling
@@ -2397,6 +2441,16 @@ function updateWeatherDisplay(weather) {
     document.getElementById('weatherConditions').textContent = current.conditions || 'Unknown';
     document.getElementById('weatherIcon').textContent = getWeatherIcon(current.conditions || '');
     
+    // Update summary card at top
+    const summaryTemp = document.getElementById('summaryTemp');
+    if (summaryTemp) {
+        let temp = current.temperature || 0;
+        if (currentTempUnit === 'C' && current.temperature_unit === 'F') {
+            temp = (temp - 32) * 5/9;
+        }
+        summaryTemp.textContent = `${Math.round(temp)}°${currentTempUnit}`;
+    }
+    
     console.log('[Weather] Display updated successfully');
 }
 
@@ -2437,8 +2491,84 @@ function updatePollenDisplay(pollen) {
     // Update icon based on level
     document.getElementById('pollenIcon').textContent = getPollenIcon(upi);
     
+    // Update summary card at top
+    const summaryPollen = document.getElementById('summaryPollen');
+    if (summaryPollen) {
+        summaryPollen.textContent = upi !== '--' ? upi : '-';
+    }
+    
     console.log('[Pollen] Display updated successfully');
 }
+
+// Update summary cards at top of page
+function updateSummaryCards(aqiData) {
+    console.log('[SUMMARY] Updating summary cards, currentState:', currentState, 'currentCounty:', currentCounty);
+    
+    // Update AQI
+    const summaryAQI = document.getElementById('summaryAQI');
+    if (summaryAQI && aqiData) {
+        summaryAQI.textContent = aqiData.aqi || '-';
+    }
+    
+    // Only fetch environmental data if we have a state
+    if (!currentState) {
+        console.log('[SUMMARY] No state available yet, skipping environmental data fetch');
+        return;
+    }
+    
+    // Fetch wildfire data
+    const summaryFire = document.getElementById('summaryFire');
+    if (summaryFire) {
+        console.log(`[SUMMARY] Fetching wildfires for state: ${currentState}`);
+        fetch(`/api/wildfires?state=${encodeURIComponent(currentState)}`)
+            .then(response => response.json())
+            .then(data => {
+                console.log('[SUMMARY] Wildfire data:', data);
+                summaryFire.textContent = data.count || '0';
+            })
+            .catch(error => {
+                console.error('[SUMMARY] Error fetching wildfire data:', error);
+                summaryFire.textContent = '-';
+            });
+    }
+    
+    // Fetch COVID data
+    const summaryCovid = document.getElementById('summaryCovid');
+    if (summaryCovid) {
+        const url = currentCounty 
+            ? `/api/covid?state=${encodeURIComponent(currentState)}&county=${encodeURIComponent(currentCounty)}`
+            : `/api/covid?state=${encodeURIComponent(currentState)}`;
+        
+        console.log(`[SUMMARY] Fetching COVID data from: ${url}`);
+        fetch(url)
+            .then(response => response.json())
+            .then(data => {
+                console.log('[SUMMARY] COVID data:', data);
+                summaryCovid.textContent = data.cases_per_100k || '-';
+            })
+            .catch(error => {
+                console.error('[SUMMARY] Error fetching COVID data:', error);
+                summaryCovid.textContent = '-';
+            });
+    }
+    
+    // Fetch weather alerts data
+    const summaryAlerts = document.getElementById('summaryAlerts');
+    if (summaryAlerts) {
+        console.log(`[SUMMARY] Fetching alerts for state: ${currentState}`);
+        fetch(`/api/alerts?state=${encodeURIComponent(currentState)}`)
+            .then(response => response.json())
+            .then(data => {
+                console.log('[SUMMARY] Alerts data:', data);
+                summaryAlerts.textContent = data.count || '0';
+            })
+            .catch(error => {
+                console.error('[SUMMARY] Error fetching alerts data:', error);
+                summaryAlerts.textContent = '-';
+            });
+    }
+}
+
 
 // Helper functions
 function getWindDirection(degrees) {
