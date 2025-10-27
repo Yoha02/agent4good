@@ -1,0 +1,29 @@
+# Cloud Run Environment Variables Update Command
+
+# Run this command in your Google Cloud SDK Shell:
+
+gcloud run services update agent4good --region us-central1 \
+  --update-env-vars GOOGLE_CLOUD_PROJECT=qwiklabs-gcp-00-4a7d408c735c \
+  --update-env-vars BIGQUERY_TABLE=air_quality_data \
+  --update-env-vars BIGQUERY_DATASET=CrowdsourceData \
+  --update-env-vars BIGQUERY_TABLE_REPORTS=CrowdSourceData \
+  --update-env-vars GEMINI_API_KEY=AIzaSyALQGawG7iVNjJhG8v5w3Z_eyt5oRdMCvk \
+  --update-env-vars FLASK_ENV=production \
+  --update-env-vars SECRET_KEY=your-secret-key-here \
+  --update-env-vars GOOGLE_API_KEY=AIzaSyALQGawG7iVNjJhG8v5w3Z_eyt5oRdMCvk \
+  --update-env-vars GOOGLE_GENAI_USE_VERTEXAI=TRUE \
+  --update-env-vars GOOGLE_CLOUD_LOCATION=us-central1 \
+  --update-env-vars GCS_VIDEO_BUCKET=qwiklabs-gcp-00-4a7d408c735c-psa-videos \
+  --update-env-vars TWITTER_API_KEY=j1GPTU3weLMzs3PvIvj4nJmel \
+  --update-env-vars TWITTER_API_SECRET=FEpSdSCgsTJTSKByeXA9acbKLy9ACpTkoC84sJDbMPEURiRfnv \
+  --update-env-vars TWITTER_ACCESS_TOKEN=1982143243111497728-1oboZufxqKFp9Usr24MzehlqNWwIs6 \
+  --update-env-vars TWITTER_ACCESS_TOKEN_SECRET=j3M73CcJgGfeT6xsYbtLUiZyNvXYOHFnYuPFxz7PptXUi \
+  --update-env-vars TWITTER_BEARER_TOKEN=AAAAAAAAAAAAAAAAAAAAAAsb5AEAAAAASSxf2Ih%2B5%2FNAnlj7HluY22iF9YM%3DglqoGZDXONwArW7TCKuYgtNJIcrl70n7a9kjF03X61j8ZkMqBJ \
+  --update-env-vars TWITTER_USERNAME=AI_mmunity \
+  --update-env-vars AIRNOW_API_KEY=87FB7DB4-DDE6-4FDB-B214-3948D35ADE59 \
+  --update-env-vars EPA_API_KEY=87FB7DB4-DDE6-4FDB-B214-3948D35ADE59 \
+  --update-env-vars AQS_API_KEY=ochregazelle35 \
+  --update-env-vars AQS_EMAIL=sema.amin9@gmail.com
+
+# After running this, wait ~30 seconds for the service to restart, then test again!
+

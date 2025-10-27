@@ -1,0 +1,23 @@
+# Cloud Run Deployment Commands
+# Copy and paste these into your Google Cloud SDK Shell
+
+# Step 1: Authenticate (if not already)
+gcloud auth login
+
+# Step 2: Set your project
+gcloud config set project qwiklabs-gcp-00-4a7d408c735c
+
+# Step 3: Navigate to your project directory
+cd c:\Users\asggm\Agents4Good\agent4good
+
+# Step 4: Enable required APIs (run once)
+gcloud services enable cloudbuild.googleapis.com
+gcloud services enable run.googleapis.com
+gcloud services enable containerregistry.googleapis.com
+
+# Step 5: Deploy to Cloud Run from source (this will build and deploy)
+gcloud run deploy agent4good --source . --platform managed --region us-central1 --allow-unauthenticated --memory 2Gi --cpu 2 --timeout 300 --max-instances 10
+
+# After deployment completes, get your service URL:
+gcloud run services describe agent4good --region us-central1 --format="value(status.url)"
+

@@ -1489,7 +1489,7 @@
         </div>
         
         <!-- Chat Messages -->
-        <div class="relative flex-1 flex flex-col">
+        <div class="relative flex-1 overflow-hidden flex flex-col">
             <!-- Clear Chat Button -->
             <button 
                 onclick="clearChatWidget()" 
@@ -1499,13 +1499,13 @@
                 <i class="fas fa-trash-alt mr-1"></i> Clear
             </button>
             
-            <div id="chatWidgetMessages" class="flex-1 overflow-y-auto p-4 bg-gray-50 space-y-3">
+            <div id="chatWidgetMessages" class="flex-1 overflow-y-auto p-4 bg-gray-50 space-y-3 min-h-0">
                 <!-- Welcome message will be added by JavaScript -->
             </div>
         </div>
         
         <!-- Chat Input -->
-        <div class="p-4 bg-white border-t border-gray-200">
+        <div class="flex-shrink-0 p-4 bg-white border-t border-gray-200">
             <!-- Location Context Indicator -->
             <div id="chatWidgetLocationContext" class="mb-2 text-xs text-gray-600 hidden">
                 <i class="fas fa-map-marker-alt text-emerald-500 mr-1"></i>

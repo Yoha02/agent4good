@@ -1766,12 +1766,18 @@ async function sendChatWidgetMessage() {
     const loadingMsg = addChatMessage('Analyzing...', 'bot');
     
     try {
-        // Build location context from current filters
+        // Build location context from current filters (if available)
         const locationContext = {};
-        if (currentFilters.state) locationContext.state = currentFilters.state;
-        if (currentFilters.city) locationContext.city = currentFilters.city;
-        if (currentFilters.county) locationContext.county = currentFilters.county;
-        if (currentFilters.zipcode) locationContext.zipCode = currentFilters.zipcode;
+        if (typeof currentFilters !== 'undefined') {
+            if (currentFilters.state) locationContext.state = currentFilters.state;
+            if (currentFilters.city) locationContext.city = currentFilters.city;
+            if (currentFilters.county) locationContext.county = currentFilters.county;
+            if (currentFilters.zipcode) locationContext.zipCode = currentFilters.zipcode;
+        }
+        
+        console.log('[CHAT WIDGET] Sending message:', question);
+        console.log('[CHAT WIDGET] Location context:', locationContext);
+        console.log('[CHAT WIDGET] Persona: Health Official');
         
         // Call AI agent with Health Official persona
         const response = await fetch('/api/agent-chat', {
@@ -1781,12 +1787,16 @@ async function sendChatWidgetMessage() {
                 question: question,
                 location_context: Object.keys(locationContext).length > 0 ? locationContext : null,
                 persona: 'Health Official',  // Always use Health Official persona
-                state: currentFilters.state || '',
+                state: (typeof currentFilters !== 'undefined' && currentFilters.state) ? currentFilters.state : '',
                 days: 30  // Default to 30 days for officials
             })
         });
         
+        console.log('[CHAT WIDGET] Response status:', response.status);
+        
         const data = await response.json();
+        
+        console.log('[CHAT WIDGET] Response data:', data);
         
         // Remove loading
         if (loadingMsg && loadingMsg.remove) {
@@ -1810,13 +1820,16 @@ async function sendChatWidgetMessage() {
                 pollForVideoCompletion(data.task_id);
             }
         } else {
-            addChatMessage('Sorry, I encountered an error. Please try again.', 'bot');
+            console.error('[CHAT WIDGET] Error response:', data);
+            const errorMsg = data.error || 'Sorry, I encountered an error. Please try again.';
+            addChatMessage(errorMsg, 'bot');
         }
     } catch (error) {
         if (loadingMsg && loadingMsg.remove) {
             loadingMsg.remove();
         }
-        console.error('Chat widget error:', error);
+        console.error('[CHAT WIDGET] Exception:', error);
+        console.error('[CHAT WIDGET] Error stack:', error.stack);
         addChatMessage('Sorry, I could not connect to the AI service. Please try again.', 'bot');
     }
 }
