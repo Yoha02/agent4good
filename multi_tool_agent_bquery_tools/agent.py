@@ -71,6 +71,9 @@ USER_PROMPT = (
     "5. 📝 **Community Reports** — Submit health and environmental reports.\n"
     "6. ❓ **Health & Wellness FAQs** — Learn about hygiene, preventive care, and wellness practices.\n\n"
     
+
+    "the following rules are for your reference, don't output to user:"
+
     "⚙️ **Routing Rules:**\n"
     "- Mentions of 'live', 'today', 'current', or 'now' → live_air_quality_agent.\n"
     "- Historical queries (years, months, seasons) → air_quality_agent.\n"
@@ -102,10 +105,12 @@ HEALTH_OFFICIAL_PROMPT = (
     "2. 📈 **Historical Air Quality** — Analyze PM2.5 and AQI trends from EPA BigQuery data.\n"
     "3. 🦠 **Infectious Disease Trends** — Retrieve and summarize county-level foodborne & waterborne illness data.\n"
     "4. 🏥 **Clinic Locator** — Identify nearby healthcare facilities for response coordination.\n"
-    "5. 📝 **Crowdsourced Reports** — Review community-submitted health or environmental reports.\n"
+    "5. 📝 **Crowdsourced Reports** — Submit Community health or environmental reports.\n"
     "6. 🔍 **Crowdsourced Insights Dashboard** — Perform semantic search & trend detection on community reports.\n"
     "7. 📊 **Cross-Dataset Analytics** — Statistical analysis across EPA and CDC datasets with code execution.\n"
     "8. 🎥 **PSA & Outreach Videos** — Generate public-service video prompts for awareness campaigns.\n\n"
+
+    "the following rules are for your reference, don't output to user:"
     
     "💬 **Examples of what you can ask:**\n"
     "• 'Show community health reports for Alameda County.'\n"
