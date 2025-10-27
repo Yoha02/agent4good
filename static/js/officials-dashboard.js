@@ -1987,7 +1987,7 @@ async function pollForVideoCompletion(taskId) {
             const data = await response.json();
             console.log(`[VIDEO WIDGET] Poll response:`, data);
             
-            if (data.status === 'completed' && data.video_url) {
+            if (data.status === 'complete' && data.video_url) {
                 clearInterval(pollInterval);
                 console.log(`[VIDEO WIDGET] Video ready:`, data.video_url);
                 
@@ -1997,7 +1997,7 @@ async function pollForVideoCompletion(taskId) {
                 // Add video message with approval prompt
                 const videoMessage = `[VIDEO:${data.video_url}]\n\nYour PSA video is ready!\n\nAction: "${data.action_line}"\n\nWould you like me to post this to Twitter?`;
                 addChatMessage(videoMessage, 'bot');
-            } else if (data.status === 'failed') {
+            } else if (data.status === 'error' || data.status === 'failed') {
                 clearInterval(pollInterval);
                 console.error(`[VIDEO WIDGET] Video generation failed`);
                 addChatMessage('Sorry, video generation failed. Please try again.', 'bot');
