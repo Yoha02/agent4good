@@ -1880,13 +1880,13 @@ function addChatMessage(text, type) {
             </div>
             <div class="bg-white rounded-2xl rounded-tl-none p-3 shadow-md max-w-[280px]">
                 ${videoHtml}
-                <p class="text-gray-700 text-sm leading-relaxed whitespace-pre-line">${messageContent}</p>
+                <p class="text-gray-700 text-sm leading-relaxed whitespace-pre-line break-words overflow-wrap-anywhere">${messageContent}</p>
             </div>
         `;
     } else {
         messageDiv.innerHTML = `
             <div class="bg-navy-700 text-white rounded-2xl rounded-tr-none p-3 shadow-md max-w-[280px]">
-                <p class="text-sm leading-relaxed">${text}</p>
+                <p class="text-sm leading-relaxed break-words overflow-wrap-anywhere">${text}</p>
             </div>
             <div class="w-8 h-8 bg-navy-600 rounded-full flex items-center justify-center flex-shrink-0">
                 <i class="fas fa-user text-white text-sm"></i>
