@@ -17,7 +17,7 @@ DATASET_ID = 'CrowdsourceData'
 TABLE_ID = 'nrevss_respiratory_data'
 
 # CDC NREVSS Socrata API endpoints and credentials
-RSV_API_URL = "https://data.cdc.gov/resource/52kb-ccu2.json"  # Correct NREVSS dataset
+RSV_API_URL = "https://data.cdc.gov/resource/3cxc-4k8q.csv"  # Updated NREVSS dataset
 CDC_APP_TOKEN = os.getenv('CDC_APP_TOKEN', '14hp3llj2jh6n8rcwxegn80ud')  # App token for higher rate limits
 
 def create_table_if_not_exists(client):
@@ -26,16 +26,17 @@ def create_table_if_not_exists(client):
     table_ref = f"{GCP_PROJECT_ID}.{DATASET_ID}.{TABLE_ID}"
     
     schema = [
-        bigquery.SchemaField("testtype", "STRING", mode="NULLABLE", description="Diagnostic Test Type"),
-        bigquery.SchemaField("season", "STRING", mode="NULLABLE", description="Surveillance Year"),
-        bigquery.SchemaField("repweekcode", "STRING", mode="NULLABLE", description="Week ending Code"),
-        bigquery.SchemaField("repweekdate", "STRING", mode="NULLABLE", description="Week ending Date (raw from CDC)"),
-        bigquery.SchemaField("date_string", "STRING", mode="NULLABLE", description="ISO formatted date (YYYY-MM-DD)"),
-        bigquery.SchemaField("hhs_region", "INTEGER", mode="NULLABLE", description="HHS region (1-10)"),
-        bigquery.SchemaField("rsvpos", "INTEGER", mode="NULLABLE", description="RSV Detections"),
-        bigquery.SchemaField("rsvtest", "INTEGER", mode="NULLABLE", description="RSV Tests"),
-        bigquery.SchemaField("outlier", "INTEGER", mode="NULLABLE", description="Outlier flag"),
-        bigquery.SchemaField("positivity_rate", "FLOAT", mode="NULLABLE", description="RSV positivity rate (%)"),
+        bigquery.SchemaField("level", "STRING", mode="NULLABLE", description="Geographic level (National, Regional, etc)"),
+        bigquery.SchemaField("perc_diff", "FLOAT", mode="NULLABLE", description="Percent difference"),
+        bigquery.SchemaField("pcr_percent_positive", "FLOAT", mode="NULLABLE", description="PCR percent positive"),
+        bigquery.SchemaField("percent_pos_2_week", "FLOAT", mode="NULLABLE", description="2-week percent positive"),
+        bigquery.SchemaField("percent_pos_4_week", "FLOAT", mode="NULLABLE", description="4-week percent positive"),
+        bigquery.SchemaField("pcr_detections", "INTEGER", mode="NULLABLE", description="PCR detections"),
+        bigquery.SchemaField("detections_2_week", "INTEGER", mode="NULLABLE", description="2-week detections"),
+        bigquery.SchemaField("detections_4_week", "INTEGER", mode="NULLABLE", description="4-week detections"),
+        bigquery.SchemaField("pcr_tests", "INTEGER", mode="NULLABLE", description="PCR tests conducted"),
+        bigquery.SchemaField("posted", "TIMESTAMP", mode="NULLABLE", description="When data was posted"),
+        bigquery.SchemaField("mmwrweek_end", "DATE", mode="NULLABLE", description="MMWR week ending date"),
         bigquery.SchemaField("load_timestamp", "TIMESTAMP", mode="REQUIRED", description="When this record was loaded"),
     ]
     
@@ -48,74 +49,96 @@ def create_table_if_not_exists(client):
         table = client.create_table(table)
         print(f"[SUCCESS] Created table {table.project}.{table.dataset_id}.{table.table_id}")
 
-def fetch_nrevss_data(limit=50000):
-    """Fetch RSV surveillance data from CDC Socrata API
+def fetch_nrevss_data(limit=5000):
+    """Fetch RSV surveillance data from CDC JSON endpoint
     
-    Note: Socrata has a limit of 50,000 rows per request max.
-    We order by repweekdate DESC to get the most recent data first.
+    Fetches the most recent NREVSS data from CDC.
     """
     
     print(f"[INFO] Fetching NREVSS data from CDC (limit={limit})...")
     
-    # Query for most recent data - order by date descending
-    params = {
-        '$limit': limit,
-        '$order': 'repweekdate DESC'  # Get newest data first
-    }
-    
     try:
-        response = requests.get(RSV_API_URL, params=params, timeout=60)
+        # Use JSON endpoint with ordering to get most recent data
+        url = "https://data.cdc.gov/resource/3cxc-4k8q.json"
+        params = {
+            '$limit': limit,
+            '$order': 'mmwrweek_end DESC'
+        }
+        response = requests.get(url, params=params, timeout=60)
         response.raise_for_status()
+        
         data = response.json()
         
         print(f"[SUCCESS] Retrieved {len(data)} records from CDC NREVSS")
         if data:
-            first_date = data[0].get('repweekdate', 'Unknown')
-            last_date = data[-1].get('repweekdate', 'Unknown')
+            first_date = data[0].get('mmwrweek_end', 'Unknown')
+            last_date = data[-1].get('mmwrweek_end', 'Unknown') if len(data) > 1 else first_date
             print(f"[INFO] Date range: {last_date} to {first_date}")
         return data
         
     except requests.exceptions.RequestException as e:
         print(f"[ERROR] Failed to fetch NREVSS data: {e}")
+        import traceback
+        traceback.print_exc()
         return []
 
 def transform_nrevss_data(raw_data):
-    """Transform CDC data to match BigQuery schema"""
+    """Transform CDC JSON data to match BigQuery schema"""
     from datetime import datetime
     
     transformed = []
     load_time = datetime.now().isoformat()
     
     for record in raw_data:
-        # Calculate positivity rate
-        rsvpos = int(record.get('rsvpos', 0)) if record.get('rsvpos') else 0
-        rsvtest = int(record.get('rsvtest', 0)) if record.get('rsvtest') else 0
-        positivity_rate = (rsvpos / rsvtest * 100) if rsvtest > 0 else 0.0
-        
-        # Parse and convert date from ddMONyyyy to YYYY-MM-DD
-        repweekdate_raw = record.get('repweekdate', '')
-        date_string = None
-        
-        if repweekdate_raw and len(repweekdate_raw) >= 9:
+        # Parse dates safely
+        def parse_date(date_str):
+            if not date_str:
+                return None
             try:
-                # Parse "31OCT2015" format to YYYY-MM-DD
-                dt = datetime.strptime(repweekdate_raw, '%d%b%Y')
-                date_string = dt.strftime('%Y-%m-%d')
-            except Exception as e:
-                print(f"[WARNING] Could not parse date '{repweekdate_raw}': {e}")
-                date_string = None
+                # Parse ISO format date
+                dt = datetime.fromisoformat(date_str.replace('T00:00:00.000', ''))
+                return dt.strftime('%Y-%m-%d')
+            except:
+                return None
+        
+        def parse_timestamp(ts_str):
+            if not ts_str:
+                return None
+            try:
+                # Parse ISO format timestamp
+                return datetime.fromisoformat(ts_str.replace('T', ' ').replace('.000', '')).isoformat()
+            except:
+                return None
+        
+        # Convert numeric fields safely
+        def safe_float(value):
+            if value is None or value == '':
+                return None
+            try:
+                return float(value)
+            except (ValueError, TypeError):
+                return None
+        
+        def safe_int(value):
+            if value is None or value == '':
+                return None
+            try:
+                return int(float(value))
+            except (ValueError, TypeError):
+                return None
         
         transformed_record = {
-            'testtype': record.get('testtype'),
-            'season': record.get('season'),
-            'repweekcode': record.get('repweekcode'),
-            'repweekdate': repweekdate_raw if repweekdate_raw else None,
-            'date_string': date_string,
-            'hhs_region': int(record.get('hhs_region')) if record.get('hhs_region') else None,
-            'rsvpos': rsvpos if rsvpos > 0 else None,
-            'rsvtest': rsvtest if rsvtest > 0 else None,
-            'outlier': int(record.get('outlier', 0)) if record.get('outlier') else None,
-            'positivity_rate': round(positivity_rate, 2),
+            'level': record.get('level'),
+            'perc_diff': safe_float(record.get('perc_diff')),
+            'pcr_percent_positive': safe_float(record.get('pcr_percent_positive')),
+            'percent_pos_2_week': safe_float(record.get('percent_pos_2_week')),
+            'percent_pos_4_week': safe_float(record.get('percent_pos_4_week')),
+            'pcr_detections': safe_int(record.get('pcr_detections')),
+            'detections_2_week': safe_int(record.get('detections_2_week')),
+            'detections_4_week': safe_int(record.get('detections_4_week')),
+            'pcr_tests': safe_int(record.get('pcr_tests')),
+            'posted': parse_timestamp(record.get('posted')),
+            'mmwrweek_end': parse_date(record.get('mmwrweek_end')),
             'load_timestamp': load_time
         }
         

@@ -1,0 +1,68 @@
+[
+    {
+        "name": "record_id",
+        "type": "STRING",
+        "mode": "REQUIRED",
+        "description": "Unique identifier for the record"
+    },
+    {
+        "name": "weekenddate",
+        "type": "DATE",
+        "mode": "NULLABLE",
+        "description": "Week ending date"
+    },
+    {
+        "name": "state",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "State name"
+    },
+    {
+        "name": "season",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "Flu season"
+    },
+    {
+        "name": "agecategory",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "Age category"
+    },
+    {
+        "name": "sex",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "Sex"
+    },
+    {
+        "name": "race",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "Race/ethnicity"
+    },
+    {
+        "name": "type",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "Rate type (e.g., Crude Rate)"
+    },
+    {
+        "name": "weeklyrate",
+        "type": "FLOAT",
+        "mode": "NULLABLE",
+        "description": "Weekly hospitalization rate per 100,000"
+    },
+    {
+        "name": "cumulativerate",
+        "type": "FLOAT",
+        "mode": "NULLABLE",
+        "description": "Cumulative hospitalization rate per 100,000"
+    },
+    {
+        "name": "created_at",
+        "type": "TIMESTAMP",
+        "mode": "REQUIRED",
+        "description": "Timestamp when record was created"
+    }
+]

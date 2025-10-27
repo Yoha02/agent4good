@@ -88,7 +88,8 @@ class RespiratoryChart {
             <div class="respiratory-chart-wrapper">
                 <div class="chart-header mb-6">
                     <h3 class="text-2xl font-bold text-navy-700 mb-2">
-                        Weekly Percent of Tests Positive for Respiratory Viruses Reported to NREVSS
+                        <i class="fas fa-database text-blue-500 mr-2"></i>
+                        Infectious Disease Tracking Dashboard (BigQuery Data)
                     </h3>
                     <div class="flex items-center gap-4 text-sm text-gray-600">
                         <div class="flex items-center gap-2">
@@ -106,19 +107,101 @@ class RespiratoryChart {
                     <canvas id="respiratoryCanvas" height="400"></canvas>
                 </div>
                 
+                <div class="chart-controls-wrapper bg-white rounded-xl shadow-lg p-6 mb-4">
+                    <div class="mb-3">
+                        <h4 class="text-sm font-semibold text-gray-700 mb-3">
+                            <i class="fas fa-filter mr-2"></i>Filter Data Series
+                        </h4>
+                        <div id="dataSeriesCheckboxes" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                            <!-- Checkboxes will be populated dynamically -->
+                        </div>
+                    </div>
+                    <div class="flex items-center justify-between text-xs text-gray-500 mt-3 pt-3 border-t">
+                        <button id="selectAllSeries" class="px-3 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition">
+                            <i class="fas fa-check-double mr-1"></i>Select All
+                        </button>
+                        <button id="deselectAllSeries" class="px-3 py-1 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition">
+                            <i class="fas fa-times mr-1"></i>Deselect All
+                        </button>
+                    </div>
+                </div>
+                
                 <div class="date-slider-wrapper bg-white rounded-xl shadow-lg p-6">
                     <div class="flex items-center gap-4">
                         <label class="text-sm font-semibold text-gray-700 whitespace-nowrap">
                             <i class="fas fa-sliders-h mr-2"></i>Date Range:
                         </label>
-                        <input type="range" id="dateSlider" class="flex-1" min="0" max="100" value="0">
-                        <div class="text-sm font-mono text-gray-600">
+                        <div class="flex-1 relative">
+                            <div class="range-slider-container relative h-6">
+                                <input type="range" id="dateSliderMin" class="range-slider-input" min="0" max="100" value="0">
+                                <input type="range" id="dateSliderMax" class="range-slider-input" min="0" max="100" value="100">
+                                <div class="range-slider-track"></div>
+                                <div class="range-slider-range" id="sliderRange"></div>
+                            </div>
+                        </div>
+                        <div class="text-sm font-mono text-gray-600 min-w-[200px]">
                             <span id="sliderStartDate">-</span> to <span id="sliderEndDate">-</span>
                         </div>
                         <button id="resetSlider" class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition text-sm">
                             <i class="fas fa-undo mr-1"></i>Reset to 3 Months
                         </button>
                     </div>
+                    <style>
+                        .range-slider-container {
+                            position: relative;
+                            width: 100%;
+                        }
+                        .range-slider-input {
+                            position: absolute;
+                            width: 100%;
+                            height: 6px;
+                            background: transparent;
+                            pointer-events: none;
+                            -webkit-appearance: none;
+                            z-index: 3;
+                        }
+                        .range-slider-input::-webkit-slider-thumb {
+                            -webkit-appearance: none;
+                            appearance: none;
+                            width: 18px;
+                            height: 18px;
+                            border-radius: 50%;
+                            background: #3b82f6;
+                            cursor: pointer;
+                            pointer-events: all;
+                            border: 2px solid white;
+                            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+                        }
+                        .range-slider-input::-moz-range-thumb {
+                            width: 18px;
+                            height: 18px;
+                            border-radius: 50%;
+                            background: #3b82f6;
+                            cursor: pointer;
+                            pointer-events: all;
+                            border: 2px solid white;
+                            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+                        }
+                        .range-slider-track {
+                            position: absolute;
+                            width: 100%;
+                            height: 6px;
+                            background: #e5e7eb;
+                            border-radius: 3px;
+                            top: 50%;
+                            transform: translateY(-50%);
+                            z-index: 1;
+                        }
+                        .range-slider-range {
+                            position: absolute;
+                            height: 6px;
+                            background: #3b82f6;
+                            border-radius: 3px;
+                            top: 50%;
+                            transform: translateY(-50%);
+                            z-index: 2;
+                        }
+                    </style>
                 </div>
                 
                 <div class="chart-legend mt-6 grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -128,8 +211,8 @@ class RespiratoryChart {
                 <div class="chart-footer mt-4 text-xs text-gray-500">
                     <p>
                         <i class="fas fa-info-circle mr-1"></i>
-                        Source: CDC NREVSS (National Respiratory and Enteric Virus Surveillance System)
-                        • Updated weekly • Showing RSV test positivity rates
+                        Sources: CDC NREVSS (RSV PCR tests), CDC FluSurv-NET (Hospitalization rates), CDC COVID-19 Surveillance
+                        • Updated weekly • Data from BigQuery
                     </p>
                 </div>
             </div>
@@ -137,22 +220,84 @@ class RespiratoryChart {
     }
     
     async loadData(state = '') {
-        console.log('[RESPIRATORY CHART] Loading data for state:', state || 'National');
+        console.log('[RESPIRATORY CHART] Loading data from BigQuery for state:', state || 'National');
         
         try {
+            // Use the new infectious disease dashboard endpoint that queries BigQuery directly
             const url = state 
-                ? `/api/respiratory-timeseries?state=${encodeURIComponent(state)}&limit=500`
-                : '/api/respiratory-timeseries?limit=500';
+                ? `/api/infectious-disease-dashboard?state=${encodeURIComponent(state)}&days=180`
+                : '/api/infectious-disease-dashboard?days=180';
             
             const response = await fetch(url);
             const result = await response.json();
             
-            // DEBUG: Log the actual data structure
-            console.log('[RESPIRATORY CHART] First raw data item from API:', JSON.stringify(result.data && result.data[0], null, 2));
+            console.log('[RESPIRATORY CHART] BigQuery dashboard response:', result.status);
             
-            if (result.status === 'success' && result.data && result.data.length > 0) {
-                this.data = result.data;
-                console.log('[RESPIRATORY CHART] Loaded', this.data.length, 'raw data points');
+            if (result.status === 'success') {
+                // Combine data from all three BigQuery sources
+                const combinedData = [];
+                
+                // 1. Add NREVSS PCR data (RSV from nrevss_respiratory_data table)
+                if (result.nrevss_data && result.nrevss_data.length > 0) {
+                    console.log('[RESPIRATORY CHART] Processing', result.nrevss_data.length, 'NREVSS records from BigQuery');
+                    result.nrevss_data.forEach(item => {
+                        combinedData.push({
+                            date: item.date,
+                            testtype: 'RSV (PCR)',
+                            positivity_rate: item.pcr_percent_positive,
+                            detections: item.pcr_detections,
+                            source: 'NREVSS BigQuery'
+                        });
+                    });
+                }
+                
+                // 2. Add respiratory disease rates (RSV, COVID-19, Flu from respiratory_disease_rates table)
+                if (result.respiratory_rates && result.respiratory_rates.length > 0) {
+                    console.log('[RESPIRATORY CHART] Processing', result.respiratory_rates.length, 'respiratory rate records from BigQuery');
+                    result.respiratory_rates.forEach(item => {
+                        // Map surveillance network to friendly names
+                        const networkName = item.surveillance_network || 'Unknown';
+                        let displayName = networkName;
+                        
+                        // Simplify network names
+                        if (networkName.includes('COVID')) displayName = 'COVID';
+                        else if (networkName.includes('RSV')) displayName = 'RSV';
+                        else if (networkName.includes('Flu')) displayName = 'Flu';
+                        
+                        combinedData.push({
+                            date: item.date,
+                            testtype: displayName,
+                            positivity_rate: item.rate, // Use actual rate (per 100k)
+                            cumulative_rate: item.cumulative_rate,
+                            source: 'FluSurv-NET BigQuery',
+                            surveillance_network: networkName,
+                            rate_type: 'hospitalization_per_100k'
+                        });
+                    });
+                }
+                
+                // 3. Add COVID hospitalizations (from cdc_covid_hospitalizations table)
+                if (result.covid_hospitalizations && result.covid_hospitalizations.length > 0) {
+                    console.log('[RESPIRATORY CHART] Processing', result.covid_hospitalizations.length, 'COVID hospitalization records from BigQuery');
+                    result.covid_hospitalizations.forEach(item => {
+                        combinedData.push({
+                            date: item.date,
+                            testtype: 'COVID-19 Hospitalizations',
+                            positivity_rate: item.weekly_rate,
+                            cumulative_rate: item.cumulative_rate,
+                            source: 'CDC Hospitalizations BigQuery'
+                        });
+                    });
+                }
+                
+                this.data = combinedData;
+                console.log('[RESPIRATORY CHART] Combined', this.data.length, 'data points from BigQuery tables');
+                console.log('[RESPIRATORY CHART] Sample combined data:', this.data.slice(0, 3));
+                
+                // Log unique diseases found
+                const uniqueDiseases = [...new Set(this.data.map(d => d.testtype))];
+                console.log('[RESPIRATORY CHART] Unique diseases found:', uniqueDiseases);
+                
                 // Normalize dates to ISO and drop malformed entries
                 this.normalizeDataDates();
                 console.log('[RESPIRATORY CHART] Using', this.data.length, 'normalized data points');
@@ -163,16 +308,25 @@ class RespiratoryChart {
                     locationEl.textContent = state || 'National';
                 }
                 
+                // Update header with source info
+                const headerEl = document.querySelector('.chart-header h3');
+                if (headerEl) {
+                    headerEl.innerHTML = `
+                        <i class="fas fa-database text-blue-500 mr-2"></i>
+                        Infectious Disease Tracking Dashboard (BigQuery Data)
+                    `;
+                }
+                
                 // Set default to last 3 months
                 this.setDefaultDateRange();
                 this.initializeSlider();
                 this.renderChart();
             } else {
-                console.warn('[RESPIRATORY CHART] No data available:', result);
+                console.warn('[RESPIRATORY CHART] No BigQuery data available:', result);
                 this.showNoDataMessage();
             }
         } catch (error) {
-            console.error('[RESPIRATORY CHART] Error loading data:', error);
+            console.error('[RESPIRATORY CHART] Error loading BigQuery data:', error);
             this.showErrorMessage(error.message);
         }
     }
@@ -206,16 +360,20 @@ class RespiratoryChart {
     }
     
     initializeSlider() {
-        const slider = document.getElementById('dateSlider');
+        const sliderMin = document.getElementById('dateSliderMin');
+        const sliderMax = document.getElementById('dateSliderMax');
+        const sliderRange = document.getElementById('sliderRange');
         const resetBtn = document.getElementById('resetSlider');
         
-        if (!slider || this.data.length === 0) return;
+        if (!sliderMin || !sliderMax || this.data.length === 0) return;
         
         // Get all unique dates sorted
         const allDates = [...new Set(this.data.map(d => d.date))].sort();
         
-        slider.min = 0;
-        slider.max = allDates.length - 1;
+        sliderMin.min = 0;
+        sliderMin.max = allDates.length - 1;
+        sliderMax.min = 0;
+        sliderMax.max = allDates.length - 1;
         
         // Set slider to show last 3 months by default
         const endIndex = allDates.length - 1;
@@ -223,33 +381,67 @@ class RespiratoryChart {
         threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
         
         const startIndex = allDates.findIndex(d => new Date(d) >= threeMonthsAgo);
-        slider.value = startIndex >= 0 ? startIndex : 0;
+        const defaultStartIndex = startIndex >= 0 ? startIndex : 0;
+        
+        sliderMin.value = defaultStartIndex;
+        sliderMax.value = endIndex;
+        
+        // Update visual range
+        this.updateSliderRange(sliderMin, sliderMax, sliderRange);
         
         // Update date labels
-        this.updateSliderLabels(allDates[slider.value], allDates[endIndex]);
+        this.updateSliderLabels(allDates[defaultStartIndex], allDates[endIndex]);
         
-        // Slider event
-        slider.addEventListener('input', (e) => {
-            const startIdx = parseInt(e.target.value);
-            const endIdx = allDates.length - 1;
+        // Function to update range display
+        const updateRange = () => {
+            let minVal = parseInt(sliderMin.value);
+            let maxVal = parseInt(sliderMax.value);
             
-            this.dateRange.start = new Date(allDates[startIdx]);
-            this.dateRange.end = new Date(allDates[endIdx]);
+            // Ensure min doesn't exceed max
+            if (minVal > maxVal) {
+                const temp = minVal;
+                minVal = maxVal;
+                maxVal = temp;
+                sliderMin.value = minVal;
+                sliderMax.value = maxVal;
+            }
             
-            this.updateSliderLabels(allDates[startIdx], allDates[endIdx]);
+            this.dateRange.start = new Date(allDates[minVal]);
+            this.dateRange.end = new Date(allDates[maxVal]);
+            
+            this.updateSliderRange(sliderMin, sliderMax, sliderRange);
+            this.updateSliderLabels(allDates[minVal], allDates[maxVal]);
             this.filterDataByDateRange();
             this.renderChart();
-        });
+        };
+        
+        // Slider events
+        sliderMin.addEventListener('input', updateRange);
+        sliderMax.addEventListener('input', updateRange);
         
         // Reset button
         if (resetBtn) {
             resetBtn.addEventListener('click', () => {
-                slider.value = startIndex >= 0 ? startIndex : 0;
+                sliderMin.value = defaultStartIndex;
+                sliderMax.value = endIndex;
                 this.setDefaultDateRange();
-                this.updateSliderLabels(allDates[startIndex], allDates[endIndex]);
+                this.updateSliderRange(sliderMin, sliderMax, sliderRange);
+                this.updateSliderLabels(allDates[defaultStartIndex], allDates[endIndex]);
                 this.renderChart();
             });
         }
+    }
+    
+    updateSliderRange(sliderMin, sliderMax, rangeEl) {
+        if (!rangeEl) return;
+        
+        const minVal = parseInt(sliderMin.value);
+        const maxVal = parseInt(sliderMax.value);
+        const minPercent = (minVal / sliderMin.max) * 100;
+        const maxPercent = (maxVal / sliderMax.max) * 100;
+        
+        rangeEl.style.left = minPercent + '%';
+        rangeEl.style.width = (maxPercent - minPercent) + '%';
     }
     
     updateSliderLabels(startDate, endDate) {
@@ -304,23 +496,72 @@ class RespiratoryChart {
         const testTypes = [...new Set(this.filteredData.map(d => d.testtype))];
         console.log('[RESPIRATORY CHART] Test types found:', testTypes);
         
+        // Define comprehensive color mapping for surveillance networks
+        const colorMap = {
+            // Main surveillance networks (simplified names)
+            'COVID': '#1a1a1a',                             // Very Dark Gray
+            'RSV': '#7b68ee',                               // Purple
+            'Flu': '#1e90ff',                               // Dodger Blue
+            
+            // NREVSS data (PCR tests)
+            'RSV (PCR)': '#9370db',                         // Medium Purple
+            'RSV (Antigen)': '#9370db',                     // Medium Purple
+            
+            // COVID surveillance (legacy)
+            'COVID-19': '#2b2b2b',                          // Black
+            'COVID-19 Hospitalizations': '#404040',         // Dark Gray
+            
+            // Full network names (fallback)
+            'COVID-NET': '#1a1a1a',                         // Very Dark Gray
+            'RSV-NET': '#7b68ee',                           // Purple
+            'FluSurv-NET': '#1e90ff',                       // Dodger Blue
+            
+            // Generic fallbacks
+            'Influenza': '#4169e1',                         // Royal Blue
+            'SARS-COV-2': '#2b2b2b'                        // Black
+        };
+        
+        // Function to generate color for unknown test types
+        const getColorForTestType = (testType) => {
+            if (colorMap[testType]) {
+                return colorMap[testType];
+            }
+            
+            // Generate color based on test type hash
+            let hash = 0;
+            for (let i = 0; i < testType.length; i++) {
+                hash = testType.charCodeAt(i) + ((hash << 5) - hash);
+            }
+            const hue = Math.abs(hash % 360);
+            return `hsl(${hue}, 70%, 50%)`;
+        };
+        
         // Create datasets for each test type
         const datasets = testTypes.map(testType => {
             const data = dates.map(date => dataByDate[date][testType] || null);
             
+            // Determine color and label
+            let color = getColorForTestType(testType);
+            let label = testType;
+            
+            // Simplify labels if needed
+            if (testType === 'Antigen') label = 'RSV (Antigen)';
+            if (testType === 'PCR') label = 'RSV (PCR)';
+            
             return {
-                label: testType === 'Antigen' ? 'RSV (Antigen)' : 'RSV (PCR)',
+                label: label,
                 data: data,
-                borderColor: this.colors.RSV || '#7b68ee',
-                backgroundColor: (this.colors.RSV || '#7b68ee') + '20',
+                borderColor: color,
+                backgroundColor: color + '20',
                 borderWidth: 2,
                 tension: 0.4,
                 fill: false,
                 pointRadius: 3,
                 pointHoverRadius: 6,
-                pointBackgroundColor: this.colors.RSV || '#7b68ee',
+                pointBackgroundColor: color,
                 pointBorderColor: '#fff',
-                pointBorderWidth: 2
+                pointBorderWidth: 2,
+                hidden: false  // Will be controlled by checkboxes
             };
         });
         
@@ -374,7 +615,17 @@ class RespiratoryChart {
                         },
                         callbacks: {
                             label: function(context) {
-                                return context.dataset.label + ': ' + context.parsed.y.toFixed(2) + '%';
+                                const label = context.dataset.label || '';
+                                const value = context.parsed.y.toFixed(2);
+                                
+                                // Check if this is a hospitalization rate (per 100k) or percentage
+                                if (label.includes('(Hosp)')) {
+                                    return label + ': ' + value + ' per 100k';
+                                } else if (label.includes('Hospitalizations')) {
+                                    return label + ': ' + value + ' per 100k';
+                                } else {
+                                    return label + ': ' + value + '%';
+                                }
                             }
                         }
                     }
@@ -403,7 +654,7 @@ class RespiratoryChart {
                     y: {
                         title: {
                             display: true,
-                            text: 'Weekly Percent Positive',
+                            text: 'Rate (% or per 100k)',
                             font: {
                                 size: 13,
                                 weight: 'bold'
@@ -412,7 +663,7 @@ class RespiratoryChart {
                         beginAtZero: true,
                         ticks: {
                             callback: function(value) {
-                                return value + '%';
+                                return value.toFixed(1);
                             }
                         },
                         grid: {
@@ -432,6 +683,75 @@ class RespiratoryChart {
         }
         
         console.log('[RESPIRATORY CHART] Chart rendered with', dates.length, 'data points');
+        
+        // Create checkboxes for data series
+        this.createSeriesCheckboxes();
+    }
+    
+    createSeriesCheckboxes() {
+        const container = document.getElementById('dataSeriesCheckboxes');
+        if (!container || !this.chart) return;
+        
+        // Clear existing checkboxes
+        container.innerHTML = '';
+        
+        // Create checkbox for each dataset
+        this.chart.data.datasets.forEach((dataset, index) => {
+            const checkboxId = `series-checkbox-${index}`;
+            const color = dataset.borderColor;
+            
+            const checkboxHTML = `
+                <label class="flex items-center gap-2 p-2 rounded hover:bg-gray-50 cursor-pointer transition">
+                    <input type="checkbox" 
+                           id="${checkboxId}" 
+                           class="series-checkbox w-4 h-4 rounded" 
+                           data-index="${index}" 
+                           checked>
+                    <span class="w-3 h-3 rounded" style="background-color: ${color}"></span>
+                    <span class="text-sm text-gray-700">${dataset.label}</span>
+                </label>
+            `;
+            
+            container.insertAdjacentHTML('beforeend', checkboxHTML);
+        });
+        
+        // Add event listeners to checkboxes
+        document.querySelectorAll('.series-checkbox').forEach(checkbox => {
+            checkbox.addEventListener('change', (e) => {
+                const index = parseInt(e.target.dataset.index);
+                const meta = this.chart.getDatasetMeta(index);
+                meta.hidden = !e.target.checked;
+                this.chart.update();
+            });
+        });
+        
+        // Add select/deselect all buttons
+        const selectAllBtn = document.getElementById('selectAllSeries');
+        const deselectAllBtn = document.getElementById('deselectAllSeries');
+        
+        if (selectAllBtn) {
+            selectAllBtn.addEventListener('click', () => {
+                document.querySelectorAll('.series-checkbox').forEach(cb => {
+                    cb.checked = true;
+                    const index = parseInt(cb.dataset.index);
+                    const meta = this.chart.getDatasetMeta(index);
+                    meta.hidden = false;
+                });
+                this.chart.update();
+            });
+        }
+        
+        if (deselectAllBtn) {
+            deselectAllBtn.addEventListener('click', () => {
+                document.querySelectorAll('.series-checkbox').forEach(cb => {
+                    cb.checked = false;
+                    const index = parseInt(cb.dataset.index);
+                    const meta = this.chart.getDatasetMeta(index);
+                    meta.hidden = true;
+                });
+                this.chart.update();
+            });
+        }
     }
     
     showNoDataMessage() {
@@ -516,7 +836,7 @@ document.addEventListener('DOMContentLoaded', function() {
  * Update disease cards with data for specified time period
  */
 async function updateDiseaseCards(days) {
-    console.log('[DISEASE CARDS] ========== UPDATING CARDS ==========');
+    console.log('[DISEASE CARDS] ========== UPDATING CARDS (BigQuery) ==========');
     console.log('[DISEASE CARDS] Days:', days);
     
     currentDiseasePeriod = days;
@@ -537,56 +857,80 @@ async function updateDiseaseCards(days) {
     // Update location indicator
     const locationEl = document.getElementById('diseaseCardsLocation');
     if (locationEl) {
-        locationEl.innerHTML = `<i class="fas fa-map-marker-alt mr-1"></i>${locationText}`;
+        locationEl.innerHTML = `<i class="fas fa-database mr-1"></i>${locationText} (BigQuery)`;
         console.log('[DISEASE CARDS] Updated location indicator');
     }
     
     try {
-        // Fetch respiratory data for the time period
+        // Fetch from BigQuery dashboard endpoint
         const url = state 
-            ? `/api/respiratory-timeseries?state=${encodeURIComponent(state)}&limit=${days * 2}`
-            : `/api/respiratory-timeseries?limit=${days * 2}`;
+            ? `/api/infectious-disease-dashboard?state=${encodeURIComponent(state)}&days=${days}`
+            : `/api/infectious-disease-dashboard?days=${days}`;
         
-        console.log('[DISEASE CARDS] Fetching:', url);
+        console.log('[DISEASE CARDS] Fetching BigQuery data:', url);
         const response = await fetch(url);
         console.log('[DISEASE CARDS] Response status:', response.status);
         const result = await response.json();
-        console.log('[DISEASE CARDS] API Result:', result);
+        console.log('[DISEASE CARDS] BigQuery Result status:', result.status);
         
-        if (result.status === 'success' && result.data && result.data.length > 0) {
-            console.log('[DISEASE CARDS] ✓ Got', result.data.length, 'data points');
-            // Group by disease type and calculate averages
-            const rsvData = result.data.filter(d => d.testtype);
-            console.log('[DISEASE CARDS] RSV data points:', rsvData.length);
+        if (result.status === 'success') {
+            console.log('[DISEASE CARDS] ✓ BigQuery data received');
             
-            if (rsvData.length > 0) {
-                // Calculate average positivity rate for RSV
-                const rsvPositivity = rsvData.slice(0, days).reduce((sum, d) => sum + (d.positivity_rate || 0), 0) / Math.min(days, rsvData.length);
-                console.log('[DISEASE CARDS] RSV positivity:', rsvPositivity);
+            // Process RSV data from NREVSS
+            if (result.nrevss_data && result.nrevss_data.length > 0) {
+                const avgRsvPositivity = result.nrevss_data.reduce((sum, d) => 
+                    sum + (d.pcr_percent_positive || 0), 0) / result.nrevss_data.length;
+                console.log('[DISEASE CARDS] RSV avg positivity from BigQuery:', avgRsvPositivity);
                 
-                // Update RSV card
                 updateDiseaseCard('rsv', {
-                    positivity: rsvPositivity,
+                    positivity: avgRsvPositivity,
                     name: 'RSV',
-                    color: 'blue'
+                    color: 'blue',
+                    trend: calculateTrend(result.nrevss_data, 'pcr_percent_positive')
                 });
             }
+            
+            // Process COVID data from respiratory_rates and hospitalizations
+            const covidRates = result.respiratory_rates?.filter(d => d.disease === 'COVID-19') || [];
+            const covidHosp = result.covid_hospitalizations || [];
+            
+            if (covidRates.length > 0 || covidHosp.length > 0) {
+                // Use hospitalization rate as primary metric
+                const avgCovidRate = covidHosp.length > 0
+                    ? covidHosp.reduce((sum, d) => sum + (d.weekly_rate || 0), 0) / covidHosp.length
+                    : covidRates.reduce((sum, d) => sum + (d.rate || 0), 0) / covidRates.length;
+                
+                console.log('[DISEASE CARDS] COVID avg rate from BigQuery:', avgCovidRate);
+                
+                updateDiseaseCard('covid', {
+                    positivity: avgCovidRate,
+                    name: 'COVID-19',
+                    color: 'emerald',
+                    trend: calculateTrend(covidHosp.length > 0 ? covidHosp : covidRates, 
+                                         covidHosp.length > 0 ? 'weekly_rate' : 'rate')
+                });
+            }
+            
+            // Process Flu data from respiratory_rates
+            const fluRates = result.respiratory_rates?.filter(d => d.disease === 'Influenza') || [];
+            
+            if (fluRates.length > 0) {
+                const avgFluRate = fluRates.reduce((sum, d) => sum + (d.rate || 0), 0) / fluRates.length;
+                console.log('[DISEASE CARDS] Flu avg rate from BigQuery:', avgFluRate);
+                
+                updateDiseaseCard('flu', {
+                    positivity: avgFluRate,
+                    name: 'Influenza',
+                    color: 'amber',
+                    trend: calculateTrend(fluRates, 'rate')
+                });
+            }
+            
+            console.log('[DISEASE CARDS] ✓ All cards updated with BigQuery data');
+            
         } else {
-            console.error('[DISEASE CARDS] ✗ No data in API response');
+            console.error('[DISEASE CARDS] ✗ BigQuery data fetch failed:', result.error);
         }
-        
-        // Update COVID and Flu with placeholder data (until we have real data sources)
-        updateDiseaseCard('covid', {
-            positivity: 2.3,
-            name: 'COVID-19',
-            color: 'emerald'
-        });
-        
-        updateDiseaseCard('flu', {
-            positivity: 5.8,
-            name: 'Influenza',
-            color: 'amber'
-        });
         
     } catch (error) {
         console.error('[DISEASE CARDS] ✗✗✗ ERROR ✗✗✗');
@@ -596,10 +940,29 @@ async function updateDiseaseCards(days) {
         // Show error state
         ['covid', 'flu', 'rsv'].forEach(disease => {
             document.getElementById(`${disease}Cases`).textContent = 'Error';
-            document.getElementById(`${disease}Trend`).innerHTML = '<i class="fas fa-exclamation-circle mr-1"></i>Unable to load data';
-            document.getElementById(`${disease}RiskBadge`).textContent = 'Unknown';
         });
     }
+}
+
+// Helper function to calculate trend
+function calculateTrend(data, field) {
+    if (!data || data.length < 2) return 'stable';
+    
+    // Sort by date
+    const sorted = data.sort((a, b) => new Date(a.date) - new Date(b.date));
+    const recent = sorted.slice(-7);  // Last 7 data points
+    const older = sorted.slice(-14, -7);  // Previous 7 data points
+    
+    if (recent.length === 0 || older.length === 0) return 'stable';
+    
+    const recentAvg = recent.reduce((sum, d) => sum + (d[field] || 0), 0) / recent.length;
+    const olderAvg = older.reduce((sum, d) => sum + (d[field] || 0), 0) / older.length;
+    
+    const change = ((recentAvg - olderAvg) / (olderAvg || 1)) * 100;
+    
+    if (change > 10) return 'increasing';
+    if (change < -10) return 'decreasing';
+    return 'stable';
 }
 
 /**
