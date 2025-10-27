@@ -2204,21 +2204,21 @@ async function loadSummaryCards() {
     console.log('[Summary Cards] Loading additional data...');
     
     try {
-        // Load wildfire data
-        console.log('[Summary Cards] Fetching wildfire data...');
-        const fireResponse = await fetch('/api/wildfires?limit=100');
+        // Load wildfire data - uses 'count' field from API
+        const fireUrl = currentState 
+            ? `/api/wildfires?state=${encodeURIComponent(currentState)}`
+            : `/api/wildfires`;
+        
+        console.log('[Summary Cards] Fetching wildfire data from:', fireUrl);
+        const fireResponse = await fetch(fireUrl);
         const fireData = await fireResponse.json();
         console.log('[Summary Cards] Fire data received:', fireData);
         
         const summaryFireEl = document.getElementById('summaryFire');
         if (summaryFireEl) {
-            if (fireData.status === 'success' && fireData.data && fireData.data.length > 0) {
-                summaryFireEl.textContent = fireData.data.length;
-                console.log('[Summary Cards] Fire count:', fireData.data.length);
-            } else {
-                summaryFireEl.textContent = '0';
-                console.log('[Summary Cards] No active fires');
-            }
+            // API returns 'count' field directly
+            summaryFireEl.textContent = fireData.count || '0';
+            console.log('[Summary Cards] Fire count:', fireData.count || '0');
         }
     } catch (error) {
         console.error('[Summary Cards] Error loading fire data:', error);
@@ -2255,21 +2255,21 @@ async function loadSummaryCards() {
     }
     
     try {
-        // Load alerts data
-        console.log('[Summary Cards] Fetching alerts data...');
-        const alertsResponse = await fetch('/api/alerts');
+        // Load alerts data - uses 'count' field from API
+        const alertsUrl = currentState 
+            ? `/api/alerts?state=${encodeURIComponent(currentState)}`
+            : `/api/alerts`;
+        
+        console.log('[Summary Cards] Fetching alerts data from:', alertsUrl);
+        const alertsResponse = await fetch(alertsUrl);
         const alertsData = await alertsResponse.json();
         console.log('[Summary Cards] Alerts data received:', alertsData);
         
         const summaryAlertsEl = document.getElementById('summaryAlerts');
         if (summaryAlertsEl) {
-            if (alertsData.status === 'success' && alertsData.alerts && alertsData.alerts.length > 0) {
-                summaryAlertsEl.textContent = alertsData.alerts.length;
-                console.log('[Summary Cards] Alerts count:', alertsData.alerts.length);
-            } else {
-                summaryAlertsEl.textContent = '0';
-                console.log('[Summary Cards] No active alerts');
-            }
+            // API returns 'count' field directly
+            summaryAlertsEl.textContent = alertsData.count || '0';
+            console.log('[Summary Cards] Alerts count:', alertsData.count || '0');
         }
     } catch (error) {
         console.error('[Summary Cards] Error loading alerts data:', error);
