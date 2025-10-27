@@ -222,7 +222,7 @@
                             <i class="fas fa-cloud-sun text-sky-600 text-xl"></i>
                         </div>
                         <p class="text-gray-500 text-xs font-semibold uppercase tracking-wide">Weather</p>
-                        <h3 id="summaryTemp" class="text-3xl font-bold text-navy-700 mt-1">--┬░</h3>
+                        <h3 id="summaryTemp" class="text-3xl font-bold text-navy-700 mt-1">--°</h3>
                         <p class="text-xs text-gray-400 mt-1">Temperature</p>
                     </div>
                 </div>
@@ -577,7 +577,7 @@
                     <div class="flex justify-between items-center mb-2">
                         <p class="text-sm text-gray-600">
                             <i class="fas fa-info-circle mr-1"></i>
-                            <span class="hidden sm:inline">Hover for details ΓÇó Scroll to zoom ΓÇó </span>
+                            <span class="hidden sm:inline">Hover for details • Scroll to zoom • </span>
                             <button onclick="resetChartZoom()" class="text-emerald-600 hover:text-emerald-700 font-medium underline">Reset Zoom</button>
                         </p>
                         <div class="flex items-center space-x-3 text-xs">
@@ -617,7 +617,7 @@
                 <div class="flex justify-between items-center mb-4">
                     <p class="text-sm text-gray-600">
                         <i class="fas fa-info-circle mr-1"></i>
-                        <span class="hidden sm:inline">Pan to explore ΓÇó Zoom for details ΓÇó </span>
+                        <span class="hidden sm:inline">Pan to explore • Zoom for details • </span>
                         <button onclick="resetMapView()" class="text-emerald-600 hover:text-emerald-700 font-medium underline">Reset View</button>
                     </p>
                     <div class="flex items-center space-x-3 text-xs">
@@ -666,14 +666,14 @@
                             </div>
                         </div>
                         <div class="text-right">
-                            <div id="weatherIcon" class="text-5xl mb-2">ΓÿÇ∩╕Å</div>
+                            <div id="weatherIcon" class="text-5xl mb-2">☀️</div>
                             <!-- Temperature Unit Toggle -->
                             <div class="flex gap-1 bg-white/20 rounded-lg p-1 mt-2">
                                 <button onclick="setTemperatureUnit('F')" id="tempUnitF" class="px-3 py-1 rounded bg-white text-blue-600 font-semibold text-sm transition-all">
-                                    ┬░F
+                                    °F
                                 </button>
                                 <button onclick="setTemperatureUnit('C')" id="tempUnitC" class="px-3 py-1 rounded text-white font-semibold text-sm transition-all hover:bg-white/20">
-                                    ┬░C
+                                    °C
                                 </button>
                             </div>
                         </div>
@@ -685,8 +685,8 @@
                                 <i class="fas fa-temperature-high text-2xl"></i>
                                 <span class="text-sm opacity-90">Temperature</span>
                             </div>
-                            <div id="temperature" class="text-4xl font-bold">--┬░F</div>
-                            <div id="feelsLike" class="text-sm opacity-75 mt-1">Feels like --┬░F</div>
+                            <div id="temperature" class="text-4xl font-bold">--°F</div>
+                            <div id="feelsLike" class="text-sm opacity-75 mt-1">Feels like --°F</div>
                         </div>
                         
                         <div class="bg-white/10 backdrop-blur-lg rounded-2xl p-4 border border-white/20">
@@ -737,7 +737,7 @@
                             </div>
                         </div>
                         <div class="text-right">
-                            <div id="pollenIcon" class="text-5xl mb-2">≡ƒî╕</div>
+                            <div id="pollenIcon" class="text-5xl mb-2">🌸</div>
                         </div>
                     </div>
                     
