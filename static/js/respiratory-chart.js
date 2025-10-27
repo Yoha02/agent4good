@@ -926,6 +926,14 @@ async function updateDiseaseCards(days) {
                     trend: calculateTrend(covidHosp.length > 0 ? covidHosp : covidRates, 
                                          covidHosp.length > 0 ? 'weekly_rate' : 'rate')
                 });
+            } else {
+                console.log('[DISEASE CARDS] No COVID data available - showing 0');
+                updateDiseaseCard('covid', { 
+                    positivity: 0, 
+                    name: 'COVID-19', 
+                    color: 'emerald', 
+                    trend: 'stable' 
+                });
             }
             
             // Process Flu data from respiratory_rates
