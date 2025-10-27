@@ -989,25 +989,33 @@ def agent_chat():
                 'error': 'No question provided'
             }), 400
         
-        # Get location context from request
-        location_context_obj = request_data.get('location_context', None)
+        # Get location context from request - ENHANCED with better fallback logic
+        state = request_data.get('state', None)
+        city = request_data.get('city', None)
+        zipcode = request_data.get('zipcode', None)
+        county = request_data.get('county', None)
         
-        # Extract location fields safely
-        if location_context_obj:
-            state = location_context_obj.get('state', None)
-            city = location_context_obj.get('city', None)
-            zipcode = location_context_obj.get('zipCode', None)
-        else:
-            # Fallback to top-level fields
-            state = request_data.get('state', None)
-            city = request_data.get('city', None)
-            zipcode = request_data.get('zipcode', None)
+        # Get the stored location_context object from frontend
+        location_context_data = request_data.get('location_context', None)
+        
+        # Extract location info from location_context if available (fallback)
+        if location_context_data and isinstance(location_context_data, dict):
+            # Override with stored location data if available
+            if not zipcode and location_context_data.get('zipCode'):
+                zipcode = location_context_data.get('zipCode')
+            if not city and location_context_data.get('city'):
+                city = location_context_data.get('city')
+            if not state and location_context_data.get('state'):
+                state = location_context_data.get('state')
+            if not county and location_context_data.get('county'):
+                county = location_context_data.get('county')
         
         days = int(request_data.get('days', 7))
         time_frame = request_data.get('time_frame', None)
         
         # Debug: Log received parameters
-        print(f"[AGENT-CHAT] Received parameters: state={state}, city={city}, zipcode={zipcode}, days={days}, time_frame={time_frame}, persona={persona_type}")
+        print(f"[AGENT-CHAT] Received parameters: state={state}, city={city}, county={county}, zipcode={zipcode}, days={days}, time_frame={time_frame}, persona={persona_type}")
+        print(f"[AGENT-CHAT] Location context data: {location_context_data}")
         
         # Build location context string for AI
         location_context = None
@@ -1205,59 +1213,85 @@ def agent_chat():
         except Exception as e:
             print(f"[CHATBOT] Error fetching detailed pollutants: {e}")
         
-        # Get historical air quality data from BigQuery
+        # Get historical air quality data from BigQuery with enhanced filtering
+        print(f"[CHATBOT] Querying BigQuery with: state={state}, city={city}, county={county}, days={days}")
         historical_data = agent.query_air_quality_data(state=state, days=days)
         
-        # Build comprehensive context for AI
-        context_parts = [f"User is asking about {location_context}." if location_context else ""]
+        # Build comprehensive context for AI with clear data source prioritization
+        context_parts = []
         
-        # Add current air quality info
+        # PRIORITY 1: Current location context
+        if location_context:
+            context_parts.append(f"User is asking about {location_context}.")
+        
+        # PRIORITY 2: Real-time current air quality from EPA AirNow API (TODAY'S DATA)
         if environmental_data['air_quality']:
             aqi_data = environmental_data['air_quality']
-            if isinstance(aqi_data, list) and len(aqi_data) > 0:
-                aqi = aqi_data[0].get('AQI', 'N/A')
-                category = aqi_data[0].get('Category', {}).get('Name', 'Unknown')
-                context_parts.append(f"Current AQI: {aqi} ({category})")
+            if isinstance(aqi_data, dict) and aqi_data.get('success') and aqi_data.get('data'):
+                # Handle new format from EPA service
+                readings = aqi_data['data']
+                if readings and len(readings) > 0:
+                    context_parts.append("**CURRENT REAL-TIME AIR QUALITY DATA (from EPA AirNow API - Today's data):**")
+                    for reading in readings[:5]:  # Show first 5 readings
+                        aqi = reading.get('AQI', 'N/A')
+                        category = reading.get('Category', {}).get('Name', 'Unknown')
+                        parameter = reading.get('ParameterName', 'Unknown')
+                        context_parts.append(f"  - {parameter}: AQI {aqi} ({category})")
+            elif isinstance(aqi_data, list) and len(aqi_data) > 0:
+                # Handle legacy format
+                context_parts.append("**CURRENT REAL-TIME AIR QUALITY DATA (from EPA AirNow API - Today's data):**")
+                for reading in aqi_data[:5]:
+                    aqi = reading.get('AQI', 'N/A')
+                    category = reading.get('Category', {}).get('Name', 'Unknown')
+                    parameter = reading.get('ParameterName', reading.get('parameter', 'Unknown'))
+                    context_parts.append(f"  - {parameter}: AQI {aqi} ({category})")
         
-        # Add weather info
+        # PRIORITY 3: Current weather conditions
         if environmental_data['weather']:
             weather = environmental_data['weather']
+            context_parts.append("**CURRENT WEATHER:**")
             temp = weather.get('temperature', {})
             if temp:
                 temp_f = temp.get('value', 'N/A')
-                context_parts.append(f"Temperature: {temp_f}°F")
+                context_parts.append(f"  - Temperature: {temp_f}°F")
             humidity = weather.get('relativeHumidity', 'N/A')
             if humidity != 'N/A':
-                context_parts.append(f"Humidity: {humidity}%")
+                context_parts.append(f"  - Humidity: {humidity}%")
         
-        # Add pollen info
+        # PRIORITY 4: Current pollen levels
         if environmental_data['pollen']:
             pollen = environmental_data['pollen']
             pollen_index = pollen.get('index', {}).get('value', 'N/A')
             if pollen_index != 'N/A':
-                context_parts.append(f"Pollen Index: {pollen_index}")
+                context_parts.append(f"**CURRENT POLLEN INDEX:** {pollen_index}")
             # Add specific pollen types
             types = pollen.get('types', [])
             if types:
                 high_pollen = [t['name'] for t in types if t.get('index', {}).get('value', 0) >= 4]
                 if high_pollen:
-                    context_parts.append(f"High pollen: {', '.join(high_pollen)}")
+                    context_parts.append(f"  - High pollen types: {', '.join(high_pollen)}")
         
-        # Add detailed pollutants
+        # PRIORITY 5: Current detailed pollutants from EPA AQS API
         if environmental_data['detailed_pollutants']:
             pollutants = environmental_data['detailed_pollutants']
-            pollutant_summary = []
-            for pollutant in pollutants:
+            context_parts.append("**CURRENT DETAILED POLLUTANTS (EPA AQS API):**")
+            for pollutant in pollutants[:5]:  # First 5
                 param = pollutant.get('parameter', 'Unknown')
                 value = pollutant.get('value', 'N/A')
                 unit = pollutant.get('unit', '')
-                pollutant_summary.append(f"{param}: {value} {unit}")
-            if pollutant_summary:
-                context_parts.append(f"Pollutants: {', '.join(pollutant_summary[:5])}")  # First 5
+                context_parts.append(f"  - {param}: {value} {unit}")
         
-        # Combine all context
-        environmental_context = " | ".join([p for p in context_parts if p])
-        enhanced_question = f"{environmental_context}\n\nQuestion: {question}"
+        # PRIORITY 6: Historical trends (BigQuery data - for context only, NOT current data)
+        if historical_data and len(historical_data) > 0:
+            context_parts.append(f"**HISTORICAL TREND DATA (for reference, last {days} days):** {len(historical_data)} data points available from BigQuery (note: this is historical data only, use real-time data above for current conditions)")
+        
+        # Combine all context with clear separation
+        environmental_context = "\n".join([p for p in context_parts if p])
+        enhanced_question = f"""IMPORTANT: When answering questions about CURRENT or REAL-TIME air quality, use ONLY the real-time data from EPA AirNow API marked as "CURRENT REAL-TIME AIR QUALITY DATA" above. The BigQuery historical data is outdated and should only be used for trend analysis.
+
+{environmental_context}
+
+Question: {question}"""
         
         print(f"[AGENT-CHAT] Using Gemini fallback")
         print(f"[AGENT-CHAT] Enhanced context: {environmental_context}")
@@ -2186,7 +2220,7 @@ def get_air_quality_detailed():
         zipcode = request.args.get('zipCode')
         city = request.args.get('city')
         state = request.args.get('state')
-        days = int(request.args.get('days', 7))
+        days = min(int(request.args.get('days', 7)), 30)  # Limit to max 30 days to avoid timeout
         
         # Check for custom date range
         start_date_param = request.args.get('startDate')
@@ -2787,6 +2821,884 @@ def post_to_twitter():
         }), 500
 
 # ===== END PSA VIDEO ENDPOINTS =====
+
+# ===== ENVIRONMENTAL RISK API ENDPOINTS =====
+
+@app.route('/api/wildfires')
+def get_wildfires():
+    """Get wildfire incidents from BigQuery"""
+    try:
+        state = request.args.get('state', '')
+        
+        if not bq_client:
+            print("[WILDFIRE] No BigQuery client, returning demo data")
+            return jsonify({'count': 0, 'status': 'no_data'})
+        
+        # Query wildfire incidents table
+        query = f"""
+            SELECT COUNT(*) as incident_count
+            FROM `qwiklabs-gcp-00-4a7d408c735c.CrowdsourceData.table_wildfire_incidents`
+            WHERE state = @state
+            AND status = 'Active'
+        """
+        
+        job_config = bigquery.QueryJobConfig(
+            query_parameters=[
+                bigquery.ScalarQueryParameter("state", "STRING", state)
+            ]
+        )
+        
+        query_job = bq_client.query(query, job_config=job_config)
+        results = list(query_job.result())
+        
+        count = results[0].incident_count if results else 0
+        print(f"[WILDFIRE] Found {count} active incidents in {state}")
+        
+        return jsonify({
+            'count': count,
+            'status': 'success',
+            'state': state
+        })
+        
+    except Exception as e:
+        print(f"[WILDFIRE ERROR] {e}")
+        return jsonify({'count': 0, 'status': 'error', 'error': str(e)})
+
+@app.route('/api/covid')
+def get_covid():
+    """Get COVID-19 metrics from BigQuery"""
+    
+    # HHS Region mapping for states
+    STATE_TO_HHS_REGION = {
+        # Region 1: New England
+        'Connecticut': 1, 'Maine': 1, 'Massachusetts': 1, 'New Hampshire': 1, 'Rhode Island': 1, 'Vermont': 1,
+        # Region 2: New York/New Jersey
+        'New Jersey': 2, 'New York': 2, 'Puerto Rico': 2, 'Virgin Islands': 2,
+        # Region 3: Mid-Atlantic
+        'Delaware': 3, 'District of Columbia': 3, 'Maryland': 3, 'Pennsylvania': 3, 'Virginia': 3, 'West Virginia': 3,
+        # Region 4: Southeast
+        'Alabama': 4, 'Florida': 4, 'Georgia': 4, 'Kentucky': 4, 'Mississippi': 4, 'North Carolina': 4, 'South Carolina': 4, 'Tennessee': 4,
+        # Region 5: Midwest
+        'Illinois': 5, 'Indiana': 5, 'Michigan': 5, 'Minnesota': 5, 'Ohio': 5, 'Wisconsin': 5,
+        # Region 6: South Central
+        'Arkansas': 6, 'Louisiana': 6, 'New Mexico': 6, 'Oklahoma': 6, 'Texas': 6,
+        # Region 7: Central
+        'Iowa': 7, 'Kansas': 7, 'Missouri': 7, 'Nebraska': 7,
+        # Region 8: Mountain
+        'Colorado': 8, 'Montana': 8, 'North Dakota': 8, 'South Dakota': 8, 'Utah': 8, 'Wyoming': 8,
+        # Region 9: Pacific
+        'Arizona': 9, 'California': 9, 'Hawaii': 9, 'Nevada': 9, 'American Samoa': 9, 'Guam': 9, 'Northern Mariana Islands': 9,
+        # Region 10: Northwest
+        'Alaska': 10, 'Idaho': 10, 'Oregon': 10, 'Washington': 10
+    }
+    
+    try:
+        state = request.args.get('state', '')
+        county = request.args.get('county', '')
+        debug = request.args.get('debug', 'false').lower() == 'true'
+        
+        if not bq_client:
+            print("[COVID] No BigQuery client, returning demo data")
+            return jsonify({'cases_per_100k': '-', 'status': 'no_data'})
+        
+        # Map state to HHS region
+        region = STATE_TO_HHS_REGION.get(state, None)
+        print(f"[COVID] Querying for state='{state}' (HHS Region {region}), county='{county}'")
+        
+        # If debug mode, show table structure
+        if debug:
+            sample_query = """
+                SELECT *
+                FROM `qwiklabs-gcp-00-4a7d408c735c.CrowdsourceData.cdc_covid_data`
+                LIMIT 5
+            """
+            sample_job = bq_client.query(sample_query)
+            sample_results = list(sample_job.result())
+            
+            if sample_results:
+                # Get column names and sample data
+                columns = list(sample_results[0].keys())
+                sample_data = [dict(row) for row in sample_results]
+                
+                return jsonify({
+                    'debug': True,
+                    'columns': columns,
+                    'sample_data': sample_data,
+                    'total_rows': len(sample_results)
+                })
+        
+        # First, check if table has any data
+        check_query = """
+            SELECT COUNT(*) as total_count
+            FROM `qwiklabs-gcp-00-4a7d408c735c.CrowdsourceData.cdc_covid_data`
+        """
+        
+        try:
+            check_job = bq_client.query(check_query)
+            check_results = list(check_job.result())
+            total_count = check_results[0].total_count if check_results else 0
+            print(f"[COVID] Total rows in table: {total_count}")
+        except Exception as check_error:
+            print(f"[COVID] Error checking table: {check_error}")
+            # Table might not exist, return demo data
+            return jsonify({'cases_per_100k': '15.2', 'status': 'demo', 'error': str(check_error)})
+        
+        if total_count == 0:
+            print("[COVID] Table is empty, returning demo data")
+            return jsonify({'cases_per_100k': '12.5', 'status': 'demo_empty_table'})
+        
+        # Query COVID metrics table using HHS region
+        if region:
+            query = """
+                SELECT cases_per_100k
+                FROM `qwiklabs-gcp-00-4a7d408c735c.CrowdsourceData.cdc_covid_data`
+                WHERE region = @region
+                ORDER BY date DESC
+                LIMIT 1
+            """
+            params = [bigquery.ScalarQueryParameter("region", "INTEGER", region)]
+            job_config = bigquery.QueryJobConfig(query_parameters=params)
+        else:
+            # No region found for state, get national average or return demo data
+            print(f"[COVID] No HHS region found for state '{state}'")
+            query = """
+                SELECT AVG(cases_per_100k) as cases_per_100k
+                FROM `qwiklabs-gcp-00-4a7d408c735c.CrowdsourceData.cdc_covid_data`
+                WHERE date = (SELECT MAX(date) FROM `qwiklabs-gcp-00-4a7d408c735c.CrowdsourceData.cdc_covid_data`)
+            """
+            job_config = bigquery.QueryJobConfig()
+        
+        query_job = bq_client.query(query, job_config=job_config)
+        results = list(query_job.result())
+        
+        if results and len(results) > 0:
+            cases_per_100k = round(results[0].cases_per_100k, 1) if results[0].cases_per_100k else '-'
+            print(f"[COVID] Found {cases_per_100k} cases per 100K for HHS Region {region} ({state})")
+        else:
+            print(f"[COVID] No data found for HHS Region {region} ({state}), returning demo data")
+            cases_per_100k = '18.7'  # Demo data
+        
+        return jsonify({
+            'cases_per_100k': cases_per_100k,
+            'status': 'success' if results else 'demo',
+            'state': state,
+            'region': region
+        })
+        
+    except Exception as e:
+        print(f"[COVID ERROR] {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'cases_per_100k': '20.3', 'status': 'error', 'error': str(e)})
+
+@app.route('/api/respiratory-timeseries')
+def get_respiratory_timeseries():
+    """Get respiratory infection time series data for charting (NREVSS data)"""
+    print("\n" + "=" * 80)
+    print("≡ƒöÑ RESPIRATORY API CALLED - CODE VERSION 3.0 WITH DATE FIX")
+    print("=" * 80 + "\n")
+    
+    try:
+        state = request.args.get('state', '')
+        limit = int(request.args.get('limit', 365))  # Default to 1 year of data
+        
+        print(f"[RESPIRATORY TIMESERIES] Fetching data for state='{state}', limit={limit}")
+        
+        # Map state to HHS region
+        STATE_TO_HHS_REGION = {
+            # Region 1: New England
+            'Connecticut': 1, 'Maine': 1, 'Massachusetts': 1, 'New Hampshire': 1, 'Rhode Island': 1, 'Vermont': 1,
+            # Region 2: New York/New Jersey
+            'New Jersey': 2, 'New York': 2, 'Puerto Rico': 2, 'Virgin Islands': 2,
+            # Region 3: Mid-Atlantic
+            'Delaware': 3, 'District of Columbia': 3, 'Maryland': 3, 'Pennsylvania': 3, 'Virginia': 3, 'West Virginia': 3,
+            # Region 4: Southeast
+            'Alabama': 4, 'Florida': 4, 'Georgia': 4, 'Kentucky': 4, 'Mississippi': 4, 'North Carolina': 4, 'South Carolina': 4, 'Tennessee': 4,
+            # Region 5: Midwest
+            'Illinois': 5, 'Indiana': 5, 'Michigan': 5, 'Minnesota': 5, 'Ohio': 5, 'Wisconsin': 5,
+            # Region 6: South Central
+            'Arkansas': 6, 'Louisiana': 6, 'New Mexico': 6, 'Oklahoma': 6, 'Texas': 6,
+            # Region 7: Central
+            'Iowa': 7, 'Kansas': 7, 'Missouri': 7, 'Nebraska': 7,
+            # Region 8: Mountain
+            'Colorado': 8, 'Montana': 8, 'North Dakota': 8, 'South Dakota': 8, 'Utah': 8, 'Wyoming': 8,
+            # Region 9: Pacific
+            'Arizona': 9, 'California': 9, 'Hawaii': 9, 'Nevada': 9,
+            # Region 10: Northwest
+            'Alaska': 10, 'Idaho': 10, 'Oregon': 10, 'Washington': 10
+        }
+        
+        region = STATE_TO_HHS_REGION.get(state, None)
+        
+        if not region:
+            print(f"[RESPIRATORY TIMESERIES] No HHS region found for state '{state}', using national data")
+        
+        if not bq_client:
+            print("[RESPIRATORY TIMESERIES] No BigQuery client, returning demo data")
+            return jsonify({
+                'data': [],
+                'status': 'no_bq_client',
+                'error': 'BigQuery client not initialized'
+            })
+        
+        # Query time series data from BigQuery
+        if region:
+            query = """
+                SELECT 
+                    FORMAT_DATE('%Y-%m-%d', SAFE.PARSE_DATE('%d%b%Y', repweekdate)) AS date,
+                    testtype,
+                    SUM(rsvpos) as rsvpos,
+                    SUM(rsvtest) as rsvtest,
+                    AVG(positivity_rate) as positivity_rate
+                FROM `qwiklabs-gcp-00-4a7d408c735c.CrowdsourceData.nrevss_respiratory_data`
+                WHERE hhs_region = @region
+                GROUP BY date, testtype
+                HAVING date IS NOT NULL
+                ORDER BY date DESC
+                LIMIT @limit
+            """
+            params = [
+                bigquery.ScalarQueryParameter("region", "INTEGER", region),
+                bigquery.ScalarQueryParameter("limit", "INTEGER", limit)
+            ]
+            job_config = bigquery.QueryJobConfig(query_parameters=params)
+        else:
+            # National aggregate
+            query = """
+                SELECT 
+                    FORMAT_DATE('%Y-%m-%d', SAFE.PARSE_DATE('%d%b%Y', repweekdate)) AS date,
+                    testtype,
+                    SUM(rsvpos) as rsvpos,
+                    SUM(rsvtest) as rsvtest,
+                    AVG(positivity_rate) as positivity_rate
+                FROM `qwiklabs-gcp-00-4a7d408c735c.CrowdsourceData.nrevss_respiratory_data`
+                GROUP BY date, testtype
+                HAVING date IS NOT NULL
+                ORDER BY date DESC
+                LIMIT @limit
+            """
+            params = [bigquery.ScalarQueryParameter("limit", "INTEGER", limit)]
+            job_config = bigquery.QueryJobConfig(query_parameters=params)
+        
+        try:
+            query_job = bq_client.query(query, job_config=job_config)
+            results = list(query_job.result())
+            
+            # Transform data for charting
+            data = []
+            for row in results:
+                # date is already in ISO format from BigQuery COALESCE
+                date_str = row.date if hasattr(row, 'date') and row.date else None
+                
+                data.append({
+                    'date': date_str,
+                    'testtype': row.testtype,
+                    'positives': int(row.rsvpos) if row.rsvpos else 0,
+                    'tests': int(row.rsvtest) if row.rsvtest else 0,
+                    'positivity_rate': float(row.positivity_rate) if row.positivity_rate else 0.0
+                })
+            
+            # Print first item for debugging
+            if data:
+                print(f"[DEBUG] First data item: {data[0]}")
+            
+            # Sort by date ascending for charting (ISO strings sort lexicographically)
+            data = [d for d in data if d['date']]
+            data.sort(key=lambda x: x['date'])
+            
+            print(f"[RESPIRATORY TIMESERIES] Returning {len(data)} data points")
+            print(f"[RESPIRATORY TIMESERIES] Sample data (first 3 items): {data[:3]}")
+            
+            return jsonify({
+                'data': data,
+                'state': state,
+                'region': region,
+                'status': 'success',
+                'count': len(data)
+            })
+            
+        except Exception as e:
+            print(f"[RESPIRATORY TIMESERIES] BigQuery query failed: {e}")
+            import traceback
+            traceback.print_exc()
+            return jsonify({
+                'data': [],
+                'status': 'error',
+                'error': str(e)
+            })
+        
+    except Exception as e:
+        print(f"[RESPIRATORY TIMESERIES ERROR] {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'data': [],
+            'status': 'error',
+            'error': str(e)
+        })
+
+@app.route('/api/respiratory')
+def get_respiratory():
+    """Get respiratory infection data from BigQuery (NREVSS data)"""
+    try:
+        state = request.args.get('state', '')
+        
+        print(f"[RESPIRATORY] Fetching data for state='{state}'")
+        
+        # Map state to HHS region
+        STATE_TO_HHS_REGION = {
+            # Region 1: New England
+            'Connecticut': 1, 'Maine': 1, 'Massachusetts': 1, 'New Hampshire': 1, 'Rhode Island': 1, 'Vermont': 1,
+            # Region 2: New York/New Jersey
+            'New Jersey': 2, 'New York': 2, 'Puerto Rico': 2, 'Virgin Islands': 2,
+            # Region 3: Mid-Atlantic
+            'Delaware': 3, 'District of Columbia': 3, 'Maryland': 3, 'Pennsylvania': 3, 'Virginia': 3, 'West Virginia': 3,
+            # Region 4: Southeast
+            'Alabama': 4, 'Florida': 4, 'Georgia': 4, 'Kentucky': 4, 'Mississippi': 4, 'North Carolina': 4, 'South Carolina': 4, 'Tennessee': 4,
+            # Region 5: Midwest
+            'Illinois': 5, 'Indiana': 5, 'Michigan': 5, 'Minnesota': 5, 'Ohio': 5, 'Wisconsin': 5,
+            # Region 6: South Central
+            'Arkansas': 6, 'Louisiana': 6, 'New Mexico': 6, 'Oklahoma': 6, 'Texas': 6,
+            # Region 7: Central
+            'Iowa': 7, 'Kansas': 7, 'Missouri': 7, 'Nebraska': 7,
+            # Region 8: Mountain
+            'Colorado': 8, 'Montana': 8, 'North Dakota': 8, 'South Dakota': 8, 'Utah': 8, 'Wyoming': 8,
+            # Region 9: Pacific
+            'Arizona': 9, 'California': 9, 'Hawaii': 9, 'Nevada': 9,
+            # Region 10: Northwest
+            'Alaska': 10, 'Idaho': 10, 'Oregon': 10, 'Washington': 10
+        }
+        
+        region = STATE_TO_HHS_REGION.get(state, None)
+        
+        if not region:
+            print(f"[RESPIRATORY] No HHS region found for state '{state}', using national average")
+        
+        if not bq_client:
+            print("[RESPIRATORY] No BigQuery client, returning demo data")
+            return jsonify({
+                'diseases': [
+                    {'name': 'COVID-19', 'cases': 127, 'trend': 'decreasing', 'trend_icon': 'Γåô', 'percent_change': 15, 'risk_level': 'Low'},
+                    {'name': 'Influenza', 'cases': 453, 'trend': 'increasing', 'trend_icon': 'Γåæ', 'percent_change': 8, 'risk_level': 'Moderate'},
+                    {'name': 'RSV', 'cases': 892, 'trend': 'stable', 'trend_icon': 'ΓåÆ', 'percent_change': 0, 'risk_level': 'Monitor'}
+                ],
+                'status': 'no_bq_client'
+            })
+        
+        diseases_data = []
+        
+        # Query RSV data from BigQuery
+        if region:
+            query = """
+                SELECT 
+                    repweekdate,
+                    rsvpos,
+                    rsvtest,
+                    positivity_rate
+                FROM `qwiklabs-gcp-00-4a7d408c735c.CrowdsourceData.nrevss_respiratory_data`
+                WHERE hhs_region = @region
+                ORDER BY repweekdate DESC
+                LIMIT 10
+            """
+            params = [bigquery.ScalarQueryParameter("region", "INTEGER", region)]
+            job_config = bigquery.QueryJobConfig(query_parameters=params)
+        else:
+            # National average
+            query = """
+                SELECT 
+                    repweekdate,
+                    AVG(rsvpos) as rsvpos,
+                    AVG(rsvtest) as rsvtest,
+                    AVG(positivity_rate) as positivity_rate
+                FROM `qwiklabs-gcp-00-4a7d408c735c.CrowdsourceData.nrevss_respiratory_data`
+                GROUP BY repweekdate
+                ORDER BY repweekdate DESC
+                LIMIT 10
+            """
+            job_config = bigquery.QueryJobConfig()
+        
+        try:
+            query_job = bq_client.query(query, job_config=job_config)
+            results = list(query_job.result())
+            
+            if results and len(results) >= 2:
+                # Calculate 7-week average and trend
+                recent_rsv = [int(row.rsvpos) for row in results[:7] if row.rsvpos and row.rsvpos > 0]
+                
+                if recent_rsv and len(recent_rsv) >= 2:
+                    avg_rsv = sum(recent_rsv) / len(recent_rsv)
+                    last_week = recent_rsv[0]
+                    prev_avg = sum(recent_rsv[1:]) / len(recent_rsv[1:])
+                    percent_change = ((last_week - prev_avg) / prev_avg * 100) if prev_avg > 0 else 0
+                    
+                    if last_week > prev_avg * 1.1:
+                        trend = 'increasing'
+                        trend_icon = 'Γåæ'
+                    elif last_week < prev_avg * 0.9:
+                        trend = 'decreasing'
+                        trend_icon = 'Γåô'
+                    else:
+                        trend = 'stable'
+                        trend_icon = 'ΓåÆ'
+                    
+                    diseases_data.append({
+                        'name': 'RSV',
+                        'full_name': 'Respiratory Syncytial Virus',
+                        'cases': round(avg_rsv),
+                        'trend': trend,
+                        'trend_icon': trend_icon,
+                        'percent_change': round(abs(percent_change), 1),
+                        'risk_level': 'High' if avg_rsv > 500 else 'Moderate' if avg_rsv > 200 else 'Low',
+                        'data_source': 'BigQuery'
+                    })
+                    
+                    print(f"[RESPIRATORY] RSV from BigQuery: {avg_rsv:.0f} avg detections, {trend} ({percent_change:+.1f}%)")
+            
+        except Exception as e:
+            print(f"[RESPIRATORY] BigQuery query failed: {e}")
+            import traceback
+            traceback.print_exc()
+        
+        # Add COVID-19 and Influenza placeholders
+        diseases_data.extend([
+            {
+                'name': 'COVID-19',
+                'full_name': 'COVID-19',
+                'cases': 127,
+                'trend': 'decreasing',
+                'trend_icon': 'Γåô',
+                'percent_change': 15,
+                'risk_level': 'Low',
+                'note': 'Use /api/covid for real-time data'
+            },
+            {
+                'name': 'Influenza',
+                'full_name': 'Influenza',
+                'cases': 453,
+                'trend': 'increasing',
+                'trend_icon': 'Γåæ',
+                'percent_change': 8,
+                'risk_level': 'Moderate',
+                'note': 'Add flu dataset'
+            }
+        ])
+        
+        return jsonify({
+            'diseases': diseases_data,
+            'status': 'success',
+            'state': state,
+            'hhs_region': region,
+            'data_source': 'BigQuery NREVSS'
+        })
+        
+    except Exception as e:
+        print(f"[RESPIRATORY ERROR] {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'diseases': [
+                {'name': 'COVID-19', 'cases': 127, 'trend': 'decreasing', 'trend_icon': 'Γåô', 'percent_change': 15, 'risk_level': 'Low'},
+                {'name': 'Influenza', 'cases': 453, 'trend': 'increasing', 'trend_icon': 'Γåæ', 'percent_change': 8, 'risk_level': 'Moderate'},
+                {'name': 'RSV', 'cases': 892, 'trend': 'stable', 'trend_icon': 'ΓåÆ', 'percent_change': 0, 'risk_level': 'Monitor'}
+            ],
+            'status': 'error',
+            'error': str(e)
+        })
+
+@app.route('/api/respiratory-disease-rates')
+def get_respiratory_disease_rates():
+    """Get respiratory disease rates from the new BigQuery table (RSV, COVID-19, Flu)"""
+    print("\n" + "=" * 80)
+    print("≡ƒªá RESPIRATORY DISEASE RATES API CALLED")
+    print("=" * 80 + "\n")
+    
+    try:
+        state = request.args.get('state', '')
+        geography = request.args.get('geography', 'United States')  # Default to national
+        disease = request.args.get('disease', 'all')  # 'RSV', 'COVID-19', 'Influenza', or 'all'
+        limit = int(request.args.get('limit', 52))  # Default to 1 year (52 weeks)
+        
+        print(f"[RESPIRATORY RATES] Fetching data for geography='{geography}', disease='{disease}', limit={limit}")
+        
+        if not bq_client:
+            print("[RESPIRATORY RATES] No BigQuery client, returning error")
+            return jsonify({
+                'data': [],
+                'status': 'no_bq_client',
+                'error': 'BigQuery client not initialized'
+            })
+        
+        # Build query based on parameters
+        where_clauses = ["week_end_date IS NOT NULL"]
+        
+        if geography and geography != 'United States':
+            where_clauses.append(f"geography = '{geography}'")
+        else:
+            where_clauses.append("geography = 'United States'")
+        
+        if disease != 'all':
+            where_clauses.append(f"disease = '{disease}'")
+        
+        where_clause = " AND ".join(where_clauses)
+        
+        query = f"""
+            SELECT 
+                week_end_date,
+                disease,
+                age_category,
+                rate,
+                lower_ci,
+                upper_ci,
+                cumulative_rate,
+                mmwryear,
+                mmwrweek,
+                geography
+            FROM `qwiklabs-gcp-00-4a7d408c735c.CrowdsourceData.respiratory_disease_rates`
+            WHERE {where_clause}
+            ORDER BY week_end_date DESC, disease
+            LIMIT {limit * 3}
+        """
+        
+        try:
+            query_job = bq_client.query(query)
+            results = list(query_job.result())
+            
+            # Transform data for charting
+            data = []
+            for row in results:
+                data.append({
+                    'date': str(row.week_end_date) if row.week_end_date else None,
+                    'disease': row.disease,
+                    'age_category': row.age_category,
+                    'rate': float(row.rate) if row.rate else 0.0,
+                    'lower_ci': float(row.lower_ci) if row.lower_ci else None,
+                    'upper_ci': float(row.upper_ci) if row.upper_ci else None,
+                    'cumulative_rate': float(row.cumulative_rate) if row.cumulative_rate else None,
+                    'year': int(row.mmwryear) if row.mmwryear else None,
+                    'week': int(row.mmwrweek) if row.mmwrweek else None,
+                    'geography': row.geography
+                })
+            
+            # Sort by date ascending for charting
+            data.sort(key=lambda x: x['date'] if x['date'] else '')
+            
+            print(f"[RESPIRATORY RATES] Returning {len(data)} data points")
+            if data:
+                print(f"[RESPIRATORY RATES] Sample data (first item): {data[0]}")
+                print(f"[RESPIRATORY RATES] Date range: {data[0]['date']} to {data[-1]['date']}")
+            
+            return jsonify({
+                'data': data,
+                'geography': geography,
+                'disease': disease,
+                'status': 'success',
+                'count': len(data)
+            })
+            
+        except Exception as e:
+            print(f"[RESPIRATORY RATES] BigQuery query failed: {e}")
+            import traceback
+            traceback.print_exc()
+            return jsonify({
+                'data': [],
+                'status': 'error',
+                'error': str(e)
+            })
+        
+    except Exception as e:
+        print(f"[RESPIRATORY RATES ERROR] {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'data': [],
+            'status': 'error',
+            'error': str(e)
+        })
+
+@app.route('/api/covid-hospitalizations')
+def get_covid_hospitalizations():
+    """Get COVID-19 hospitalization rates by state"""
+    print("\n" + "=" * 80)
+    print("≡ƒÅÑ COVID HOSPITALIZATIONS API CALLED")
+    print("=" * 80 + "\n")
+    
+    try:
+        state = request.args.get('state', '')
+        limit = int(request.args.get('limit', 52))  # Default to 1 year (52 weeks)
+        
+        print(f"[COVID HOSP] Fetching data for state='{state}', limit={limit}")
+        
+        if not bq_client:
+            print("[COVID HOSP] No BigQuery client, returning error")
+            return jsonify({
+                'data': [],
+                'status': 'no_bq_client',
+                'error': 'BigQuery client not initialized'
+            })
+        
+        # Build query
+        where_clauses = ["weekenddate IS NOT NULL"]
+        
+        if state:
+            where_clauses.append(f"state = '{state}'")
+        
+        # Aggregate by week (averaging across demographics)
+        where_clause = " AND ".join(where_clauses)
+        
+        query = f"""
+            SELECT 
+                weekenddate,
+                state,
+                AVG(weeklyrate) as avg_weekly_rate,
+                AVG(cumulativerate) as avg_cumulative_rate,
+                COUNT(*) as demographic_groups
+            FROM `qwiklabs-gcp-00-4a7d408c735c.CrowdsourceData.cdc_covid_hospitalizations`
+            WHERE {where_clause}
+            GROUP BY weekenddate, state
+            ORDER BY weekenddate DESC
+            LIMIT {limit}
+        """
+        
+        try:
+            query_job = bq_client.query(query)
+            results = list(query_job.result())
+            
+            # Transform data for charting
+            data = []
+            for row in results:
+                data.append({
+                    'date': str(row.weekenddate) if row.weekenddate else None,
+                    'state': row.state,
+                    'weekly_rate': float(row.avg_weekly_rate) if row.avg_weekly_rate else 0.0,
+                    'cumulative_rate': float(row.avg_cumulative_rate) if row.avg_cumulative_rate else 0.0,
+                    'demographic_groups': int(row.demographic_groups)
+                })
+            
+            # Sort by date ascending for charting
+            data.sort(key=lambda x: x['date'] if x['date'] else '')
+            
+            print(f"[COVID HOSP] Returning {len(data)} data points")
+            if data:
+                print(f"[COVID HOSP] Date range: {data[0]['date']} to {data[-1]['date']}")
+            
+            return jsonify({
+                'data': data,
+                'state': state,
+                'status': 'success',
+                'count': len(data)
+            })
+            
+        except Exception as e:
+            print(f"[COVID HOSP] BigQuery query failed: {e}")
+            import traceback
+            traceback.print_exc()
+            return jsonify({
+                'data': [],
+                'status': 'error',
+                'error': str(e)
+            })
+        
+    except Exception as e:
+        print(f"[COVID HOSP ERROR] {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'data': [],
+            'status': 'error',
+            'error': str(e)
+        })
+
+@app.route('/api/infectious-disease-dashboard')
+def get_infectious_disease_dashboard():
+    """Combined endpoint for infectious disease tracking dashboard
+    Returns data from all three CDC sources: respiratory rates, NREVSS, and COVID hospitalizations
+    """
+    print("\n" + "=" * 80)
+    print("≡ƒªá INFECTIOUS DISEASE DASHBOARD API CALLED")
+    print("=" * 80 + "\n")
+    
+    try:
+        state = request.args.get('state', '')
+        days = int(request.args.get('days', 30))
+        
+        print(f"[DASHBOARD] Fetching data for state='{state}', days={days}")
+        
+        if not bq_client:
+            print("[DASHBOARD] No BigQuery client, returning error")
+            return jsonify({
+                'status': 'no_bq_client',
+                'error': 'BigQuery client not initialized'
+            })
+        
+        dashboard_data = {
+            'status': 'success',
+            'state': state or 'National',
+            'period_days': days,
+            'respiratory_rates': [],
+            'nrevss_data': [],
+            'covid_hospitalizations': [],
+            'summary': {}
+        }
+        
+        # 1. Get respiratory disease rates (RSV, COVID-19, Flu from FluSurv-NET)
+        try:
+            # Use 'site' instead of 'geography' - filter for national/overall data
+            site_filter = "site = 'Overall'" if not state else f"site LIKE '%{state}%'"
+            resp_query = f"""
+                SELECT 
+                    week_end_date,
+                    disease_type as disease,
+                    surveillance_network,
+                    AVG(weekly_rate) as avg_rate,
+                    AVG(cumulative_rate) as avg_cumulative_rate
+                FROM `qwiklabs-gcp-00-4a7d408c735c.CrowdsourceData.respiratory_disease_rates`
+                WHERE {site_filter}
+                AND week_end_date >= DATE_SUB(CURRENT_DATE(), INTERVAL {days} DAY)
+                GROUP BY week_end_date, disease_type, surveillance_network
+                ORDER BY week_end_date DESC
+            """
+            
+            resp_results = list(bq_client.query(resp_query).result())
+            for row in resp_results:
+                dashboard_data['respiratory_rates'].append({
+                    'date': str(row.week_end_date),
+                    'disease': row.disease,
+                    'surveillance_network': row.surveillance_network,
+                    'rate': float(row.avg_rate) if row.avg_rate else 0.0,
+                    'cumulative_rate': float(row.avg_cumulative_rate) if row.avg_cumulative_rate else 0.0
+                })
+            
+            print(f"[DASHBOARD] Respiratory rates: {len(dashboard_data['respiratory_rates'])} records")
+        except Exception as e:
+            print(f"[DASHBOARD] Error fetching respiratory rates: {e}")
+        
+        # 2. Get NREVSS PCR test data
+        try:
+            level_filter = f"level = 'National'" if not state else f"level = 'National'"  # NREVSS uses regions not states
+            
+            nrevss_query = f"""
+                SELECT 
+                    mmwrweek_end,
+                    pcr_percent_positive,
+                    pcr_detections,
+                    level
+                FROM `qwiklabs-gcp-00-4a7d408c735c.CrowdsourceData.nrevss_respiratory_data`
+                WHERE {level_filter}
+                AND mmwrweek_end >= DATE_SUB(CURRENT_DATE(), INTERVAL {days} DAY)
+                ORDER BY mmwrweek_end DESC
+                LIMIT 50
+            """
+            
+            nrevss_results = list(bq_client.query(nrevss_query).result())
+            for row in nrevss_results:
+                dashboard_data['nrevss_data'].append({
+                    'date': str(row.mmwrweek_end),
+                    'pcr_percent_positive': float(row.pcr_percent_positive) if row.pcr_percent_positive else 0.0,
+                    'pcr_detections': int(row.pcr_detections) if row.pcr_detections else 0,
+                    'level': row.level
+                })
+            
+            print(f"[DASHBOARD] NREVSS data: {len(dashboard_data['nrevss_data'])} records")
+        except Exception as e:
+            print(f"[DASHBOARD] Error fetching NREVSS data: {e}")
+        
+        # 3. Get COVID hospitalizations
+        try:
+            state_filter = f"state = '{state}'" if state else "state IS NOT NULL"
+            
+            covid_query = f"""
+                SELECT 
+                    weekenddate,
+                    AVG(weeklyrate) as avg_weekly_rate,
+                    AVG(cumulativerate) as avg_cumulative_rate
+                FROM `qwiklabs-gcp-00-4a7d408c735c.CrowdsourceData.cdc_covid_hospitalizations`
+                WHERE {state_filter}
+                AND weekenddate >= DATE_SUB(CURRENT_DATE(), INTERVAL {days} DAY)
+                GROUP BY weekenddate
+                ORDER BY weekenddate DESC
+                LIMIT 50
+            """
+            
+            covid_results = list(bq_client.query(covid_query).result())
+            for row in covid_results:
+                dashboard_data['covid_hospitalizations'].append({
+                    'date': str(row.weekenddate),
+                    'weekly_rate': float(row.avg_weekly_rate) if row.avg_weekly_rate else 0.0,
+                    'cumulative_rate': float(row.avg_cumulative_rate) if row.avg_cumulative_rate else 0.0
+                })
+            
+            print(f"[DASHBOARD] COVID hospitalizations: {len(dashboard_data['covid_hospitalizations'])} records")
+        except Exception as e:
+            print(f"[DASHBOARD] Error fetching COVID hospitalizations: {e}")
+        
+        # 4. Generate summary statistics
+        dashboard_data['summary'] = {
+            'total_data_points': (
+                len(dashboard_data['respiratory_rates']) + 
+                len(dashboard_data['nrevss_data']) + 
+                len(dashboard_data['covid_hospitalizations'])
+            ),
+            'latest_update': max([
+                dashboard_data['respiratory_rates'][0]['date'] if dashboard_data['respiratory_rates'] else '2020-01-01',
+                dashboard_data['nrevss_data'][0]['date'] if dashboard_data['nrevss_data'] else '2020-01-01',
+                dashboard_data['covid_hospitalizations'][0]['date'] if dashboard_data['covid_hospitalizations'] else '2020-01-01'
+            ])
+        }
+        
+        print(f"[DASHBOARD] Returning complete dashboard data")
+        return jsonify(dashboard_data)
+        
+    except Exception as e:
+        print(f"[DASHBOARD ERROR] {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'status': 'error',
+            'error': str(e)
+        })
+
+@app.route('/api/alerts')
+def get_alerts():
+    """Get weather alerts from BigQuery"""
+    try:
+        state = request.args.get('state', '')
+        
+        if not bq_client:
+            print("[ALERTS] No BigQuery client, returning demo data")
+            return jsonify({'count': 0, 'status': 'no_data'})
+        
+        # Query weather alerts table
+        query = f"""
+            SELECT COUNT(*) as alert_count
+            FROM `qwiklabs-gcp-00-4a7d408c735c.CrowdsourceData.table_weather_alerts`
+            WHERE state = @state
+            AND status = 'Active'
+        """
+        
+        job_config = bigquery.QueryJobConfig(
+            query_parameters=[
+                bigquery.ScalarQueryParameter("state", "STRING", state)
+            ]
+        )
+        
+        query_job = bq_client.query(query, job_config=job_config)
+        results = list(query_job.result())
+        
+        count = results[0].alert_count if results else 0
+        print(f"[ALERTS] Found {count} active alerts in {state}")
+        
+        return jsonify({
+            'count': count,
+            'status': 'success',
+            'state': state
+        })
+        
+    except Exception as e:
+        print(f"[ALERTS ERROR] {e}")
+        return jsonify({'count': 0, 'status': 'error', 'error': str(e)})
+
+# ===== END ENVIRONMENTAL RISK API ENDPOINTS =====
+
 
 @app.route('/acknowledgements')
 def acknowledgements():
