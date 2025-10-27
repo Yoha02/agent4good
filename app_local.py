@@ -33,7 +33,7 @@ load_dotenv()
 
 # Simple in-memory cache for API responses
 API_CACHE = {}
-CACHE_DURATION = 1800  # 30 minutes in seconds
+CACHE_DURATION = 600  # 10 minutes in seconds (reduced from 30 to get fresher data)
 
 def cached_api_call(cache_key_prefix):
     """Decorator to cache API responses for a specified duration"""
