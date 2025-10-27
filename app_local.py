@@ -3545,9 +3545,8 @@ def get_infectious_disease_dashboard():
         }
         
         # 1. Get respiratory disease rates (RSV, COVID-19, Flu from FluSurv-NET)
+        # Note: This table only has 'Overall' (national) data, not state-specific
         try:
-            # Use 'site' instead of 'geography' - filter for national/overall data
-            site_filter = "site = 'Overall'" if not state else f"site LIKE '%{state}%'"
             resp_query = f"""
                 SELECT 
                     week_end_date,
@@ -3556,7 +3555,7 @@ def get_infectious_disease_dashboard():
                     AVG(weekly_rate) as avg_rate,
                     AVG(cumulative_rate) as avg_cumulative_rate
                 FROM `qwiklabs-gcp-00-4a7d408c735c.CrowdsourceData.respiratory_disease_rates`
-                WHERE {site_filter}
+                WHERE site = 'Overall'
                 AND week_end_date >= DATE_SUB(CURRENT_DATE(), INTERVAL {days} DAY)
                 GROUP BY week_end_date, disease_type, surveillance_network
                 ORDER BY week_end_date DESC
@@ -3607,20 +3606,18 @@ def get_infectious_disease_dashboard():
             print(f"[DASHBOARD] Error fetching NREVSS data: {e}")
         
         # 3. Get COVID hospitalizations
+        # Use overall/national data for consistency with other surveillance data
         try:
-            state_filter = f"state = '{state}'" if state else "state IS NOT NULL"
-            
             covid_query = f"""
                 SELECT 
                     weekenddate,
                     AVG(weeklyrate) as avg_weekly_rate,
                     AVG(cumulativerate) as avg_cumulative_rate
                 FROM `qwiklabs-gcp-00-4a7d408c735c.CrowdsourceData.cdc_covid_hospitalizations`
-                WHERE {state_filter}
-                AND weekenddate >= DATE_SUB(CURRENT_DATE(), INTERVAL {days} DAY)
+                WHERE weekenddate >= DATE_SUB(CURRENT_DATE(), INTERVAL {days} DAY)
                 GROUP BY weekenddate
                 ORDER BY weekenddate DESC
-                LIMIT 50
+                LIMIT 100
             """
             
             covid_results = list(bq_client.query(covid_query).result())

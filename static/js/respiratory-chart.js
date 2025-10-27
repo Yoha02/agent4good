@@ -498,27 +498,27 @@ class RespiratoryChart {
         
         // Define comprehensive color mapping for surveillance networks
         const colorMap = {
-            // Main surveillance networks (simplified names)
-            'COVID': '#1a1a1a',                             // Very Dark Gray
-            'RSV': '#7b68ee',                               // Purple
-            'Flu': '#1e90ff',                               // Dodger Blue
+            // Main surveillance networks (simplified names) - Google Material Design Colors
+            'COVID': '#EA4335',                             // Google Red
+            'RSV': '#34A853',                               // Google Green
+            'Flu': '#4285F4',                               // Google Blue
             
             // NREVSS data (PCR tests)
-            'RSV (PCR)': '#9370db',                         // Medium Purple
-            'RSV (Antigen)': '#9370db',                     // Medium Purple
+            'RSV (PCR)': '#0F9D58',                         // Google Dark Green
+            'RSV (Antigen)': '#34A853',                     // Google Green
             
             // COVID surveillance (legacy)
-            'COVID-19': '#2b2b2b',                          // Black
-            'COVID-19 Hospitalizations': '#404040',         // Dark Gray
+            'COVID-19': '#EA4335',                          // Google Red
+            'COVID-19 Hospitalizations': '#F4B400',         // Google Yellow
             
             // Full network names (fallback)
-            'COVID-NET': '#1a1a1a',                         // Very Dark Gray
-            'RSV-NET': '#7b68ee',                           // Purple
-            'FluSurv-NET': '#1e90ff',                       // Dodger Blue
+            'COVID-NET': '#EA4335',                         // Google Red
+            'RSV-NET': '#34A853',                           // Google Green
+            'FluSurv-NET': '#4285F4',                       // Google Blue
             
             // Generic fallbacks
-            'Influenza': '#4169e1',                         // Royal Blue
-            'SARS-COV-2': '#2b2b2b'                        // Black
+            'Influenza': '#1E88E5',                         // Material Blue
+            'SARS-COV-2': '#00ACC1'                        // Material Cyan/Teal
         };
         
         // Function to generate color for unknown test types
@@ -875,55 +875,65 @@ async function updateDiseaseCards(days) {
         
         if (result.status === 'success') {
             console.log('[DISEASE CARDS] ✓ BigQuery data received');
+            console.log('[DISEASE CARDS] Respiratory rates count:', result.respiratory_rates?.length || 0);
+            console.log('[DISEASE CARDS] NREVSS data count:', result.nrevss_data?.length || 0);
+            console.log('[DISEASE CARDS] COVID hosp count:', result.covid_hospitalizations?.length || 0);
             
-            // Process RSV data from NREVSS
+            // Process RSV data from NREVSS (PCR test positivity)
             if (result.nrevss_data && result.nrevss_data.length > 0) {
                 const avgRsvPositivity = result.nrevss_data.reduce((sum, d) => 
                     sum + (d.pcr_percent_positive || 0), 0) / result.nrevss_data.length;
-                console.log('[DISEASE CARDS] RSV avg positivity from BigQuery:', avgRsvPositivity);
+                console.log('[DISEASE CARDS] RSV avg positivity from BigQuery:', avgRsvPositivity.toFixed(2) + '%');
                 
                 updateDiseaseCard('rsv', {
                     positivity: avgRsvPositivity,
                     name: 'RSV',
-                    color: 'blue',
+                    color: 'emerald',
                     trend: calculateTrend(result.nrevss_data, 'pcr_percent_positive')
                 });
+            } else {
+                console.log('[DISEASE CARDS] No RSV data available');
+                updateDiseaseCard('rsv', { positivity: 0, name: 'RSV', color: 'emerald', trend: 'stable' });
             }
             
-            // Process COVID data from respiratory_rates and hospitalizations
-            const covidRates = result.respiratory_rates?.filter(d => d.disease === 'COVID-19') || [];
-            const covidHosp = result.covid_hospitalizations || [];
-            
-            if (covidRates.length > 0 || covidHosp.length > 0) {
-                // Use hospitalization rate as primary metric
-                const avgCovidRate = covidHosp.length > 0
-                    ? covidHosp.reduce((sum, d) => sum + (d.weekly_rate || 0), 0) / covidHosp.length
-                    : covidRates.reduce((sum, d) => sum + (d.rate || 0), 0) / covidRates.length;
+            // Process COVID data from hospitalizations (weekly rate per 100k)
+            if (result.covid_hospitalizations && result.covid_hospitalizations.length > 0) {
+                const avgCovidRate = result.covid_hospitalizations.reduce((sum, d) => 
+                    sum + (d.weekly_rate || 0), 0) / result.covid_hospitalizations.length;
                 
-                console.log('[DISEASE CARDS] COVID avg rate from BigQuery:', avgCovidRate);
+                console.log('[DISEASE CARDS] COVID avg rate from BigQuery:', avgCovidRate.toFixed(2), 'per 100k');
                 
                 updateDiseaseCard('covid', {
                     positivity: avgCovidRate,
                     name: 'COVID-19',
-                    color: 'emerald',
-                    trend: calculateTrend(covidHosp.length > 0 ? covidHosp : covidRates, 
-                                         covidHosp.length > 0 ? 'weekly_rate' : 'rate')
+                    color: 'red',
+                    trend: calculateTrend(result.covid_hospitalizations, 'weekly_rate'),
+                    isRate: true  // This is a rate per 100k, not a percentage
                 });
+            } else {
+                console.log('[DISEASE CARDS] No COVID data available');
+                updateDiseaseCard('covid', { positivity: 0, name: 'COVID-19', color: 'red', trend: 'stable', isRate: true });
             }
             
-            // Process Flu data from respiratory_rates
-            const fluRates = result.respiratory_rates?.filter(d => d.disease === 'Influenza') || [];
+            // Process Flu data from respiratory_rates (weekly rate per 100k)
+            const fluRates = result.respiratory_rates?.filter(d => 
+                d.disease === 'Influenza' || d.surveillance_network?.includes('Flu')
+            ) || [];
             
             if (fluRates.length > 0) {
                 const avgFluRate = fluRates.reduce((sum, d) => sum + (d.rate || 0), 0) / fluRates.length;
-                console.log('[DISEASE CARDS] Flu avg rate from BigQuery:', avgFluRate);
+                console.log('[DISEASE CARDS] Flu avg rate from BigQuery:', avgFluRate.toFixed(2), 'per 100k');
                 
                 updateDiseaseCard('flu', {
                     positivity: avgFluRate,
                     name: 'Influenza',
-                    color: 'amber',
-                    trend: calculateTrend(fluRates, 'rate')
+                    color: 'blue',
+                    trend: calculateTrend(fluRates, 'rate'),
+                    isRate: true  // This is a rate per 100k, not a percentage
                 });
+            } else {
+                console.log('[DISEASE CARDS] No Flu data available');
+                updateDiseaseCard('flu', { positivity: 0, name: 'Influenza', color: 'blue', trend: 'stable', isRate: true });
             }
             
             console.log('[DISEASE CARDS] ✓ All cards updated with BigQuery data');
@@ -970,31 +980,57 @@ function calculateTrend(data, field) {
  */
 function updateDiseaseCard(disease, data) {
     console.log('[DISEASE CARD]', disease, 'update with:', data);
-    const { positivity, name, color } = data;
+    const { positivity, name, color, isRate } = data;
     
-    // Update cases/positivity
+    // Update cases/positivity display
     const casesEl = document.getElementById(`${disease}Cases`);
     if (casesEl) {
-        casesEl.textContent = `${positivity.toFixed(1)}%`;
+        if (isRate) {
+            // Display as rate per 100k (not percentage)
+            casesEl.textContent = `${positivity.toFixed(1)}`;
+        } else {
+            // Display as percentage
+            casesEl.textContent = `${positivity.toFixed(1)}%`;
+        }
+    }
+    
+    // Update "Avg Positivity" label for rates vs percentages
+    const labelEl = document.querySelector(`#${disease}Card .text-sm.text-gray-600`);
+    if (labelEl) {
+        if (isRate) {
+            labelEl.textContent = 'Rate per 100k';
+        } else {
+            labelEl.textContent = 'Avg Positivity';
+        }
     }
     
     // Update progress bar
     const progressEl = document.getElementById(`${disease}Progress`);
     if (progressEl) {
-        // Scale positivity to 0-100 for progress bar (assume max 20% is 100%)
-        const progressPercent = Math.min((positivity / 20) * 100, 100);
-        progressEl.style.width = `${progressPercent}%`;
+        if (isRate) {
+            // Scale rate per 100k to progress bar (assume max 10 per 100k is 100%)
+            const progressPercent = Math.min((positivity / 10) * 100, 100);
+            progressEl.style.width = `${progressPercent}%`;
+        } else {
+            // Scale percentage to progress bar (assume max 20% is 100%)
+            const progressPercent = Math.min((positivity / 20) * 100, 100);
+            progressEl.style.width = `${progressPercent}%`;
+        }
     }
     
     // Determine risk level and trend
     let riskLevel, riskClass, trendIcon, trendText;
     
-    if (positivity < 3) {
+    // Adjust thresholds based on whether it's a rate or percentage
+    const lowThreshold = isRate ? 2 : 3;
+    const medThreshold = isRate ? 5 : 7;
+    
+    if (positivity < lowThreshold) {
         riskLevel = 'Low Risk';
         riskClass = `bg-${color}-100 text-${color}-700`;
         trendIcon = '↓';
         trendText = 'Below threshold';
-    } else if (positivity < 7) {
+    } else if (positivity < medThreshold) {
         riskLevel = 'Moderate';
         riskClass = `bg-amber-100 text-amber-700`;
         trendIcon = '→';
