@@ -296,6 +296,9 @@
                 const password = document.getElementById('password').value;
                 
                 if (email && password) {
+                    // Set the persona in sessionStorage on successful login
+                    sessionStorage.setItem('persona', 'Health Official');
+                    console.log('Login successful: Persona updated to "Health Official"');
                     // Redirect to officials dashboard
                     window.location.href = '/officials-dashboard';
                 } else {

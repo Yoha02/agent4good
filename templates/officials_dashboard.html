@@ -755,6 +755,9 @@
         // Logout function
         function logout() {
             if (confirm('Are you sure you want to logout?')) {
+                // Store in sessionStorage for persistence
+                sessionStorage.setItem('persona', 'Community Resident');
+                console.log('Logout from Health Official Account: update persona type to "Community Resident" in session storage');
                 window.location.href = '/';
             }
         }

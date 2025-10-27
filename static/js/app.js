@@ -1549,6 +1549,7 @@ async function askAI() {
         // Get stored location data for chat agent
         const storedLocationData = localStorage.getItem('currentLocationData');
         let locationContext = null;
+        const storedPersonaType = sessionStorage.getItem('persona');
         
         if (storedLocationData) {
             try {
@@ -1569,7 +1570,8 @@ async function askAI() {
                 question: question,
                 state: currentState,
                 days: currentDays,
-                location_context: locationContext
+                location_context: locationContext,
+                persona: storedPersonaType
             })
         });
 

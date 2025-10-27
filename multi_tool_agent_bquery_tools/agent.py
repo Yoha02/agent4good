@@ -251,9 +251,34 @@ def _initialize_session_and_runner():
         )
         _runner = Runner(agent=root_agent, app_name=APP_NAME, session_service=_session_service)
 
-def call_agent(query: str, location_context=None, time_frame=None) -> str:
+def call_agent(query: str, location_context=None, time_frame=None, persona=None) -> str:
     """Helper function to call the agent with a query and return the response."""
-    _initialize_session_and_runner()
+    global _runner
+    
+    # Determine effective persona (frontend > env var > default)
+    effective_persona = persona if persona else os.getenv("LOGIN_ROLE", "user")
+    
+    # Map persona names to internal types
+    persona_mapping = {
+        "Health Official": "health_official",
+        "Community Resident": "user",
+        "health_official": "health_official",
+        "user": "user"
+    }
+    persona_type = persona_mapping.get(effective_persona, "user")
+    
+    # Check if we need to recreate runner due to persona change
+    if _runner is None or not hasattr(_runner, '_persona_type') or _runner._persona_type != persona_type:
+        print(f"[AGENT] Creating/updating runner with persona: {persona_type}")
+        # Initialize session service if needed
+        _initialize_session_and_runner()
+        # Create agent with the correct persona
+        agent_with_persona = create_root_agent_with_context(persona_type=persona_type)
+        _runner = Runner(agent=agent_with_persona, app_name=APP_NAME, session_service=_session_service)
+        _runner._persona_type = persona_type  # Track current persona
+    else:
+        # Just ensure session is initialized
+        _initialize_session_and_runner()
     
     # Build context string and inject it into the query instead of creating new agent
     context_prefix = ""
