@@ -2227,33 +2227,31 @@ async function loadSummaryCards() {
     }
     
     try {
-        // Load COVID data
-        const params = new URLSearchParams();
-        if (currentState) params.append('state', currentState);
-        params.append('days', '7');
+        // Load COVID data - use /api/covid which returns cases_per_100k
+        const url = currentState 
+            ? `/api/covid?state=${encodeURIComponent(currentState)}`
+            : `/api/covid`;
         
-        console.log('[Summary Cards] Fetching COVID data...');
-        const covidResponse = await fetch(`/api/covid-hospitalizations?${params.toString()}`);
+        console.log('[Summary Cards] Fetching COVID data from:', url);
+        const covidResponse = await fetch(url);
         const covidData = await covidResponse.json();
         console.log('[Summary Cards] COVID data received:', covidData);
         
         const summaryCovidEl = document.getElementById('summaryCovid');
         if (summaryCovidEl) {
-            if (covidData.status === 'success' && covidData.data && covidData.data.length > 0) {
-                // Calculate average weekly admissions per 100K
-                const avgAdmissions = covidData.data.reduce((sum, d) => 
-                    sum + (d.weekly_admissions_per_100k || 0), 0) / covidData.data.length;
-                summaryCovidEl.textContent = avgAdmissions.toFixed(1);
-                console.log('[Summary Cards] COVID avg admissions:', avgAdmissions.toFixed(1));
+            // API returns cases_per_100k directly
+            if (covidData.cases_per_100k && covidData.cases_per_100k !== '-') {
+                summaryCovidEl.textContent = covidData.cases_per_100k;
+                console.log('[Summary Cards] COVID cases per 100K:', covidData.cases_per_100k);
             } else {
-                summaryCovidEl.textContent = '0.0';
+                summaryCovidEl.textContent = '-';
                 console.log('[Summary Cards] No COVID data available');
             }
         }
     } catch (error) {
         console.error('[Summary Cards] Error loading COVID data:', error);
         const summaryCovidEl = document.getElementById('summaryCovid');
-        if (summaryCovidEl) summaryCovidEl.textContent = '0.0';
+        if (summaryCovidEl) summaryCovidEl.textContent = '-';
     }
     
     try {
