@@ -9,6 +9,8 @@ import zipcodes
 import requests
 from PIL import Image
 from io import BytesIO
+from functools import lru_cache, wraps
+import time
 from epa_service import EPAAirQualityService
 from epa_aqs_service import EPAAQSService
 from location_service_comprehensive import ComprehensiveLocationService
@@ -28,6 +30,37 @@ except ImportError as e:
 
 # Load environment variables
 load_dotenv()
+
+# Simple in-memory cache for API responses
+API_CACHE = {}
+CACHE_DURATION = 1800  # 30 minutes in seconds
+
+def cached_api_call(cache_key_prefix):
+    """Decorator to cache API responses for a specified duration"""
+    def decorator(f):
+        @wraps(f)
+        def wrapper(*args, **kwargs):
+            # Build cache key from request arguments
+            cache_key = f"{cache_key_prefix}:{str(request.args)}"
+            current_time = time.time()
+            
+            # Check if we have a valid cached response
+            if cache_key in API_CACHE:
+                cached_data, timestamp = API_CACHE[cache_key]
+                if current_time - timestamp < CACHE_DURATION:
+                    print(f"[CACHE HIT] Returning cached data for {cache_key_prefix}")
+                    return cached_data
+            
+            # Call the actual function
+            result = f(*args, **kwargs)
+            
+            # Cache the result
+            API_CACHE[cache_key] = (result, current_time)
+            print(f"[CACHE MISS] Cached new data for {cache_key_prefix}")
+            
+            return result
+        return wrapper
+    return decorator
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev-secret-key')
@@ -618,8 +651,9 @@ def reverse_geocode():
         }), 500
 
 @app.route('/api/air-quality', methods=['GET'])
+@cached_api_call('air-quality')
 def get_air_quality():
-    """API endpoint to get air quality data from EPA ONLY - NO MOCK DATA"""
+    """API endpoint to get air quality data from EPA ONLY - NO MOCK DATA - CACHED 30min"""
     try:
         # Get location parameters - support both 'zipcode' and 'zipCode'
         zipcode = request.args.get('zipCode') or request.args.get('zipcode')
@@ -2214,8 +2248,9 @@ def save_to_csv(row_data):
     print(f"[CSV] Report saved to {csv_file}")
 
 @app.route('/api/air-quality-detailed', methods=['GET'])
+@cached_api_call('air-quality-detailed')
 def get_air_quality_detailed():
-    """API endpoint to get detailed pollutant-specific data from EPA AQS"""
+    """API endpoint to get detailed pollutant-specific data from EPA AQS - CACHED 30min"""
     try:
         zipcode = request.args.get('zipCode')
         city = request.args.get('city')
@@ -2406,6 +2441,7 @@ def aqi_to_concentration(aqi, parameter):
     return conversions.get(parameter, aqi)
 
 @app.route('/api/weather', methods=['GET'])
+@cached_api_call('weather')
 def get_weather():
     """API endpoint to get weather data"""
     try:
@@ -2462,6 +2498,7 @@ def get_weather():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/air-quality-map', methods=['GET'])
+@cached_api_call('air-quality-map')
 def get_air_quality_map():
     """API endpoint to get air quality data for heatmap visualization"""
     try:
@@ -2569,6 +2606,7 @@ def get_air_quality_map():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/pollen', methods=['GET'])
+@cached_api_call('pollen')
 def get_pollen():
     """API endpoint to get pollen data"""
     try:
