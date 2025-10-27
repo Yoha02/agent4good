@@ -219,6 +219,12 @@ document.addEventListener('DOMContentLoaded', function() {
     initializeApp();
     setupEventListeners();
     initializeGoogleAutocomplete();
+    if (sessionStorage.getItem('persona') === null) {
+        sessionStorage.setItem('persona', 'Community Resident');
+        console.log('First time visit detected. Persona initialized to "Community Resident".');
+    } else {
+        console.log('Returning user. Current persona is:', sessionStorage.getItem('persona'));
+    }
 });
 
 // Initialize Google Places Autocomplete
@@ -1549,6 +1555,7 @@ async function askAI() {
         // Get stored location data for chat agent
         const storedLocationData = localStorage.getItem('currentLocationData');
         let locationContext = null;
+        const storedPersonaType = sessionStorage.getItem('persona')
         
         if (storedLocationData) {
             try {
@@ -1558,6 +1565,7 @@ async function askAI() {
                 console.warn('[Chat] Failed to parse stored location data:', e);
             }
         }
+
         
         // Try ADK agent first
         const response = await fetch('/api/agent-chat', {
@@ -1569,7 +1577,8 @@ async function askAI() {
                 question: question,
                 state: currentState,
                 days: currentDays,
-                location_context: locationContext
+                location_context: locationContext,
+                persona:storedPersonaType
             })
         });
 
