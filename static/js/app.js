@@ -1799,7 +1799,7 @@ async function pollForVideoCompletion(taskId) {
     
     console.log(`[VIDEO] Starting poll for task: ${taskId}`);
     
-    const maxAttempts = 30; // 30 * 5 sec = 2.5 minutes
+    const maxAttempts = 48; // 48 * 5 sec = 4 minutes (Veo 3 can take 2-3 minutes)
     
     for (let i = 0; i < maxAttempts; i++) {
         await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5 seconds

@@ -1958,7 +1958,7 @@ function isTwitterApproval(message) {
  * Poll for video completion
  */
 async function pollForVideoCompletion(taskId) {
-    const maxAttempts = 120; // 2 minutes max
+    const maxAttempts = 240; // 4 minutes max (Veo 3 can take 2-3 minutes)
     let attempts = 0;
     
     console.log(`[VIDEO WIDGET] Starting to poll for task ${taskId}`);
