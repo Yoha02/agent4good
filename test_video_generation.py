@@ -5,6 +5,10 @@ import os
 import sys
 from dotenv import load_dotenv
 
+# Fix Windows console encoding
+if sys.platform == 'win32':
+    sys.stdout.reconfigure(encoding='utf-8')
+
 # Load environment variables
 load_dotenv()
 
