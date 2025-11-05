@@ -114,11 +114,12 @@ class VideoGenerationManager:
                 
                 # Poll with progress updates
                 import time
-                max_polls = 24  # 2 minutes max
+                max_polls = 48  # 4 minutes max (Veo 3 can take 2-3 minutes)
                 for i in range(max_polls):
                     time.sleep(5)
                     
-                    progress = 30 + (i * 3)  # 30% to 100%
+                    # Progress: 30% to 95% over 48 polls (65% range / 48 = ~1.35% per poll)
+                    progress = 30 + int((i / max_polls) * 65)  # Smooth progress from 30% to 95%
                     self.update_task(task_id, {
                         'status': 'generating_video',
                         'progress': min(progress, 95)
