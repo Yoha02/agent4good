@@ -161,6 +161,11 @@ class Veo3Client:
                 # Operation completed
                 if operation.error:
                     # Handle error - operation.error can be dict or object
+                    # Log full error details for debugging
+                    print(f"[VEO3] ERROR DETAILS:")
+                    print(f"[VEO3] Error type: {type(operation.error)}")
+                    print(f"[VEO3] Error object: {operation.error}")
+                    
                     error_msg = str(operation.error)
                     if hasattr(operation.error, 'message'):
                         error_msg = operation.error.message
@@ -168,6 +173,17 @@ class Veo3Client:
                         error_msg = operation.error['message']
                     
                     print(f"[VEO3] Generation failed: {error_msg}")
+                    
+                    # Check if it's a known error type
+                    error_lower = error_msg.lower()
+                    if 'quota' in error_lower or 'limit' in error_lower:
+                        print(f"[VEO3] ⚠️ QUOTA/RATE LIMIT ERROR - Check Google Cloud Console quotas")
+                    elif 'internal error' in error_lower:
+                        print(f"[VEO3] ⚠️ GOOGLE INTERNAL ERROR - This is a temporary Google API issue")
+                        print(f"[VEO3] 💡 Suggestion: Wait a few minutes and try again")
+                    elif 'permission' in error_lower or 'denied' in error_lower:
+                        print(f"[VEO3] ⚠️ PERMISSION ERROR - Check API key permissions")
+                    
                     return {
                         "status": "error",
                         "error_message": error_msg
