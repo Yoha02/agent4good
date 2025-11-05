@@ -160,10 +160,17 @@ class Veo3Client:
             if operation.done:
                 # Operation completed
                 if operation.error:
-                    print(f"[VEO3] Generation failed: {operation.error.message}")
+                    # Handle error - operation.error can be dict or object
+                    error_msg = str(operation.error)
+                    if hasattr(operation.error, 'message'):
+                        error_msg = operation.error.message
+                    elif isinstance(operation.error, dict) and 'message' in operation.error:
+                        error_msg = operation.error['message']
+                    
+                    print(f"[VEO3] Generation failed: {error_msg}")
                     return {
                         "status": "error",
-                        "error_message": operation.error.message
+                        "error_message": error_msg
                     }
                 
                 # Success - extract video
