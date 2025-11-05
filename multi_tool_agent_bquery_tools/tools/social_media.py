@@ -8,10 +8,10 @@ import os
 
 def post_to_twitter(video_uri: str, message: str, hashtags: Optional[List[str]] = None, location: Optional[str] = None) -> dict:
     """
-    Posts video and message to Twitter/X.
+    Posts video and message to Twitter/X using the real Twitter client.
     
     Args:
-        video_uri: GCS URI of the video (e.g., "gs://bucket/video.mp4")
+        video_uri: GCS URI or public URL of the video (e.g., "gs://bucket/video.mp4" or "https://storage.googleapis.com/...")
         message: Tweet text (action line + context)
         hashtags: List of hashtags (e.g., ["HealthAlert", "AirQuality"])
         location: Location for location-specific hashtags (e.g., "California")
@@ -39,44 +39,50 @@ def post_to_twitter(video_uri: str, message: str, hashtags: Optional[List[str]] 
             loc_tag = state_abbrevs.get(location, location.replace(' ', ''))
             hashtags.append(loc_tag)
         
-        # Format tweet text
-        hashtag_string = ' '.join([f'#{tag}' for tag in hashtags])
-        tweet_text = f"{message}\n\n{hashtag_string}"
+        # Convert GCS URI to public URL if needed
+        video_url = video_uri
+        if video_uri.startswith('gs://'):
+            # Convert gs://bucket/path to https://storage.googleapis.com/bucket/path
+            gcs_path = video_uri.replace('gs://', '')
+            video_url = f"https://storage.googleapis.com/{gcs_path}"
         
-        # Ensure within Twitter's 280 character limit
-        if len(tweet_text) > 280:
-            # Trim message if needed
-            available_chars = 280 - len(hashtag_string) - 3  # -3 for \n\n
-            message = message[:available_chars] + "..."
-            tweet_text = f"{message}\n\n{hashtag_string}"
+        print(f"\n[TWITTER TOOL] ===== Real Twitter Posting =====")
+        print(f"[TWITTER TOOL] Video URL: {video_url}")
+        print(f"[TWITTER TOOL] Message: {message}")
+        print(f"[TWITTER TOOL] Hashtags: {hashtags}")
         
-        # TODO: Implement actual Twitter API posting
-        # This requires:
-        # 1. Twitter API credentials (API key, secret, tokens)
-        # 2. tweepy library
-        # 3. Download video from GCS
-        # 4. Upload video to Twitter
-        # 5. Post tweet with video
+        # Use the real Twitter client
+        from multi_tool_agent_bquery_tools.integrations.twitter_client import get_twitter_client
         
-        # Placeholder implementation
-        print(f"[TWITTER] Would post tweet:")
-        print(f"[TWITTER] Text: {tweet_text}")
-        print(f"[TWITTER] Video: {video_uri}")
+        twitter_client = get_twitter_client()
         
-        # Simulated response
-        import time
-        tweet_id = f"{int(time.time())}"
+        # Post the video tweet
+        result = twitter_client.post_video_tweet(
+            video_url=video_url,
+            message=message,
+            hashtags=hashtags
+        )
         
-        return {
-            "status": "success",
-            "tweet_url": f"https://twitter.com/CommunityHealthAlerts/status/{tweet_id}",
-            "tweet_id": tweet_id,
-            "tweet_text": tweet_text,
-            "message": "Tweet posted successfully (simulation mode)",
-            "note": "To enable real Twitter posting, add Twitter API credentials"
-        }
+        print(f"[TWITTER TOOL] Result: {result}")
+        
+        if result.get('status') == 'success':
+            return {
+                "status": "success",
+                "tweet_url": result.get('tweet_url'),
+                "tweet_id": result.get('tweet_id'),
+                "tweet_text": result.get('tweet_text', message),
+                "message": result.get('message', 'Tweet posted successfully!')
+            }
+        else:
+            return {
+                "status": "error",
+                "error_message": result.get('error_message', 'Failed to post tweet')
+            }
         
     except Exception as e:
+        print(f"[TWITTER TOOL] ERROR: {e}")
+        import traceback
+        traceback.print_exc()
         return {
             "status": "error",
             "error_message": f"Error posting to Twitter: {str(e)}"
