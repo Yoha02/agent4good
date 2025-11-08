@@ -280,7 +280,7 @@
             <!-- Quick Stats -->
             <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
                 <!-- Active Alerts -->
-                <div class="bg-white rounded-2xl shadow-lg p-6 border-l-4 border-red-500">
+                <div id="quick-stat-active" class="bg-white rounded-2xl shadow-lg p-6 border-l-4 border-red-500">
                     <div class="flex items-center justify-between">
                         <div>
                             <p class="text-gray-500 text-sm font-semibold uppercase tracking-wide">Active Alerts</p>
@@ -294,7 +294,7 @@
                 </div>
                 
                 <!-- Avg AQI -->
-                <div class="bg-white rounded-2xl shadow-lg p-6 border-l-4 border-amber-500">
+                <div id="quick-stat-new-cases" class="bg-white rounded-2xl shadow-lg p-6 border-l-4 border-amber-500">
                     <div class="flex items-center justify-between">
                         <div>
                             <p class="text-gray-500 text-sm font-semibold uppercase tracking-wide">Avg AQI</p>
@@ -308,7 +308,7 @@
                 </div>
                 
                 <!-- Disease Cases -->
-                <div class="bg-white rounded-2xl shadow-lg p-6 border-l-4 border-blue-500">
+                <div id="quick-stat-pending" class="bg-white rounded-2xl shadow-lg p-6 border-l-4 border-blue-500">
                     <div class="flex items-center justify-between">
                         <div>
                             <p class="text-gray-500 text-sm font-semibold uppercase tracking-wide">New Cases (7d)</p>
@@ -322,7 +322,7 @@
                 </div>
                 
                 <!-- Population Coverage -->
-                <div class="bg-white rounded-2xl shadow-lg p-6 border-l-4 border-emerald-500">
+                <div id="quick-stat-total" class="bg-white rounded-2xl shadow-lg p-6 border-l-4 border-emerald-500">
                     <div class="flex items-center justify-between">
                         <div>
                             <p class="text-gray-500 text-sm font-semibold uppercase tracking-wide">Population</p>
@@ -350,7 +350,7 @@
                             <button class="text-emerald-600 hover:text-emerald-700 font-semibold">View All</button>
                         </div>
                         
-                        <div class="space-y-4">
+                        <div class="space-y-4" id="critical-alerts-list-container">
                             <!-- Alert 1 -->
                             <div class="border-l-4 border-red-500 bg-red-50 p-4 rounded-r-xl">
                                 <div class="flex items-start justify-between">
