@@ -2500,11 +2500,21 @@ def get_weather():
 @app.route('/api/air-quality-map', methods=['GET'])
 # @cached_api_call('air-quality-map')  # DISABLED: Need fresh data for testing
 def get_air_quality_map():
-    """API endpoint to get air quality data for heatmap visualization"""
+    """
+    API endpoint for supplemental air quality marker overlays.
+    
+    NOTE: Primary visualization now uses Google Air Quality heatmap tiles directly.
+    This endpoint provides data points for optional marker overlays and tooltips.
+    
+    Reduced limits to minimize EPA API load:
+    - Default: 10 locations
+    - Maximum: 20 locations
+    """
     try:
         # Get state filter (optional)
         state_name = request.args.get('state')
-        limit = int(request.args.get('limit', 10))  # Reduced from 100 to 10 to prevent EPA rate limiting
+        # Reduce default limit to minimize EPA API calls (tiles provide main visualization)
+        limit = min(int(request.args.get('limit', 10)), 20)  # Default 10, max 20
         
         print(f"[HEATMAP API] Request - State: {state_name}, Limit: {limit}")
         
@@ -2625,7 +2635,8 @@ def get_air_quality_map():
             'success': True,
             'data': heatmap_data,
             'count': len(heatmap_data),
-            'source': 'EPA AirNow API'
+            'source': 'EPA AirNow API',
+            'note': 'Google Air Quality heatmap tiles provide primary visualization'
         })
         
     except Exception as e:
