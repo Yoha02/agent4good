@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, session, redirect, url_for
 import os
 from dotenv import load_dotenv
 import pandas as pd
@@ -19,6 +19,8 @@ from google_pollen_service import GooglePollenService
 from google.cloud import storage, bigquery, texttospeech
 import google.generativeai as genai
 import base64
+import firebase_admin
+from firebase_admin import credentials, auth
 
 # PSA Video Integration
 try:
@@ -30,6 +32,21 @@ except ImportError as e:
 
 # Load environment variables
 load_dotenv()
+
+# Initialize Firebase Admin SDK
+FIREBASE_AVAILABLE = False
+try:
+    firebase_service_account = os.getenv('FIREBASE_SERVICE_ACCOUNT_FILE')
+    if firebase_service_account and os.path.exists(firebase_service_account):
+        cred = credentials.Certificate(firebase_service_account)
+        firebase_admin.initialize_app(cred)
+        FIREBASE_AVAILABLE = True
+        print("[OK] Firebase Admin SDK initialized")
+    else:
+        print("[WARNING] Firebase service account file not found - authentication disabled")
+except Exception as e:
+    print(f"[WARNING] Firebase initialization failed: {e}")
+    FIREBASE_AVAILABLE = False
 
 # Simple in-memory cache for API responses
 API_CACHE = {}
@@ -1488,14 +1505,92 @@ def get_locations():
             'error': str(e)
         }), 500
 
+# ===== FIREBASE AUTHENTICATION =====
+
+def require_official_auth(f):
+    """Decorator to protect routes requiring official authentication"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        # Always check for session authentication
+        if 'officials_uid' not in session:
+            print("[WARNING] Unauthorized access attempt - redirecting to login")
+            return redirect(url_for('officials_login'))
+        
+        return f(*args, **kwargs)
+    return decorated_function
+
 @app.route('/officials-login')
 def officials_login():
     """Public Health Officials login page"""
-    return render_template('officials_login.html')
+    # Pass Firebase config to template
+    firebase_config = {
+        'apiKey': os.getenv('FIREBASE_API_KEY', ''),
+        'authDomain': os.getenv('FIREBASE_AUTH_DOMAIN', ''),
+        'projectId': os.getenv('FIREBASE_PROJECT_ID', ''),
+        'storageBucket': os.getenv('FIREBASE_STORAGE_BUCKET', ''),
+        'messagingSenderId': os.getenv('FIREBASE_MESSAGING_SENDER_ID', ''),
+        'appId': os.getenv('FIREBASE_APP_ID', '')
+    }
+    return render_template('officials_login.html', firebase_config=firebase_config)
+
+@app.route('/officials-verify-token', methods=['POST'])
+def officials_verify_token():
+    """Verify Firebase ID token and create session"""
+    if not FIREBASE_AVAILABLE:
+        return jsonify({
+            'success': False, 
+            'error': 'Firebase authentication not configured on server. Please configure FIREBASE_SERVICE_ACCOUNT_FILE in .env'
+        }), 500
+    
+    try:
+        data = request.get_json()
+        id_token = data.get('idToken')
+        
+        if not id_token:
+            return jsonify({'success': False, 'error': 'No token provided'}), 400
+        
+        # Verify the ID token
+        decoded_token = auth.verify_id_token(id_token)
+        uid = decoded_token['uid']
+        email = decoded_token.get('email', '')
+        
+        # Create session
+        session['officials_uid'] = uid
+        session['officials_email'] = email
+        session['role'] = 'official'
+        
+        print(f"[OK] Official logged in: {email} (UID: {uid})")
+        
+        return jsonify({
+            'success': True,
+            'uid': uid,
+            'email': email
+        })
+    
+    except auth.InvalidIdTokenError:
+        return jsonify({'success': False, 'error': 'Invalid authentication token'}), 401
+    except auth.ExpiredIdTokenError:
+        return jsonify({'success': False, 'error': 'Authentication token expired'}), 401
+    except Exception as e:
+        print(f"[ERROR] Token verification failed: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/officials-logout', methods=['POST', 'GET'])
+def officials_logout():
+    """Logout official and clear session"""
+    session.clear()  # Clear entire session
+    
+    # If it's a POST request (AJAX), return JSON
+    if request.method == 'POST':
+        return jsonify({'success': True})
+    
+    # If it's a GET request (direct navigation), redirect to login
+    return redirect(url_for('officials_login'))
 
 @app.route('/officials-dashboard')
+@require_official_auth
 def officials_dashboard():
-    """Public Health Officials dashboard - requires authentication in production"""
+    """Public Health Officials dashboard - requires authentication"""
     return render_template('officials_dashboard.html')
 
 @app.route('/api/community-reports', methods=['GET'])

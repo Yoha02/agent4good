@@ -753,12 +753,37 @@
     <script src="{{ url_for('static', filename='js/officials-dashboard.js') }}"></script>
     <script>
         // Logout function
-        function logout() {
+        async function logout() {
             if (confirm('Are you sure you want to logout?')) {
-                // Store in sessionStorage for persistence
-                sessionStorage.setItem('persona', 'Community Resident');
-                console.log('Logout from Health Official Account: update persona type to "Community Resident" in session storage');
-                window.location.href = '/';
+                try {
+                    // Call backend to clear session
+                    const response = await fetch('/officials-logout', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        }
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        // Clear sessionStorage
+                        sessionStorage.removeItem('persona');
+                        sessionStorage.setItem('persona', 'Community Resident');
+                        console.log('Logout successful: session cleared, persona reset');
+                        
+                        // Redirect to home
+                        window.location.href = '/';
+                    } else {
+                        console.error('Logout failed:', data.error);
+                        alert('Logout failed. Please try again.');
+                    }
+                } catch (error) {
+                    console.error('Logout error:', error);
+                    // Even if the request fails, clear local data and redirect
+                    sessionStorage.setItem('persona', 'Community Resident');
+                    window.location.href = '/';
+                }
             }
         }
         
