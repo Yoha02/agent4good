@@ -126,12 +126,6 @@ AQS_API_KEY=your-aqs-api-key
 AQS_EMAIL=your-email@example.com
 
 # Firebase Authentication (for Officials Login)
-FIREBASE_API_KEY=your-firebase-api-key
-FIREBASE_AUTH_DOMAIN=your-project-id.firebaseapp.com
-FIREBASE_PROJECT_ID=your-project-id
-FIREBASE_STORAGE_BUCKET=your-project-id.firebasestorage.app
-FIREBASE_MESSAGING_SENDER_ID=your-sender-id
-FIREBASE_APP_ID=your-app-id
 FIREBASE_SERVICE_ACCOUNT_FILE=/path/to/firebase-service-account.json
 
 # Optional
@@ -174,275 +168,30 @@ See **[SETUP_BIGQUERY.md](SETUP_BIGQUERY.md)** for complete step-by-step instruc
 
 The platform includes a secure login system for Public Health Officials using Firebase Authentication.
 
-### **For Developers - Local Setup**
-
-#### 1. **Get Firebase Credentials from Admin**
-
-Request these files from your project administrator:
-- Firebase service account JSON file (e.g., `firebase-adminsdk-xxxxx.json`)
-- Firebase configuration values for `.env` file
-
-**⚠️ IMPORTANT**: These files contain sensitive credentials. Receive them via secure channels (encrypted email, password manager, secure file sharing).
-
-#### 2. **Store Service Account File Securely**
-
-```bash
-# Create secrets directory (outside git repo)
-mkdir -p ~/secrets/firebase
-
-# Move the service account file (adjust filename as needed)
-mv ~/Downloads/your-project-firebase-adminsdk-xxxxx.json ~/secrets/firebase/service_account.json
-
-# Verify it exists
-ls -la ~/secrets/firebase/service_account.json
-```
-
-#### 3. **Update Your `.env` File**
-
-Add the Firebase configuration values to your `.env` file:
-
-```env
-# Firebase Authentication
-FIREBASE_API_KEY=AIzaSyXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
-FIREBASE_AUTH_DOMAIN=your-project-id.firebaseapp.com
-FIREBASE_PROJECT_ID=your-project-id
-FIREBASE_STORAGE_BUCKET=your-project-id.firebasestorage.app
-FIREBASE_MESSAGING_SENDER_ID=123456789012
-FIREBASE_APP_ID=1:123456789012:web:xxxxxxxxxxxxx
-FIREBASE_SERVICE_ACCOUNT_FILE=/Users/YOUR_USERNAME/secrets/firebase/service_account.json
-```
-
-**Note**: Update `FIREBASE_SERVICE_ACCOUNT_FILE` with your actual path.
-
-#### 4. **Install Firebase Dependencies**
-
-```bash
-pip install firebase-admin
-# or
-pip install -r requirements.txt
-```
-
-#### 5. **Test Firebase Initialization**
-
-```bash
-python app_local.py
-```
-
-Look for this in the console output:
-```
-[OK] Firebase Admin SDK initialized
-```
-
-If you see `[WARNING] Firebase service account file not found`, check your file path in `.env`.
-
-#### 6. **Access Officials Login**
-
-- **Login page**: http://localhost:8080/officials-login
-- **Dashboard** (requires login): http://localhost:8080/officials-dashboard
-
-**Test Credentials**: Ask your admin for a test account, or see "Creating Official Users" below.
-
----
-
-### **For Admins - Setting Up Firebase from Scratch**
-
-#### Option 1: Use Existing Firebase Project
-
-If you already have a Firebase project set up, follow the "Get Credentials" section below.
-
-#### Option 2: Create New Firebase Project
-
-1. **Go to Firebase Console**: https://console.firebase.google.com/
-
-2. **Create New Project** (or select existing):
-   - Click "Add project"
-   - Enter project name
-   - Enable Google Analytics (optional)
-   - Click "Create project"
-
-3. **Enable Authentication**:
-   - In Firebase Console, go to **Authentication** → **Sign-in method**
-   - Click **Email/Password**
-   - Toggle **Enable** to ON
-   - Click **Save**
-
-4. **Add Authorized Domains**:
-   - In **Authentication** → **Settings** → **Authorized domains**
-   - Add these domains:
-     - `localhost` (for local development)
-     - `your-production-domain.com` (e.g., `aimmunity.io`)
-   - Click **Add domain** for each
-
-5. **Get Web App Configuration**:
-   - Go to **Project Settings** (gear icon) → **General**
-   - Scroll to **Your apps** section
-   - If no web app exists:
-     - Click **Add app** → **Web** (</>)
-     - Register app with a nickname (e.g., "Agent4Good Web")
-   - Copy the Firebase configuration:
-     ```javascript
-     const firebaseConfig = {
-       apiKey: "AIzaSy...",
-       authDomain: "your-project.firebaseapp.com",
-       projectId: "your-project-id",
-       storageBucket: "your-project.firebasestorage.app",
-       messagingSenderId: "123456789012",
-       appId: "1:123456789012:web:..."
-     };
-     ```
-
-6. **Download Service Account Key**:
-   - Go to **Project Settings** → **Service accounts**
-   - Click **Firebase Admin SDK** tab
-   - Click **Generate new private key**
-   - Download the JSON file
-   - **⚠️ Keep this file secure!** Never commit to git.
-
-7. **Share Credentials with Team**:
-   - Share the Firebase config values (from step 5) for `.env`
-   - Share the service account JSON file (from step 6) securely
-   - Share the `env.template` file as a reference
-   - Point team to this README section
-
----
-
-### **For Admins - Creating Official Users**
-
-Since signup is disabled (login-only), officials must be created manually:
-
-#### Method 1: Firebase Console (Recommended)
-
-1. Go to [Firebase Console](https://console.firebase.google.com/)
-2. Select your project
-3. Navigate to **Authentication** → **Users**
-4. Click **Add user**
-5. Enter:
-   - **Email**: `official@healthdept.gov`
-   - **Password**: (create a secure password)
-6. Click **Add user**
-7. Share credentials securely with the official
-
-#### Method 2: Bulk Creation with Firebase CLI
-
-```bash
-# Install Firebase CLI
-npm install -g firebase-tools
-
-# Login
-firebase login
-
-# Create users from JSON file
-firebase auth:import users.json --project your-project-id
-```
-
-Example `users.json`:
-```json
-{
-  "users": [
-    {
-      "email": "official1@healthdept.gov",
-      "password": "SecurePassword123!"
-    },
-    {
-      "email": "official2@healthdept.gov",
-      "password": "SecurePassword456!"
-    }
-  ]
-}
-```
-
----
-
-### **Switching to a New Firebase Project**
-
-If you need to connect to a different Firebase project:
-
-#### 1. **Set Up New Project** (follow "Option 2: Create New Firebase Project" above)
-
-#### 2. **Get New Credentials**:
-   - Web app config (for client-side)
-   - Service account JSON (for server-side)
-
-#### 3. **Update Configuration**:
-
-**Update `.env` file**:
-```env
-FIREBASE_API_KEY=new-api-key
-FIREBASE_AUTH_DOMAIN=new-project-id.firebaseapp.com
-FIREBASE_PROJECT_ID=new-project-id
-FIREBASE_STORAGE_BUCKET=new-project-id.firebasestorage.app
-FIREBASE_MESSAGING_SENDER_ID=new-sender-id
-FIREBASE_APP_ID=new-app-id
-FIREBASE_SERVICE_ACCOUNT_FILE=/path/to/new-service-account.json
-```
-
-**Replace service account file**:
-```bash
-# Backup old file (optional)
-mv ~/secrets/firebase/service_account.json ~/secrets/firebase/service_account.old.json
-
-# Place new file
-mv ~/Downloads/new-firebase-adminsdk-xxxxx.json ~/secrets/firebase/service_account.json
-```
-
-#### 4. **Update Code (if needed)**:
-
-If your new Firebase project has a different project ID, update `app_local.py`:
-
-```python
-# Line ~70
-GCP_PROJECT_ID = 'your-new-project-id'
-```
-
-#### 5. **Test New Configuration**:
-
-```bash
-# Restart app
-python app_local.py
-
-# Check console for:
-# [OK] Firebase Admin SDK initialized
-
-# Test login at:
-# http://localhost:8080/officials-login
-```
-
-#### 6. **Update Production Deployment**:
-
-For Cloud Run:
-```bash
-gcloud run services update agent4good \
-  --set-env-vars="FIREBASE_API_KEY=new-api-key,FIREBASE_AUTH_DOMAIN=new-project.firebaseapp.com,..." \
-  --region=us-central1
-```
-
----
-
-### **Troubleshooting Firebase**
-
-#### "Firebase service account file not found"
-**Fix**: Check `.env` has correct path: `FIREBASE_SERVICE_ACCOUNT_FILE=/full/path/to/file.json`
-
-#### "auth/invalid-api-key"
-**Fix**: Verify `FIREBASE_API_KEY` in `.env` matches Firebase Console
-
-#### "Email/password accounts are not enabled"
-**Fix**: Enable Email/Password in Firebase Console → Authentication → Sign-in method
-
-#### "There is no user record"
-**Fix**: Create user in Firebase Console → Authentication → Users
-
-#### "Unauthorized domain"
-**Fix**: Add your domain in Firebase Console → Authentication → Settings → Authorized domains
-
----
-
-### **Additional Resources**
-
-- **Detailed Setup Guide**: See [FIREBASE_SETUP.md](FIREBASE_SETUP.md)
-- **Quick Start**: See [FIREBASE_QUICK_START.md](FIREBASE_QUICK_START.md)
-- **Security Fix**: See [FIREBASE_AUTH_FIX_COMPLETE.md](FIREBASE_AUTH_FIX_COMPLETE.md)
-- **Logout Implementation**: See [LOGOUT_FIX_COMPLETE.md](LOGOUT_FIX_COMPLETE.md)
+### **Quick Setup for Developers**
+
+1. **Get the service account file** from your admin
+2. **Store it securely**:
+   ```bash
+   mkdir -p ~/secrets/firebase
+   mv firebase-adminsdk-xxxxx.json ~/secrets/firebase/service_account.json
+   ```
+3. **Update `.env`**:
+   ```env
+   FIREBASE_SERVICE_ACCOUNT_FILE=/Users/YOUR_USERNAME/secrets/firebase/service_account.json
+   ```
+4. **Install dependencies**: `pip install firebase-admin`
+5. **Test**: `python app_local.py` (look for "[OK] Firebase Admin SDK initialized")
+6. **Login**: http://localhost:8080/officials-login
+
+### **For Complete Setup Instructions**
+
+See **[FIREBASE_README.md](FIREBASE_README.md)** for:
+- 📋 Complete developer setup guide
+- 🔧 Admin guide (creating Firebase project, managing users)
+- 🔄 Switching Firebase projects
+- 🐛 Troubleshooting common issues
+- 📚 Additional resources
 
 ---
 
