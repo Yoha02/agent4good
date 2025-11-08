@@ -1522,6 +1522,31 @@ def get_community_reports():
         project_id = os.getenv('GOOGLE_CLOUD_PROJECT')
         dataset_id = os.getenv('BIGQUERY_DATASET')
         table_id = os.getenv('BIGQUERY_TABLE_REPORTS')
+
+        # ===== NEW: Build reusable filter string =====
+        filter_conditions = ""
+        if state:
+            filter_conditions += f" AND state = '{state}'"
+        if city:
+            filter_conditions += f" AND city = '{city}'"
+        if county:
+            filter_conditions += f" AND county = '{county}'"
+        if zipcode:
+            filter_conditions += f" AND zip_code = '{zipcode}'"
+        if report_type:
+            filter_conditions += f" AND report_type = '{report_type}'"
+        if severity:
+            filter_conditions += f" AND severity = '{severity}'"
+        if status:
+            filter_conditions += f" AND status = '{status}'"
+        if start_date:
+            filter_conditions += f" AND timestamp >= TIMESTAMP('{start_date}')"
+        if end_date:
+            filter_conditions += f" AND timestamp <= TIMESTAMP('{end_date}')"
+        if timeframe:
+            filter_conditions += f" AND timeframe = '{timeframe}'"
+        # ===== END NEW =====
+
         
         if not all([project_id, dataset_id, table_id]):
             print("[ERROR] Missing BigQuery configuration in environment variables")
@@ -1571,7 +1596,7 @@ def get_community_reports():
         )
         SELECT * EXCEPT(rn)
         FROM LatestReports
-        WHERE rn = 1 AND 1=1
+        WHERE rn = 1 {filter_conditions} # <-- USE THE FILTER STRING
         """
         
         # Add filter conditions
@@ -1647,36 +1672,51 @@ def get_community_reports():
             }
             reports.append(report)
         
-        # Get total count for pagination
-        count_query = f"""
-        SELECT COUNT(*) as total
-        FROM `{project_id}.{dataset_id}.{table_id}`
-        WHERE 1=1
+# Get total count and dashboard statistics
+        stats_query = f"""
+        WITH FilteredData AS (
+            SELECT
+                timestamp,
+                severity,
+                status
+            FROM `{project_id}.{dataset_id}.{table_id}`
+            WHERE 1=1 {filter_conditions} # <-- REUSE THE FILTER STRING
+        )
+        SELECT
+            COUNT(*) as total_reports,
+            
+            COUNTIF(timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY)) as new_cases_this_week,
+            
+            COUNTIF(timestamp < TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY) 
+                    AND timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 14 DAY)) as new_cases_last_week,
+            
+            COUNTIF(status IN ('Pending', 'Under Review', 'Valid - Action Required', 'pending', 'reviewed') 
+                    AND severity IN ('high', 'critical')) as active_high_priority_alerts,
+            
+            COUNTIF(status = 'Pending' OR status = 'pending') as pending_review
+            
+        FROM FilteredData
         """
-        if state:
-            count_query += f" AND state = '{state}'"
-        if city:
-            count_query += f" AND city = '{city}'"
-        if county:
-            count_query += f" AND county = '{county}'"
-        if zipcode:
-            count_query += f" AND zip_code = '{zipcode}'"
-        if report_type:
-            count_query += f" AND report_type = '{report_type}'"
-        if severity:
-            count_query += f" AND severity = '{severity}'"
-        if status:
-            count_query += f" AND status = '{status}'"
         
-        count_job = client.query(count_query)
-        count_result = list(count_job.result())[0]
-        total_count = count_result.total
+        stats_job = client.query(stats_query)
+        stats_result = list(stats_job.result())[0]
+        
+        # Package stats into a dictionary
+        stats = {
+            'total_reports': stats_result.total_reports,
+            'new_cases_this_week': stats_result.new_cases_this_week,
+            'new_cases_last_week': stats_result.new_cases_last_week,
+            'active_high_priority_alerts': stats_result.active_high_priority_alerts,
+            'pending_review': stats_result.pending_review
+        }
+        total_count = stats['total_reports']
         
         print(f"[SUCCESS] Retrieved {len(reports)} reports (total: {total_count})")
         
         return jsonify({
             'success': True,
             'reports': reports,
+            'stats':stats,
             'total': total_count,
             'limit': limit,
             'offset': offset
