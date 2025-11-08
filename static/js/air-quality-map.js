@@ -119,9 +119,14 @@ function initAirQualityMap() {
                     const lng = position.coords.longitude;
                     console.log('[HEATMAP DEBUG] Got user location:', lat, lng);
                     
-                    // Fly to user's location
+                    // Fly to user's location - city/regional level zoom (50km altitude)
                     cesiumViewer.camera.flyTo({
-                        destination: Cesium.Cartesian3.fromDegrees(lng, lat, 1000000), // 1000km altitude for wide view
+                        destination: Cesium.Cartesian3.fromDegrees(lng, lat, 50000), // 50km altitude - shows city and surrounding area
+                        orientation: {
+                            heading: Cesium.Math.toRadians(0),
+                            pitch: Cesium.Math.toRadians(-45), // 45 degree tilt for better perspective
+                            roll: 0.0
+                        },
                         duration: 2
                     });
                     
