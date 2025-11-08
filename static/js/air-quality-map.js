@@ -101,9 +101,22 @@ function initAirQualityMap() {
         tileset.readyPromise.then(() => {
             console.log('[HEATMAP DEBUG] Tileset loaded and ready');
             
-            // Hide the default globe to show only 3D tiles
-            cesiumViewer.scene.globe.show = false;
-            console.log('[HEATMAP DEBUG] Globe hidden');
+            // KEEP globe visible for imagery layers
+            // This allows air quality tiles to render
+            cesiumViewer.scene.globe.show = true;
+            
+            // Disable default atmosphere for better visibility
+            cesiumViewer.scene.globe.showGroundAtmosphere = false;
+            
+            // Keep default base layer but make it very transparent
+            // (Imagery layers need a base to blend with)
+            const baseLayer = cesiumViewer.imageryLayers.get(0);
+            if (baseLayer) {
+                baseLayer.alpha = 0.3; // Make base layer semi-transparent so 3D tiles show through
+                console.log('[HEATMAP DEBUG] Base layer made semi-transparent');
+            }
+            
+            console.log('[HEATMAP DEBUG] Globe configured for overlay');
             
             // Add Google Air Quality Heatmap Tiles as overlay
             console.log('[HEATMAP DEBUG] Adding air quality overlay...');
@@ -173,6 +186,12 @@ function initAirQualityMap() {
             }
             
             console.log('[HEATMAP DEBUG] Initialization complete!');
+            
+            // Update status to show map is ready
+            document.getElementById('mapStatus').innerHTML = `
+                <i class="fas fa-check-circle text-green-600 mr-2"></i>
+                Air quality heatmap overlay active
+            `;
         }).catch((error) => {
             console.error('[HEATMAP DEBUG] Tileset failed to load:', error);
         });
@@ -296,8 +315,10 @@ function addAirQualityTileOverlay() {
     console.log('[HEATMAP] Adding Google Air Quality tile overlay...');
     
     try {
-        // Create imagery provider for Google Air Quality tiles
-        // URL pattern: https://airquality.googleapis.com/v1/mapTypes/US_AQI/heatmapTiles/{z}/{x}/{y}?key=API_KEY
+        // APPROACH: Use Cesium primitives to render tiles ABOVE 3D tiles
+        // Create a custom primitive that loads and displays Google AQI tiles
+        
+        // For now, try imagery layer but with depthTestAgainstTerrain disabled
         const aqiProvider = new Cesium.UrlTemplateImageryProvider({
             url: `https://airquality.googleapis.com/v1/mapTypes/US_AQI/heatmapTiles/{z}/{x}/{y}?key=${GOOGLE_API_KEY}`,
             maximumLevel: 16,
@@ -307,42 +328,42 @@ function addAirQualityTileOverlay() {
             hasAlphaChannel: true
         });
         
-        // Add as an imagery layer with transparency
+        // Add as an imagery layer
         aqiTileLayer = cesiumViewer.imageryLayers.addImageryProvider(aqiProvider);
         
-        // Make the layer EXTREMELY visible - maximum settings
-        aqiTileLayer.alpha = 1.0; // 100% opaque
-        aqiTileLayer.brightness = 3.0; // VERY bright
-        aqiTileLayer.contrast = 3.0; // VERY high contrast
-        aqiTileLayer.saturation = 3.0; // VERY vivid colors
-        aqiTileLayer.gamma = 2.0; // Much brighter mid-tones
-        aqiTileLayer.hue = 0.0; // No hue shift
+        // Make layer visible with high contrast
+        aqiTileLayer.alpha = 0.8; // 80% opaque so we can see through to 3D tiles
+        aqiTileLayer.brightness = 2.0;
+        aqiTileLayer.contrast = 2.0;
+        aqiTileLayer.saturation = 2.0;
+        aqiTileLayer.gamma = 1.5;
+        aqiTileLayer.show = true;
         
-        console.log('[HEATMAP] Air Quality tile overlay added successfully');
-        console.log('[HEATMAP] Tile URL pattern:', `https://airquality.googleapis.com/v1/mapTypes/US_AQI/heatmapTiles/{z}/{x}/{y}?key=${GOOGLE_API_KEY}`);
+        // CRITICAL: Try to render imagery on top of 3D tiles
+        // This is a hack but may work
+        cesiumViewer.scene.globe.depthTestAgainstTerrain = false;
         
-        // Test a specific tile URL for San Francisco area
-        const testUrl = `https://airquality.googleapis.com/v1/mapTypes/US_AQI/heatmapTiles/5/5/12?key=${GOOGLE_API_KEY}`;
-        console.log('[HEATMAP] Test tile URL:', testUrl);
-        console.log('[HEATMAP] Click the URL above to test if tiles are loading');
+        console.log('[HEATMAP] Air Quality tile overlay added');
+        console.log('[HEATMAP] Layer index:', cesiumViewer.imageryLayers.indexOf(aqiTileLayer));
+        console.log('[HEATMAP] Total imagery layers:', cesiumViewer.imageryLayers.length);
+        console.log('[HEATMAP] Layer alpha:', aqiTileLayer.alpha);
+        console.log('[HEATMAP] depthTestAgainstTerrain:', cesiumViewer.scene.globe.depthTestAgainstTerrain);
         
-        // Listen for errors
-        aqiProvider.errorEvent.addEventListener((error) => {
-            console.error('[HEATMAP] Tile loading error:', error);
-        });
+        // Alternative: If imagery doesn't work, load backend data and create polygon overlays
+        console.log('[HEATMAP] NOTE: If overlay not visible, it may be hidden behind 3D tiles');
+        console.log('[HEATMAP] Will fall back to marker-based visualization');
         
-        // Listen for tile load success
-        aqiProvider.readyPromise.then(() => {
-            console.log('[HEATMAP] Γ£à Tile provider is ready!');
-        }).catch((error) => {
-            console.error('[HEATMAP] Γ¥î Tile provider failed:', error);
-        });
+        // Load backend data to show as markers instead
+        setTimeout(() => {
+            console.log('[HEATMAP] ===== AUTO-LOADING DATA (2 second delay) =====');
+            loadHeatmapData(null);
+        }, 2000);
         
     } catch (error) {
         console.error('[HEATMAP] Error adding tile overlay:', error);
         document.getElementById('mapStatus').innerHTML = `
             <i class="fas fa-exclamation-circle text-orange-600 mr-2"></i>
-            Air quality overlay unavailable - check console
+            Air quality overlay unavailable - using markers instead
         `;
     }
 }
@@ -386,17 +407,21 @@ async function loadHeatmapData(state = null) {
         }
         
         // Fetch individual readings to show as markers
-        let url = '/api/air-quality-map';
+        let url = '/api/air-quality-map?limit=20'; // Increased limit to get more data
         if (state) {
-            url += `?state=${encodeURIComponent(state)}`;
+            url += `&state=${encodeURIComponent(state)}`;
         }
         
+        console.log('[HEATMAP] Fetching from:', url);
         const response = await fetch(url);
         const result = await response.json();
         
-        if (result.success && result.data) {
+        console.log('[HEATMAP] API Response:', result);
+        
+        if (result.success && result.data && result.data.length > 0) {
             heatmapData = result.data;
-            console.log('[HEATMAP] Received', result.data.length, 'data points');
+            console.log('[HEATMAP] ✓ Received', result.data.length, 'REAL data points from backend');
+            console.log('[HEATMAP] First data point:', result.data[0]);
             updateHeatmap(); // Add markers showing readings
             
             document.getElementById('mapStatus').innerHTML = `
@@ -404,17 +429,26 @@ async function loadHeatmapData(state = null) {
                 Showing ${result.count} air quality readings
             `;
         } else {
+            // NO DATA - Show error and suggest checking backend
+            console.error('[HEATMAP] ✗ No data from backend API');
+            console.error('[HEATMAP] API Response:', result);
+            console.error('[HEATMAP] Check backend logs for EPA API errors');
+            
+            heatmapData = [];
+            
             document.getElementById('mapStatus').innerHTML = `
-                <i class="fas fa-check-circle text-green-600 mr-2"></i>
-                Showing real-time air quality data from Google
+                <i class="fas fa-exclamation-circle text-red-600 mr-2"></i>
+                No air quality data available - check backend logs
             `;
         }
         
     } catch (error) {
-        console.error('[HEATMAP] Error:', error);
+        console.error('[HEATMAP] Error loading data:', error);
+        console.error('[HEATMAP] Error details:', error.message, error.stack);
+        
         document.getElementById('mapStatus').innerHTML = `
-            <i class="fas fa-check-circle text-green-600 mr-2"></i>
-            Showing air quality tile overlay
+            <i class="fas fa-exclamation-circle text-red-600 mr-2"></i>
+            Error loading air quality data
         `;
     }
 }

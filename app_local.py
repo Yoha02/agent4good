@@ -2498,7 +2498,7 @@ def get_weather():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/air-quality-map', methods=['GET'])
-@cached_api_call('air-quality-map')
+# @cached_api_call('air-quality-map')  # DISABLED: Need fresh data for testing
 def get_air_quality_map():
     """API endpoint to get air quality data for heatmap visualization"""
     try:
@@ -2539,34 +2539,55 @@ def get_air_quality_map():
                         'longitude': loc_info.get('longitude')
                     })
         else:
-            # Sample major US cities across all states
-            major_states = ['CA', 'NY', 'TX', 'FL', 'IL', 'PA', 'OH', 'GA', 'NC', 'MI']
-            cities_per_state = max(1, limit // len(major_states))
+            # Use major US cities with known air quality monitors
+            major_cities = [
+                {'city': 'Los Angeles', 'state': 'CA', 'zip': '90001'},
+                {'city': 'San Francisco', 'state': 'CA', 'zip': '94102'},
+                {'city': 'San Diego', 'state': 'CA', 'zip': '92101'},
+                {'city': 'Sacramento', 'state': 'CA', 'zip': '95814'},
+                {'city': 'Oakland', 'state': 'CA', 'zip': '94601'},
+                {'city': 'San Jose', 'state': 'CA', 'zip': '95110'},
+                {'city': 'New York', 'state': 'NY', 'zip': '10001'},
+                {'city': 'Brooklyn', 'state': 'NY', 'zip': '11201'},
+                {'city': 'Houston', 'state': 'TX', 'zip': '77001'},
+                {'city': 'Dallas', 'state': 'TX', 'zip': '75201'},
+                {'city': 'Miami', 'state': 'FL', 'zip': '33101'},
+                {'city': 'Chicago', 'state': 'IL', 'zip': '60601'},
+                {'city': 'Philadelphia', 'state': 'PA', 'zip': '19019'},
+                {'city': 'Phoenix', 'state': 'AZ', 'zip': '85001'},
+                {'city': 'Seattle', 'state': 'WA', 'zip': '98101'},
+                {'city': 'Denver', 'state': 'CO', 'zip': '80201'},
+                {'city': 'Atlanta', 'state': 'GA', 'zip': '30301'},
+                {'city': 'Boston', 'state': 'MA', 'zip': '02101'},
+                {'city': 'Las Vegas', 'state': 'NV', 'zip': '89101'},
+                {'city': 'Portland', 'state': 'OR', 'zip': '97201'}
+            ]
             
-            for state in major_states:
-                cities = location_service.get_cities_by_state(state)
-                step = max(1, len(cities) // cities_per_state)
-                for i in range(0, min(len(cities), cities_per_state * step), step):
-                    city = cities[i]
-                    loc_info = location_service.get_location_info(
-                        state_code=state,
-                        city_name=city['name']
-                    )
-                    if loc_info and loc_info.get('zipcodes'):
+            print(f"[HEATMAP API] Using {len(major_cities)} major cities with AQ monitors")
+            
+            for city_data in major_cities[:limit]:
+                loc_info = location_service.get_zipcode_info(city_data['zip'])
+                if loc_info:
                         locations_to_sample.append({
-                            'zipcode': loc_info['zipcodes'][0],
-                            'city': city['name'],
-                            'state': state,
+                        'zipcode': city_data['zip'],
+                        'city': city_data['city'],
+                        'state': city_data['state'],
                             'latitude': loc_info.get('latitude'),
                             'longitude': loc_info.get('longitude')
                         })
         
         # Get air quality data for each location
         heatmap_data = []
-        for loc in locations_to_sample[:limit]:
+        print(f"[HEATMAP API] Querying EPA for {len(locations_to_sample[:limit])} locations...")
+        
+        for idx, loc in enumerate(locations_to_sample[:limit], 1):
             try:
+                print(f"[HEATMAP API] [{idx}/{limit}] Checking {loc['city']}, {loc['state']} (ZIP: {loc['zipcode']})")
+                
                 # Get current AQI for this location
                 aqi_data = epa_service.get_current_aqi(loc['zipcode'])
+                
+                print(f"[HEATMAP API]   Response: success={aqi_data.get('success') if aqi_data else False}, has_data={bool(aqi_data.get('data')) if aqi_data else False}")
                 
                 if aqi_data and aqi_data.get('success') and aqi_data.get('data'):
                     # Find the highest AQI value
@@ -2575,6 +2596,8 @@ def get_air_quality_map():
                         aqi = reading.get('AQI', 0)
                         if aqi > max_aqi:
                             max_aqi = aqi
+                    
+                    print(f"[HEATMAP API]   Max AQI: {max_aqi}")
                     
                     if max_aqi > 0 and loc.get('latitude') and loc.get('longitude'):
                         heatmap_data.append({
@@ -2586,11 +2609,17 @@ def get_air_quality_map():
                             'state': loc['state'],
                             'zipcode': loc['zipcode']
                         })
+                        print(f"[HEATMAP API]   ✓ Added to results")
+                    else:
+                        print(f"[HEATMAP API]   ✗ Skipped: AQI={max_aqi}, lat={loc.get('latitude')}, lng={loc.get('longitude')}")
+                else:
+                    print(f"[HEATMAP API]   ✗ No AQI data available")
+                    
             except Exception as e:
-                print(f"[HEATMAP API] Error getting data for {loc['city']}, {loc['state']}: {e}")
+                print(f"[HEATMAP API]   ✗ Error: {e}")
                 continue
         
-        print(f"[HEATMAP API] Returning {len(heatmap_data)} locations with AQI data")
+        print(f"[HEATMAP API] ===== FINAL: Returning {len(heatmap_data)} locations with AQI data =====")
         
         return jsonify({
             'success': True,
