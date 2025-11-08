@@ -119,12 +119,13 @@ function initAirQualityMap() {
                     const lng = position.coords.longitude;
                     console.log('[HEATMAP DEBUG] Got user location:', lat, lng);
                     
-                    // Fly to user's location - city/regional level zoom (50km altitude)
+                    // Fly to user's location - zoomed in to city level (20km altitude)
+                    // Using top-down view (pitch -90) to accurately center on location
                     cesiumViewer.camera.flyTo({
-                        destination: Cesium.Cartesian3.fromDegrees(lng, lat, 50000), // 50km altitude - shows city and surrounding area
+                        destination: Cesium.Cartesian3.fromDegrees(lng, lat, 20000), // 20km altitude - closer zoom to read city names
                         orientation: {
                             heading: Cesium.Math.toRadians(0),
-                            pitch: Cesium.Math.toRadians(-45), // 45 degree tilt for better perspective
+                            pitch: Cesium.Math.toRadians(-90), // Top-down view for accurate centering
                             roll: 0.0
                         },
                         duration: 2
@@ -285,10 +286,10 @@ function addAirQualityTileOverlay() {
         
         // Add as an imagery layer
         aqiTileLayer = cesiumViewer.imageryLayers.addImageryProvider(aqiProvider);
-        aqiTileLayer.alpha = 0.6; // 60% opacity - visible but doesn't hide base map details
+        aqiTileLayer.alpha = 0.4; // 40% opacity - less dominant green, highlights other colors better
         aqiTileLayer.show = true;
         
-        console.log(`[HEATMAP] ✓ ${currentHeatmapType} tile overlay added (opacity: 0.6)`);
+        console.log(`[HEATMAP] ✓ ${currentHeatmapType} tile overlay added (opacity: 0.4)`);
         console.log('[HEATMAP] Layer index:', cesiumViewer.imageryLayers.indexOf(aqiTileLayer));
         console.log('[HEATMAP] Total imagery layers:', cesiumViewer.imageryLayers.length);
         
@@ -346,10 +347,10 @@ function switchGoogleHeatmapTiles(mapType) {
     
     // Add new imagery layer
     aqiTileLayer = cesiumViewer.imageryLayers.addImageryProvider(aqiProvider);
-    aqiTileLayer.alpha = 0.6; // 60% opacity - visible but doesn't hide base map
+    aqiTileLayer.alpha = 0.4; // 40% opacity - less dominant green, better color visibility
     aqiTileLayer.show = true;
     
-    console.log(`[HEATMAP] ✓ Loaded ${mapType} tiles (opacity: 0.6)`);
+    console.log(`[HEATMAP] ✓ Loaded ${mapType} tiles (opacity: 0.4)`);
     
     // Update status message
     const typeLabel = mapType === 'US_AQI' ? 'Standard AQI' : 'High Contrast';
