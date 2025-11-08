@@ -11,9 +11,7 @@ def get_gemini_embedding(text: str) -> List[float]:
     Generates text embeddings using the Gemini API (text-embedding-004).
     Requires an API key with access to the Generative Language API.
     """
-    GEMINI_KEY = os.getenv(
-        "GEMINI_API_KEY", "AIzaSyALQGawG7iVNjJhG8v5w3Z_eyt5oRdMCvk"
-    )
+    GEMINI_KEY = os.getenv("GEMINI_API_KEY")
 
     url = "https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:embedContent"
     headers = {"Content-Type": "application/json", "x-goog-api-key": GEMINI_KEY}
