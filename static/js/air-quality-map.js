@@ -208,15 +208,15 @@ function geocodeZipCode(zipCode) {
             const lng = location.lng();
             console.log('[HEATMAP DEBUG] ZIP geocoded to:', lat, lng);
             
-            // Fly to this location - very close to ground
+            // Fly to this location - city level zoom with top-down view
             cesiumViewer.camera.flyTo({
-                destination: Cesium.Cartesian3.fromDegrees(lng, lat, 300), // 300m height
+                destination: Cesium.Cartesian3.fromDegrees(lng, lat, 20000), // 20km altitude - city level
                 orientation: {
                     heading: Cesium.Math.toRadians(0),
-                    pitch: Cesium.Math.toRadians(-30), // 30 degree angle
+                    pitch: Cesium.Math.toRadians(-90), // Top-down view for accurate centering
                     roll: 0.0
                 },
-                duration: 3
+                duration: 2
             });
             
             // DISABLED: Auto-load causes 100+ EPA API calls
@@ -225,13 +225,13 @@ function geocodeZipCode(zipCode) {
             console.error('[HEATMAP DEBUG] Geocoding failed:', status);
             // Fall back to Golden Gate Bridge
             cesiumViewer.camera.flyTo({
-                destination: Cesium.Cartesian3.fromDegrees(-122.4783, 37.8199, 300),
+                destination: Cesium.Cartesian3.fromDegrees(-122.4783, 37.8199, 20000), // 20km altitude
                 orientation: {
                     heading: Cesium.Math.toRadians(0),
-                    pitch: Cesium.Math.toRadians(-30),
+                    pitch: Cesium.Math.toRadians(-90), // Top-down view
                     roll: 0.0
                 },
-                duration: 3
+                duration: 2
             });
             // DISABLED: Auto-load causes 100+ EPA API calls
             // loadHeatmapData(null);
@@ -303,7 +303,7 @@ function addAirQualityTileOverlay() {
 }
 
 // Fly camera to specific coordinates (for city/ZIP level zoom)
-function flyToCoordinates(lat, lng, height = 50000) {
+function flyToCoordinates(lat, lng, height = 20000) {
     if (!cesiumViewer) {
         console.log('[HEATMAP] Cannot fly to coordinates - viewer not ready');
         return;
@@ -315,7 +315,7 @@ function flyToCoordinates(lat, lng, height = 50000) {
         destination: Cesium.Cartesian3.fromDegrees(lng, lat, height),
         orientation: {
             heading: Cesium.Math.toRadians(0),
-            pitch: Cesium.Math.toRadians(-45),
+            pitch: Cesium.Math.toRadians(-90), // Top-down view for accurate centering
             roll: 0.0
         },
         duration: 2
