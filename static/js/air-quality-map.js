@@ -72,8 +72,11 @@ function initAirQualityMap() {
         // Initialize CesiumJS viewer
         Cesium.Ion.defaultAccessToken = 'YOUR_CESIUM_TOKEN'; // Not needed for Google tiles
         
+        // Create viewer with OpenStreetMap base layer (shows roads, cities, labels)
         cesiumViewer = new Cesium.Viewer('airQualityMap', {
-            imageryProvider: false,
+            imageryProvider: new Cesium.OpenStreetMapImageryProvider({
+                url: 'https://a.tile.openstreetmap.org/'
+            }),
             baseLayerPicker: false,
             geocoder: false,
             homeButton: true,
@@ -87,18 +90,18 @@ function initAirQualityMap() {
             maximumRenderTimeChange: Infinity
         });
         
-        console.log('[HEATMAP DEBUG] Cesium Viewer created successfully');
+        console.log('[HEATMAP DEBUG] Cesium Viewer created with OpenStreetMap base');
         console.log('[HEATMAP DEBUG] Initializing map for air quality visualization...');
         
-        // Configure globe for heatmap display (no 3D buildings)
+        // Configure globe for heatmap display
         cesiumViewer.scene.globe.show = true;
         cesiumViewer.scene.globe.showGroundAtmosphere = true;
         
-        // Keep base imagery layer but make it semi-transparent for context
+        // Base layer (OpenStreetMap) is now fully visible (alpha = 1.0) for context
         const baseLayer = cesiumViewer.imageryLayers.get(0);
         if (baseLayer) {
-            baseLayer.alpha = 0.5; // Semi-transparent satellite imagery
-            console.log('[HEATMAP DEBUG] Base layer configured (alpha: 0.5)');
+            baseLayer.alpha = 1.0; // Fully visible base map with roads, cities, labels
+            console.log('[HEATMAP DEBUG] Base layer (OpenStreetMap) configured - fully visible');
         }
         
         console.log('[HEATMAP DEBUG] Globe configured for heatmap overlay');
@@ -277,10 +280,10 @@ function addAirQualityTileOverlay() {
         
         // Add as an imagery layer
         aqiTileLayer = cesiumViewer.imageryLayers.addImageryProvider(aqiProvider);
-        aqiTileLayer.alpha = 0.8; // 80% opacity for good visibility
+        aqiTileLayer.alpha = 0.6; // 60% opacity - visible but doesn't hide base map details
         aqiTileLayer.show = true;
         
-        console.log(`[HEATMAP] ✓ ${currentHeatmapType} tile overlay added (opacity: 0.8)`);
+        console.log(`[HEATMAP] ✓ ${currentHeatmapType} tile overlay added (opacity: 0.6)`);
         console.log('[HEATMAP] Layer index:', cesiumViewer.imageryLayers.indexOf(aqiTileLayer));
         console.log('[HEATMAP] Total imagery layers:', cesiumViewer.imageryLayers.length);
         
@@ -338,10 +341,10 @@ function switchGoogleHeatmapTiles(mapType) {
     
     // Add new imagery layer
     aqiTileLayer = cesiumViewer.imageryLayers.addImageryProvider(aqiProvider);
-    aqiTileLayer.alpha = 0.8; // 80% opacity for good visibility
+    aqiTileLayer.alpha = 0.6; // 60% opacity - visible but doesn't hide base map
     aqiTileLayer.show = true;
     
-    console.log(`[HEATMAP] ✓ Loaded ${mapType} tiles (opacity: 0.8)`);
+    console.log(`[HEATMAP] ✓ Loaded ${mapType} tiles (opacity: 0.6)`);
     
     // Update status message
     const typeLabel = mapType === 'US_AQI' ? 'Standard AQI' : 'High Contrast';
