@@ -286,10 +286,10 @@ function addAirQualityTileOverlay() {
         
         // Add as an imagery layer
         aqiTileLayer = cesiumViewer.imageryLayers.addImageryProvider(aqiProvider);
-        aqiTileLayer.alpha = 0.4; // 40% opacity - less dominant green, highlights other colors better
+        aqiTileLayer.alpha = 0.25; // 25% opacity - subtle green, yellow/orange/red colors highly visible
         aqiTileLayer.show = true;
         
-        console.log(`[HEATMAP] ✓ ${currentHeatmapType} tile overlay added (opacity: 0.4)`);
+        console.log(`[HEATMAP] ✓ ${currentHeatmapType} tile overlay added (opacity: 0.25)`);
         console.log('[HEATMAP] Layer index:', cesiumViewer.imageryLayers.indexOf(aqiTileLayer));
         console.log('[HEATMAP] Total imagery layers:', cesiumViewer.imageryLayers.length);
         
@@ -347,10 +347,10 @@ function switchGoogleHeatmapTiles(mapType) {
     
     // Add new imagery layer
     aqiTileLayer = cesiumViewer.imageryLayers.addImageryProvider(aqiProvider);
-    aqiTileLayer.alpha = 0.4; // 40% opacity - less dominant green, better color visibility
+    aqiTileLayer.alpha = 0.25; // 25% opacity - subtle green, yellow/orange/red highly visible
     aqiTileLayer.show = true;
     
-    console.log(`[HEATMAP] ✓ Loaded ${mapType} tiles (opacity: 0.4)`);
+    console.log(`[HEATMAP] ✓ Loaded ${mapType} tiles (opacity: 0.25)`);
     
     // Update status message
     const typeLabel = mapType === 'US_AQI' ? 'Standard AQI' : 'High Contrast';
