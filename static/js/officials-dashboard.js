@@ -134,10 +134,10 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('clearFiltersBtn').addEventListener('click', clearAllFilters);
         
         // Export buttons
-        document.getElementById('exportCsvBtn').addEventListener('click', () => exportData('csv'));
-        document.getElementById('exportExcelBtn').addEventListener('click', () => exportData('xlsx'));
-        document.getElementById('exportPdfBtn').addEventListener('click', () => exportData('pdf'));
-        document.getElementById('exportPngBtn').addEventListener('click', () => exportData('png'));
+        document.getElementById('exportCsvBtn').addEventListener('click', (e) => exportData('csv', e));
+        document.getElementById('exportExcelBtn').addEventListener('click', (e) => exportData('xlsx', e));
+        document.getElementById('exportPdfBtn').addEventListener('click', (e) => exportData('pdf', e));
+        document.getElementById('exportPngBtn').addEventListener('click', (e) => exportData('png', e));
         
         // Search input
         document.getElementById('searchInput').addEventListener('input', debounce(handleSearch, 300));
@@ -779,7 +779,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     
     // Export data
-    async function exportData(format) {
+    async function exportData(format, event) {
         try {
             const params = new URLSearchParams();
             
