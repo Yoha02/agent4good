@@ -1068,7 +1068,16 @@ async function loadAirQualityData() {
 
         console.log('Fetching air quality data with params:', params.toString());
         const startTime = Date.now();
-        const response = await fetch(`/api/air-quality?${params}`);
+        
+        // Add timeout to prevent hanging (30 seconds max)
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000);
+        
+        const response = await fetch(`/api/air-quality?${params}`, { 
+            signal: controller.signal 
+        });
+        clearTimeout(timeoutId);
+        
         const data = await response.json();
         const responseTime = Date.now() - startTime;
         
@@ -1106,8 +1115,13 @@ async function loadAirQualityData() {
         }
     } catch (error) {
         console.error('Error loading air quality data:', error);
-        updateAPIStatus('error', 'Network error', error.message || 'Could not connect to EPA API');
-        showError('Network error - please try again');
+        if (error.name === 'AbortError') {
+            updateAPIStatus('error', 'Request timeout', 'EPA API request took too long - using demo data');
+            showError('Request timeout - showing demo data');
+        } else {
+            updateAPIStatus('error', 'Network error', error.message || 'Could not connect to EPA API');
+            showError('Network error - please try again');
+        }
     } finally {
         hideLoading();
     }

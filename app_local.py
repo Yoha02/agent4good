@@ -16,7 +16,7 @@ from epa_aqs_service import EPAAQSService
 from location_service_comprehensive import ComprehensiveLocationService
 from google_weather_service import GoogleWeatherService
 from google_pollen_service import GooglePollenService
-from google.cloud import storage, bigquery, texttospeech
+from google.cloud import storage, bigquery, texttospeech, translate_v2 as translate
 import google.generativeai as genai
 import base64
 import firebase_admin
@@ -140,6 +140,16 @@ except Exception as e:
     print(f"[WARNING] Text-to-Speech initialization failed: {e}")
     TTS_AVAILABLE = False
     tts_client = None
+
+# Initialize Google Translation client
+try:
+    translate_client = translate.Client()
+    TRANSLATE_AVAILABLE = True
+    print("[OK] Google Cloud Translation API initialized")
+except Exception as e:
+    print(f"[WARNING] Translation API initialization failed: {e}")
+    TRANSLATE_AVAILABLE = False
+    translate_client = None
 
 # Initialize services
 try:
@@ -915,6 +925,156 @@ def analyze():
             'success': False,
             'error': str(e)
         }), 400
+
+# ===== TRANSLATION API ENDPOINTS =====
+
+@app.route('/api/translate', methods=['POST'])
+def translate_text():
+    """Translate text to target language using Google Cloud Translation API"""
+    try:
+        if not TRANSLATE_AVAILABLE or not translate_client:
+            return jsonify({
+                'success': False,
+                'error': 'Translation service not available'
+            }), 503
+        
+        data = request.get_json()
+        text = data.get('text', '')
+        target_language = data.get('target', 'en')
+        source_language = data.get('source', None)  # Auto-detect if not provided
+        
+        if not text:
+            return jsonify({
+                'success': False,
+                'error': 'No text provided'
+            }), 400
+        
+        # Handle batch translation for multiple text items
+        if isinstance(text, list):
+            translations = []
+            for item in text:
+                if source_language:
+                    result = translate_client.translate(
+                        item,
+                        target_language=target_language,
+                        source_language=source_language
+                    )
+                else:
+                    result = translate_client.translate(
+                        item,
+                        target_language=target_language
+                    )
+                translations.append({
+                    'original': item,
+                    'translated': result['translatedText'],
+                    'detectedSourceLanguage': result.get('detectedSourceLanguage', source_language)
+                })
+            
+            return jsonify({
+                'success': True,
+                'translations': translations
+            })
+        else:
+            # Single text translation
+            if source_language:
+                result = translate_client.translate(
+                    text,
+                    target_language=target_language,
+                    source_language=source_language
+                )
+            else:
+                result = translate_client.translate(
+                    text,
+                    target_language=target_language
+                )
+            
+            return jsonify({
+                'success': True,
+                'translation': result['translatedText'],
+                'detectedSourceLanguage': result.get('detectedSourceLanguage', source_language),
+                'original': text
+            })
+    
+    except Exception as e:
+        print(f"[ERROR] Translation failed: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/languages', methods=['GET'])
+def get_supported_languages():
+    """Get list of supported languages for translation"""
+    try:
+        if not TRANSLATE_AVAILABLE or not translate_client:
+            return jsonify({
+                'success': False,
+                'error': 'Translation service not available'
+            }), 503
+        
+        # Get supported languages
+        target_language = request.args.get('target', 'en')  # Display names in this language
+        results = translate_client.get_languages(target_language=target_language)
+        
+        # Format the response
+        languages = [
+            {
+                'code': lang['language'],
+                'name': lang['name']
+            }
+            for lang in results
+        ]
+        
+        return jsonify({
+            'success': True,
+            'languages': languages,
+            'count': len(languages)
+        })
+    
+    except Exception as e:
+        print(f"[ERROR] Failed to get languages: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/detect-language', methods=['POST'])
+def detect_language():
+    """Detect the language of provided text"""
+    try:
+        if not TRANSLATE_AVAILABLE or not translate_client:
+            return jsonify({
+                'success': False,
+                'error': 'Translation service not available'
+            }), 503
+        
+        data = request.get_json()
+        text = data.get('text', '')
+        
+        if not text:
+            return jsonify({
+                'success': False,
+                'error': 'No text provided'
+            }), 400
+        
+        # Detect language
+        result = translate_client.detect_language(text)
+        
+        return jsonify({
+            'success': True,
+            'language': result['language'],
+            'confidence': result['confidence'],
+            'isReliable': result.get('isReliable', True)
+        })
+    
+    except Exception as e:
+        print(f"[ERROR] Language detection failed: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+# ===== END TRANSLATION API ENDPOINTS =====
 
 @app.route('/api/health-recommendations', methods=['GET'])
 def health_recommendations():
