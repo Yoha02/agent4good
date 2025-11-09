@@ -45,7 +45,7 @@ const POLLUTANTS = {
         fullName: 'Sulfur Dioxide',
         unit: 'ppb',
         color: '#ef4444',
-        icon: '🏭',
+        icon: '🌋',
         description: 'Gas produced by burning fossil fuels'
     },
     'NO2': {
@@ -79,15 +79,15 @@ function generateMockData(days = 7) {
 async function initializePollutantCharts(zipCode, city, state, days = 7) {
     try {
         console.log('');
-        console.log('ΓòöΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòù');
-        console.log('Γòæ [PM2.5 POLLUTANT CHARTS] Starting initialization     Γòæ');
-        console.log('ΓòáΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòú');
-        console.log('Γòæ FUNCTION CALLED WITH:                                 Γòæ');
-        console.log('Γòæ  - zipCode parameter:', zipCode || '(null/empty)');
-        console.log('Γòæ  - city parameter:', city || '(null/empty)');
-        console.log('Γòæ  - state parameter:', state || '(null/empty)');
-        console.log('Γòæ  - days parameter:', days, 'days');
-        console.log('ΓòÜΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓò¥');
+        console.log('╔═══════════════════════════════════════════════════════╗');
+        console.log('║ [PM2.5 POLLUTANT CHARTS] Starting initialization     ║');
+        console.log('╠═══════════════════════════════════════════════════════╣');
+        console.log('║ FUNCTION CALLED WITH:                                 ║');
+        console.log('║  - zipCode parameter:', zipCode || '(null/empty)');
+        console.log('║  - city parameter:', city || '(null/empty)');
+        console.log('║  - state parameter:', state || '(null/empty)');
+        console.log('║  - days parameter:', days, 'days');
+        console.log('╚═══════════════════════════════════════════════════════╝');
         console.log('');
         
         // Show loading indicator for pollutant charts
@@ -282,7 +282,7 @@ async function initializePollutantCharts(zipCode, city, state, days = 7) {
  * Fetch data for all pollutants
  */
 async function fetchPollutantData(zipCode, city, state, days = 1) {
-    console.log('[Pollutant Charts] ≡ƒöä fetchPollutantData CALLED');
+    console.log('[Pollutant Charts] 🔄 fetchPollutantData CALLED');
     console.log('[Pollutant Charts]   - zipCode:', zipCode);
     console.log('[Pollutant Charts]   - city:', city);
     console.log('[Pollutant Charts]   - state:', state);
@@ -300,37 +300,37 @@ async function fetchPollutantData(zipCode, city, state, days = 1) {
     params.append('detailed', 'true'); // Request parameter-specific data
 
     const url = `/api/air-quality-detailed?${params.toString()}`;
-    console.log(`[Pollutant Charts] ≡ƒôí Fetching from: ${url}`);
+    console.log(`[Pollutant Charts] 📡 Fetching from: ${url}`);
 
     // Use AbortController to implement a fetch timeout so UI doesn't hang
     const controller = new AbortController();
     const timeoutMs = 15000; // 15s timeout (increased from 10s)
     const timeoutId = setTimeout(() => {
-        console.log('[Pollutant Charts] ΓÅ▒∩╕Å Timeout reached, aborting fetch');
+        console.log('[Pollutant Charts] ⏱️ Timeout reached, aborting fetch');
         controller.abort();
     }, timeoutMs);
 
     try {
-        console.log('[Pollutant Charts] ≡ƒîÉ Starting fetch...');
+        console.log('[Pollutant Charts] 🌐 Starting fetch...');
         const response = await fetch(url, { signal: controller.signal });
         clearTimeout(timeoutId);
-        console.log('[Pollutant Charts] Γ£à Fetch completed, status:', response.status);
+        console.log('[Pollutant Charts] ✅ Fetch completed, status:', response.status);
 
         if (!response.ok) {
-            console.error('[Pollutant Charts] Γ¥î Fetch failed, status:', response.status);
+            console.error('[Pollutant Charts] ❌ Fetch failed, status:', response.status);
             return { success: false, error: `HTTP ${response.status}` };
         }
 
         const data = await response.json();
-        console.log('[Pollutant Charts] ≡ƒôª Response data received:', data);
+        console.log('[Pollutant Charts] 📦 Response data received:', data);
         return data;
     } catch (err) {
         clearTimeout(timeoutId);
         if (err.name === 'AbortError') {
-            console.error('[Pollutant Charts] ΓÅ╣∩╕Å Fetch aborted due to timeout');
+            console.error('[Pollutant Charts] ⏹️ Fetch aborted due to timeout');
             return { success: false, error: 'Request timed out' };
         }
-        console.error('[Pollutant Charts] Γ¥î Fetch error:', err);
+        console.error('[Pollutant Charts] ❌ Fetch error:', err);
         return { success: false, error: err.message || String(err) };
     }
 }
@@ -375,10 +375,10 @@ function createDashboardContainer() {
     }
     
     dashboard.innerHTML = `
-        <div class="mb-8 text-center">
+        <div class="mb-8">
             <h2 class="text-4xl font-bold text-gray-800 mb-3">
                 <span class="bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                    <i class="fas fa-chart-bar mr-2"></i> Air Quality Parameters
+                    📊 Air Quality Parameters
                 </span>
             </h2>
             <p class="text-gray-600 text-lg">Detailed pollutant levels and trends over time</p>
@@ -387,16 +387,16 @@ function createDashboardContainer() {
         <!-- Time Period Controls at the Top -->
         <div id="pollutant-controls" class="mb-6 flex justify-center gap-4 flex-wrap">
             <button class="chart-control-btn active px-6 py-3 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition-all duration-300 transform hover:scale-105" data-days="7">
-                <i class="fas fa-calendar-week mr-2"></i> Last 7 Days
+                📅 Last 7 Days
             </button>
             <button class="chart-control-btn px-6 py-3 bg-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-300 transition-all duration-300 transform hover:scale-105" data-days="14">
-                <i class="fas fa-calendar-alt mr-2"></i> Last 14 Days
+                📅 Last 14 Days
             </button>
             <button class="chart-control-btn px-6 py-3 bg-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-300 transition-all duration-300 transform hover:scale-105" data-days="30">
-                <i class="fas fa-calendar mr-2"></i> Last 30 Days
+                📅 Last 30 Days
             </button>
             <button class="chart-control-btn px-6 py-3 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-700 transition-all duration-300 transform hover:scale-105" data-export="true">
-                <i class="fas fa-download mr-2"></i> Export Data
+                📊 Export Data
             </button>
         </div>
         
@@ -438,8 +438,8 @@ function createPollutantChart(pollutantKey, data, isRealData = false) {
     
     // Add data source badge
     const dataBadge = isRealData 
-        ? '<span class="inline-block px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800"><i class="fas fa-check-circle mr-1"></i> Real-time EPA Data</span>'
-        : '<span class="inline-block px-2 py-1 text-xs font-semibold rounded-full bg-amber-100 text-amber-800"><i class="fas fa-chart-line mr-1"></i> Estimated Data</span>';
+        ? '<span class="inline-block px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">📡 Real-time EPA Data</span>'
+        : '<span class="inline-block px-2 py-1 text-xs font-semibold rounded-full bg-amber-100 text-amber-800">📊 Estimated Data</span>';
     
     card.innerHTML = `
         <div class="flex items-center justify-between mb-4">
@@ -626,17 +626,17 @@ async function handleControlClick(e) {
     }
     
     const days = parseInt(btn.dataset.days);
-    console.log(`[Chart Controls] ≡ƒöä Time period changed to ${days} days`);
+    console.log(`[Chart Controls] 🔄 Time period changed to ${days} days`);
 
     // Get location from global variables (defined in app.js)
     const zipCode = typeof currentZip !== 'undefined' ? currentZip : null;
     const city = typeof currentCity !== 'undefined' ? currentCity : null;
     const state = typeof currentState !== 'undefined' ? currentState : null;
 
-    console.log(`[Chart Controls] ≡ƒôì Location: ZIP=${zipCode}, City=${city}, State=${state}`);
+    console.log(`[Chart Controls] 📍 Location: ZIP=${zipCode}, City=${city}, State=${state}`);
 
     if (!zipCode && !city) {
-        console.warn('[Chart Controls] ΓÜá∩╕Å No location data available');
+        console.warn('[Chart Controls] ⚠️ No location data available');
         return;
     }
 
@@ -670,9 +670,9 @@ async function handleControlClick(e) {
 
     try {
         await initializePollutantCharts(zipCode, city, state, days);
-        console.log(`[Chart Controls] Γ£à Charts reloaded successfully`);
+        console.log(`[Chart Controls] ✅ Charts reloaded successfully`);
     } catch (err) {
-        console.error('[Chart Controls] Γ¥î Error reloading charts:', err);
+        console.error('[Chart Controls] ❌ Error reloading charts:', err);
     } finally {
         // Restore button text
         btn.innerHTML = originalText;
