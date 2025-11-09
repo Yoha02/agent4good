@@ -1,5 +1,51 @@
 // Officials Dashboard JavaScript
 
+// Toast Notification System
+function showToast(message, type = 'success', duration = 3000) {
+    const container = document.getElementById('toastContainer');
+    if (!container) return;
+    
+    const toast = document.createElement('div');
+    toast.className = `transform transition-all duration-300 ease-in-out translate-x-full opacity-0`;
+    
+    const bgColors = {
+        'success': 'bg-emerald-500',
+        'error': 'bg-red-500',
+        'warning': 'bg-amber-500',
+        'info': 'bg-blue-500'
+    };
+    
+    const icons = {
+        'success': 'fa-check-circle',
+        'error': 'fa-exclamation-circle',
+        'warning': 'fa-exclamation-triangle',
+        'info': 'fa-info-circle'
+    };
+    
+    toast.innerHTML = `
+        <div class="${bgColors[type]} text-white px-6 py-4 rounded-lg shadow-2xl flex items-center space-x-3 min-w-[320px] max-w-md">
+            <i class="fas ${icons[type]} text-2xl"></i>
+            <p class="font-medium flex-1">${message}</p>
+            <button onclick="this.parentElement.parentElement.remove()" class="text-white hover:text-gray-200 transition-colors">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+    `;
+    
+    container.appendChild(toast);
+    
+    // Animate in
+    setTimeout(() => {
+        toast.classList.remove('translate-x-full', 'opacity-0');
+    }, 10);
+    
+    // Auto dismiss
+    setTimeout(() => {
+        toast.classList.add('translate-x-full', 'opacity-0');
+        setTimeout(() => toast.remove(), 300);
+    }, duration);
+}
+
 // Global variables - moved outside DOMContentLoaded for alert system
 let currentFilters = {
     state: '',
@@ -2257,6 +2303,11 @@ window.askQuickQuestion = askQuickQuestion;
 
 // ===== PUBLIC HEALTH ALERT SYSTEM =====
 let currentAlertLevel = 'critical';
+let currentAlertDuration = null; // null means "until cancelled"
+let currentActiveAlert = null;
+let currentAlertFilter = 'all'; // Status filter (all, active, expired, cancelled)
+let selectedLevels = ['critical', 'warning', 'info']; // All levels selected by default
+let currentAlertStatus = 'all'; // Track current status filter for reloading
 
 function openAlertModal() {
     const modal = document.getElementById('alertModal');
@@ -2284,6 +2335,21 @@ function setAlertLevel(level) {
     buttons.forEach(btn => {
         const btnLevel = btn.getAttribute('data-level');
         if (btnLevel === level) {
+            btn.classList.add('active');
+        } else {
+            btn.classList.remove('active');
+        }
+    });
+}
+
+function setAlertDuration(hours) {
+    currentAlertDuration = hours;
+    
+    // Update button states
+    const buttons = document.querySelectorAll('.alert-duration-btn');
+    buttons.forEach(btn => {
+        const btnDuration = btn.getAttribute('data-duration');
+        if ((btnDuration === 'null' && hours === null) || (btnDuration === String(hours))) {
             btn.classList.add('active');
         } else {
             btn.classList.remove('active');
@@ -2367,7 +2433,7 @@ async function sendAlert() {
     const message = document.getElementById('alertMessageInput').value.trim();
     
     if (!message) {
-        alert('Please enter an alert message');
+        showToast('Please enter an alert message', 'warning');
         return;
     }
     
@@ -2391,6 +2457,7 @@ async function sendAlert() {
             body: JSON.stringify({
                 message: message,
                 level: currentAlertLevel,
+                duration_hours: currentAlertDuration,
                 filters: filters
             })
         });
@@ -2404,14 +2471,34 @@ async function sendAlert() {
             // Display alert banner
             displayAlertBanner(data.alert);
             
-            // Show success message
-            alert('Public health alert issued successfully!');
+            // Store current alert
+            currentActiveAlert = data.alert;
+            
+            // Show cancel button
+            const cancelBtn = document.getElementById('cancelAlertBtn');
+            if (cancelBtn) {
+                cancelBtn.classList.remove('hidden');
+            }
+            
+            // Reload alerts table
+            if (typeof loadAlerts === 'function') {
+                loadAlerts(currentAlertFilter || 'all');
+            }
+            
+            // Show success toast notification
+            showToast('Public health alert issued successfully!', 'success');
+            
+            // Add to recent activity
+            addRecentActivity('Public health alert issued', 'Just now');
+            
+            // Clear sessionStorage dismissal flag so alert shows everywhere
+            sessionStorage.removeItem('alertDismissed');
         } else {
-            alert('Failed to post alert: ' + data.error);
+            showToast('Failed to post alert: ' + (data.error || 'Unknown error'), 'error');
         }
     } catch (error) {
         console.error('Error posting alert:', error);
-        alert('Error posting alert. Please try again.');
+        showToast('Error posting alert. Please try again.', 'error');
     }
 }
 
@@ -2423,7 +2510,8 @@ function displayAlertBanner(alert) {
     if (banner && messageEl && timestampEl) {
         messageEl.textContent = alert.message;
         
-        const timestamp = new Date(alert.timestamp);
+        // Use issued_at instead of timestamp
+        const timestamp = new Date(alert.issued_at);
         timestampEl.textContent = `Issued ${timestamp.toLocaleString()} by ${alert.issued_by}`;
         
         banner.classList.remove('hidden');
@@ -2450,10 +2538,1042 @@ function dismissAlert() {
     }
 }
 
+function openCancelAlertModal() {
+    const modal = document.getElementById('cancelAlertModal');
+    const currentAlertText = document.getElementById('currentAlertText');
+    
+    if (modal && currentActiveAlert) {
+        currentAlertText.textContent = currentActiveAlert.message;
+        modal.classList.remove('hidden');
+    } else {
+        // Fetch current alert if not in memory
+        fetch('/api/officials/get-active-alert')
+            .then(res => res.json())
+            .then(data => {
+                if (data.success && data.alert) {
+                    currentActiveAlert = data.alert;
+                    currentAlertText.textContent = data.alert.message;
+                    modal.classList.remove('hidden');
+                } else {
+                    alert('No active alert to cancel');
+                }
+            })
+            .catch(err => {
+                console.error('Error fetching alert:', err);
+                alert('Error loading alert information');
+            });
+    }
+}
+
+function closeCancelAlertModal() {
+    const modal = document.getElementById('cancelAlertModal');
+    if (modal) {
+        modal.classList.add('hidden');
+        document.getElementById('cancellerName').value = '';
+    }
+}
+
+async function confirmCancelAlert() {
+    const name = document.getElementById('cancellerName').value.trim();
+    
+    if (!name) {
+        alert('Please enter your name to confirm cancellation');
+        return;
+    }
+    
+    if (name.length < 3) {
+        alert('Please enter your full name');
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/officials/cancel-alert', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                cancelled_by: name
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            // Close modal
+            closeCancelAlertModal();
+            
+            // Hide banner
+            dismissAlert();
+            
+            // Hide cancel button
+            const cancelBtn = document.getElementById('cancelAlertBtn');
+            if (cancelBtn) {
+                cancelBtn.classList.add('hidden');
+            }
+            
+            // Clear current alert
+            currentActiveAlert = null;
+            
+            alert(`Alert cancelled successfully by ${name}`);
+        } else {
+            alert('Failed to cancel alert: ' + (data.error || 'Unknown error'));
+        }
+    } catch (error) {
+        console.error('Error cancelling alert:', error);
+        alert('Error cancelling alert: ' + (error.message || 'Please try again.'));
+    }
+}
+
+// Check for active alert on page load
+async function checkForActiveAlert() {
+    try {
+        const response = await fetch('/api/officials/get-active-alert');
+        const data = await response.json();
+        
+        if (data.success && data.alert) {
+            currentActiveAlert = data.alert;
+            displayAlertBanner(data.alert);
+            
+            // Show cancel button
+            const cancelBtn = document.getElementById('cancelAlertBtn');
+            if (cancelBtn) {
+                cancelBtn.classList.remove('hidden');
+            }
+        }
+    } catch (error) {
+        console.error('Error checking for active alert:', error);
+    }
+}
+
+// Alert Management Functions
+// currentAlertFilter declared above in alert system variables section
+
+async function loadAlerts(status = 'all', levels = null) {
+    try {
+        const response = await fetch(`/api/officials/list-alerts?status=${status}`);
+        const data = await response.json();
+        
+        if (data.success) {
+            // Filter by selected levels
+            let filteredAlerts = data.alerts;
+            const levelsToUse = levels || selectedLevels;
+            if (levelsToUse.length > 0 && levelsToUse.length < 3) {
+                filteredAlerts = data.alerts.filter(alert => levelsToUse.includes(alert.level));
+            }
+            displayAlertsTable(filteredAlerts);
+        } else {
+            console.error('Failed to load alerts:', data.error);
+            showEmptyAlertsState();
+        }
+    } catch (error) {
+        console.error('Error loading alerts:', error);
+        showEmptyAlertsState();
+    }
+}
+
+function toggleLevelFilterDropdown() {
+    const dropdown = document.getElementById('levelFilterDropdown');
+    dropdown.classList.toggle('hidden');
+}
+
+function toggleAllLevels(checkbox) {
+    const individualCheckboxes = document.querySelectorAll('.individual-level');
+    individualCheckboxes.forEach(cb => {
+        cb.checked = checkbox.checked;
+    });
+    updateLevelFilters();
+}
+
+function updateLevelFilters() {
+    const individualCheckboxes = document.querySelectorAll('.individual-level:checked');
+    selectedLevels = Array.from(individualCheckboxes).map(cb => cb.value);
+    
+    // Update "All" checkbox
+    const allCheckbox = document.getElementById('levelAllCheckbox');
+    allCheckbox.checked = selectedLevels.length === 3;
+    
+    // Update button text
+    const buttonText = document.querySelector('#levelFilterButton span');
+    if (selectedLevels.length === 3) {
+        buttonText.textContent = 'Levels: All';
+    } else if (selectedLevels.length === 0) {
+        buttonText.textContent = 'Levels: None';
+    } else {
+        buttonText.textContent = `Levels: ${selectedLevels.length} selected`;
+    }
+    
+    // Reload alerts with new filter
+    loadAlerts(currentAlertFilter, selectedLevels);
+}
+
+// Close dropdown when clicking outside
+document.addEventListener('click', function(event) {
+    const dropdown = document.getElementById('levelFilterDropdown');
+    const button = document.getElementById('levelFilterButton');
+    if (dropdown && button && !dropdown.contains(event.target) && !button.contains(event.target)) {
+        dropdown.classList.add('hidden');
+    }
+});
+
+function displayAlertsTable(alerts) {
+    const tbody = document.getElementById('alertsTableBody');
+    const emptyState = document.getElementById('alertsEmptyState');
+    
+    if (!alerts || alerts.length === 0) {
+        showEmptyAlertsState();
+        return;
+    }
+    
+    emptyState.classList.add('hidden');
+    
+    tbody.innerHTML = alerts.map(alert => {
+        const statusBadge = getStatusBadge(alert.status, alert.cancelled_by);
+        const levelBadge = getLevelBadge(alert.level);
+        const issuedDate = new Date(alert.issued_at).toLocaleString();
+        const expiresText = alert.expires_at ? new Date(alert.expires_at).toLocaleString() : 'Until Cancelled';
+        
+        // Action buttons - show for all alerts, not just active ones
+        const actionButtons = `
+            <div class="flex items-center space-x-2">
+                <button onclick="viewAlertDetails('${alert.alert_id}')" class="px-3 py-1 bg-gray-500 hover:bg-gray-600 text-white text-xs font-medium rounded transition-colors" title="View details">
+                    <i class="fas fa-eye"></i>
+                </button>
+                ${alert.status === 'active' ? `
+                    <button onclick="editAlertFromTable('${alert.alert_id}')" class="px-3 py-1 bg-blue-500 hover:bg-blue-600 text-white text-xs font-medium rounded transition-colors" title="Edit alert">
+                        <i class="fas fa-edit"></i>
+                    </button>
+                    <button onclick="resolveAlertFromTable('${alert.alert_id}')" class="px-3 py-1 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-medium rounded transition-colors" title="Mark as resolved">
+                        <i class="fas fa-check"></i>
+                    </button>
+                    <button onclick="cancelAlertFromTable('${alert.alert_id}')" class="px-3 py-1 bg-red-500 hover:bg-red-600 text-white text-xs font-medium rounded transition-colors" title="Cancel alert">
+                        <i class="fas fa-ban"></i>
+                    </button>
+                ` : ''}
+            </div>`;
+        
+        const cancelledInfo = alert.cancelled ? 
+            `<div class="text-xs text-gray-500 mt-1">
+                <i class="fas fa-user mr-1"></i>Cancelled by ${alert.cancelled_by}
+                <i class="fas fa-clock ml-2 mr-1"></i>${new Date(alert.cancelled_at).toLocaleString()}
+            </div>` : '';
+        
+        return `
+            <tr class="hover:bg-gray-50 transition-colors">
+                <td class="px-3 py-4 whitespace-nowrap w-28">${statusBadge}</td>
+                <td class="px-3 py-4 whitespace-nowrap w-24">${levelBadge}</td>
+                <td class="px-6 py-4" style="max-width: 700px; min-width: 300px; word-wrap: break-word; overflow-wrap: break-word;">
+                    <div class="overflow-hidden">
+                        <p class="text-sm text-gray-900 font-medium break-words">${escapeHtml(alert.message)}</p>
+                        ${cancelledInfo}
+                    </div>
+                </td>
+                <td class="px-3 py-4 text-sm text-gray-700 font-medium" style="max-width: 120px; word-wrap: break-word; overflow-wrap: break-word;">
+                    <div class="overflow-hidden break-words">${escapeHtml(alert.issued_by)}</div>
+                </td>
+                <td class="px-3 py-4 text-xs text-gray-600" style="max-width: 140px; white-space: normal;">
+                    <div class="overflow-hidden">${issuedDate}</div>
+                </td>
+                <td class="px-3 py-4 text-xs text-gray-600" style="max-width: 140px; white-space: normal;">
+                    <div class="overflow-hidden">${expiresText}</div>
+                </td>
+                <td class="px-3 py-4 whitespace-nowrap w-48">${actionButtons}</td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function getStatusBadge(status, cancelled_by) {
+    // Check if it was resolved (cancelled_by contains "Resolved")
+    if (status === 'cancelled' && cancelled_by && cancelled_by.includes('Resolved')) {
+        return '<span class="px-2 py-1 bg-emerald-100 text-emerald-700 text-xs font-medium rounded-full"><i class="fas fa-check-circle mr-1"></i>Resolved</span>';
+    }
+    
+    const badges = {
+        'active': '<span class="px-2 py-1 bg-emerald-100 text-emerald-700 text-xs font-medium rounded-full"><i class="fas fa-check-circle mr-1"></i>Active</span>',
+        'expired': '<span class="px-2 py-1 bg-gray-100 text-gray-600 text-xs font-medium rounded-full"><i class="fas fa-clock mr-1"></i>Expired</span>',
+        'cancelled': '<span class="px-2 py-1 bg-red-100 text-red-700 text-xs font-medium rounded-full"><i class="fas fa-ban mr-1"></i>Cancelled</span>'
+    };
+    return badges[status] || badges['expired'];
+}
+
+function getLevelBadge(level) {
+    const badges = {
+        'critical': '<span class="px-2 py-1 bg-red-500 text-white text-xs font-bold rounded"><i class="fas fa-exclamation-triangle mr-1"></i>CRITICAL</span>',
+        'warning': '<span class="px-2 py-1 bg-amber-500 text-white text-xs font-bold rounded"><i class="fas fa-exclamation-circle mr-1"></i>WARNING</span>',
+        'info': '<span class="px-2 py-1 bg-blue-500 text-white text-xs font-bold rounded"><i class="fas fa-info-circle mr-1"></i>INFO</span>'
+    };
+    return badges[level] || badges['info'];
+}
+
+function showEmptyAlertsState() {
+    const tbody = document.getElementById('alertsTableBody');
+    const emptyState = document.getElementById('alertsEmptyState');
+    
+    tbody.innerHTML = '';
+    emptyState.classList.remove('hidden');
+}
+
+function filterAlerts(status) {
+    currentAlertFilter = status;
+    currentAlertStatus = status; // Also update currentAlertStatus for consistency
+    
+    // Update filter button styles
+    document.querySelectorAll('.alert-filter-btn').forEach(btn => {
+        if (btn.dataset.filter === status) {
+            btn.classList.remove('bg-gray-200', 'text-gray-700');
+            btn.classList.add('bg-emerald-500', 'text-white');
+        } else {
+            btn.classList.remove('bg-emerald-500', 'text-white');
+            btn.classList.add('bg-gray-200', 'text-gray-700');
+        }
+    });
+    
+    // Load alerts with current filters
+    loadAlerts(status, selectedLevels);
+}
+
+function toggleAlertsTable() {
+    const container = document.getElementById('alertsTableContainer');
+    const icon = document.getElementById('alertsToggleIcon');
+    
+    if (container.style.display === 'none') {
+        container.style.display = 'block';
+        icon.classList.remove('fa-chevron-right');
+        icon.classList.add('fa-chevron-down');
+    } else {
+        container.style.display = 'none';
+        icon.classList.remove('fa-chevron-down');
+        icon.classList.add('fa-chevron-right');
+    }
+}
+
+async function cancelAlertFromTable(alertId) {
+    // Fetch alert details first
+    try {
+        const response = await fetch(`/api/officials/list-alerts?status=all&limit=100`);
+        const data = await response.json();
+        
+        if (data.success) {
+            const alert = data.alerts.find(a => a.id === alertId);
+            if (alert) {
+                currentActiveAlert = alert;
+                // Update modal with alert details
+                const alertTextEl = document.getElementById('currentAlertText');
+                if (alertTextEl) {
+                    alertTextEl.textContent = alert.message;
+                }
+                openCancelAlertModal();
+            } else {
+                showToast('Alert not found', 'error');
+            }
+        }
+    } catch (error) {
+        console.error('Error fetching alert:', error);
+        showToast('Failed to load alert details', 'error');
+    }
+}
+
+async function editAlertFromTable(alertId) {
+    showToast('Edit functionality coming soon! You can cancel and create a new alert.', 'info', 4000);
+    // TODO: Implement edit modal with pre-filled values
+}
+
+async function resolveAlertFromTable(alertId) {
+    // Fetch alert details first
+    try {
+        const response = await fetch(`/api/officials/list-alerts?status=all&limit=100`);
+        const data = await response.json();
+        
+        if (data.success) {
+            const alert = data.alerts.find(a => a.id === alertId);
+            if (alert) {
+                currentActiveAlert = alert;
+                // Update modal with alert details
+                const alertTextEl = document.getElementById('resolveAlertText');
+                if (alertTextEl) {
+                    alertTextEl.textContent = alert.message;
+                }
+                openResolveAlertModal();
+            } else {
+                showToast('Alert not found', 'error');
+            }
+        }
+    } catch (error) {
+        console.error('Error fetching alert:', error);
+        showToast('Failed to load alert details', 'error');
+    }
+}
+
+function openResolveAlertModal() {
+    const modal = document.getElementById('resolveAlertModal');
+    if (modal) {
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+    }
+}
+
+function closeResolveAlertModal() {
+    const modal = document.getElementById('resolveAlertModal');
+    if (modal) {
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+    }
+}
+
+async function confirmResolveAlert() {
+    if (!currentActiveAlert || !currentActiveAlert.id) {
+        showToast('No alert selected', 'error');
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/officials/cancel-alert', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                alert_id: currentActiveAlert.id,
+                is_resolved: true  // Mark this as a resolution, not a cancellation
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showToast('Alert marked as resolved successfully!', 'success');
+            
+            // Close modal
+            closeResolveAlertModal();
+            
+            // Reload alerts table
+            loadAlerts(currentAlertFilter);
+            
+            // Check if this was the active alert and hide banner
+            checkForActiveAlert();
+            
+            // Add to recent activity
+            addRecentActivity('Alert resolved', 'Just now');
+        } else {
+            showToast('Failed to resolve alert: ' + (data.error || 'Unknown error'), 'error');
+        }
+    } catch (error) {
+        console.error('Error resolving alert:', error);
+        showToast('Failed to resolve alert. Please try again.', 'error');
+    }
+}
+
+// Update confirmCancelAlert to use alert ID from table
+async function confirmCancelAlertOriginal() {
+    const nameInput = document.getElementById('cancellerName');
+    const name = nameInput ? nameInput.value.trim() : '';
+    
+    if (name.length < 3) {
+        showToast('Please enter your full name (minimum 3 characters)', 'warning');
+        return;
+    }
+    
+    try {
+        const alertId = currentActiveAlert ? currentActiveAlert.id : null;
+        
+        if (!alertId) {
+            showToast('No alert selected for cancellation', 'error');
+            return;
+        }
+        
+        const response = await fetch('/api/officials/cancel-alert', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                alert_id: alertId,
+                cancelled_by: name
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            console.log('Alert cancelled:', data.message);
+            
+            // Hide the banner
+            const alertBanner = document.getElementById('alertBanner');
+            if (alertBanner) {
+                alertBanner.classList.add('hidden');
+            }
+            
+            // Hide the Cancel Alert button
+            const cancelBtn = document.getElementById('cancelAlertBtn');
+            if (cancelBtn) {
+                cancelBtn.classList.add('hidden');
+            }
+            
+            // Close modal and clear input
+            closeCancelAlertModal();
+            if (nameInput) nameInput.value = '';
+            
+            // Reload alerts table
+            loadAlerts(currentAlertFilter);
+            
+            // Add to recent activity
+            addRecentActivity(`Alert cancelled by ${name}`, 'Just now');
+            
+            showToast(`Alert cancelled by ${name}`, 'success');
+        } else {
+            showToast('Failed to cancel alert: ' + (data.error || 'Unknown error'), 'error');
+        }
+    } catch (error) {
+        console.error('Error cancelling alert:', error);
+        showToast('Failed to cancel alert. Please try again.', 'error');
+    }
+}
+
+// Recent Activity Management
+let recentActivities = [
+    { text: 'Dashboard loaded', time: 'Just now' }
+];
+
+function addRecentActivity(text, time) {
+    recentActivities.unshift({ text, time });
+    if (recentActivities.length > 10) {
+        recentActivities.pop();
+    }
+    updateRecentActivityDisplay();
+}
+
+function updateRecentActivityDisplay() {
+    // Recent Activity section removed - alerts are shown in the main alerts card above
+    console.log('Recent activities:', recentActivities);
+}
+
+// Edit Alert Modal Functions
+let currentEditAlertId = null;
+let editAlertLevel = 'critical';
+let editAlertDuration = null;
+
+function editAlertFromTable(alertId) {
+    console.log('[EDIT] Starting edit for alert ID:', alertId);
+    currentEditAlertId = alertId;
+    
+    // Fetch alert details using the correct endpoint
+    fetch(`/api/officials/list-alerts?status=all`)
+        .then(response => {
+            console.log('[EDIT] Response status:', response.status);
+            return response.json();
+        })
+        .then(data => {
+            console.log('[EDIT] Response data:', data);
+            if (data.success) {
+                console.log('[EDIT] Number of alerts:', data.alerts.length);
+                console.log('[EDIT] Alert IDs in response:', data.alerts.map(a => a.alert_id));
+                const alert = data.alerts.find(a => a.alert_id === alertId);
+                console.log('[EDIT] Found alert:', alert);
+                if (alert) {
+                    openEditAlertModal(alert);
+                } else {
+                    console.error('[EDIT] Alert not found. Looking for:', alertId);
+                    showToast('Alert not found', 'error');
+                }
+            } else {
+                console.error('[EDIT] API returned success=false:', data);
+                showToast(data.error || 'Failed to load alerts', 'error');
+            }
+        })
+        .catch(error => {
+            console.error('[EDIT] Error fetching alert:', error);
+            showToast('Error loading alert details', 'error');
+        });
+}
+
+function openEditAlertModal(alert) {
+    document.getElementById('editAlertMessage').value = alert.message || '';
+    editAlertLevel = alert.level || 'critical';
+    editAlertDuration = alert.duration_hours;
+    
+    // Update level buttons
+    document.querySelectorAll('.edit-alert-level-btn').forEach(btn => {
+        btn.classList.remove('active', 'border-blue-500', 'bg-blue-50', 'border-amber-500', 'bg-amber-50', 'border-red-500', 'bg-red-50');
+        if (btn.dataset.level === editAlertLevel) {
+            btn.classList.add('active');
+            if (editAlertLevel === 'info') {
+                btn.classList.add('border-blue-500', 'bg-blue-50');
+            } else if (editAlertLevel === 'warning') {
+                btn.classList.add('border-amber-500', 'bg-amber-50');
+            } else if (editAlertLevel === 'critical') {
+                btn.classList.add('border-red-500', 'bg-red-50');
+            }
+        }
+    });
+    
+    // Update duration buttons
+    document.querySelectorAll('.edit-alert-duration-btn').forEach(btn => {
+        btn.classList.remove('active', 'border-navy-500', 'bg-navy-50');
+        const btnDuration = btn.dataset.duration === 'null' ? null : parseInt(btn.dataset.duration);
+        if (btnDuration === editAlertDuration) {
+            btn.classList.add('active', 'border-navy-500', 'bg-navy-50');
+        }
+    });
+    
+    document.getElementById('editAlertModal').classList.remove('hidden');
+}
+
+function closeEditAlertModal() {
+    document.getElementById('editAlertModal').classList.add('hidden');
+    currentEditAlertId = null;
+    document.getElementById('editAlertMessage').value = '';
+    editAlertLevel = 'critical';
+    editAlertDuration = null;
+}
+
+function setEditAlertLevel(level) {
+    editAlertLevel = level;
+    document.querySelectorAll('.edit-alert-level-btn').forEach(btn => {
+        btn.classList.remove('active', 'border-blue-500', 'bg-blue-50', 'border-amber-500', 'bg-amber-50', 'border-red-500', 'bg-red-50');
+        if (btn.dataset.level === level) {
+            btn.classList.add('active');
+            if (level === 'info') {
+                btn.classList.add('border-blue-500', 'bg-blue-50');
+            } else if (level === 'warning') {
+                btn.classList.add('border-amber-500', 'bg-amber-50');
+            } else if (level === 'critical') {
+                btn.classList.add('border-red-500', 'bg-red-50');
+            }
+        }
+    });
+}
+
+function setEditAlertDuration(hours) {
+    editAlertDuration = hours;
+    document.querySelectorAll('.edit-alert-duration-btn').forEach(btn => {
+        btn.classList.remove('active', 'border-navy-500', 'bg-navy-50');
+        const btnDuration = btn.dataset.duration === 'null' ? null : parseInt(btn.dataset.duration);
+        if (btnDuration === hours) {
+            btn.classList.add('active', 'border-navy-500', 'bg-navy-50');
+        }
+    });
+}
+
+function confirmEditAlert() {
+    const message = document.getElementById('editAlertMessage').value.trim();
+    
+    if (!message) {
+        showToast('Please enter an alert message', 'error');
+        return;
+    }
+    
+    if (!currentEditAlertId) {
+        showToast('Invalid alert ID', 'error');
+        return;
+    }
+    
+    fetch('/api/officials/update-alert', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            alert_id: currentEditAlertId,
+            message: message,
+            level: editAlertLevel,
+            duration_hours: editAlertDuration
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showToast('Alert updated successfully!', 'success');
+            closeEditAlertModal();
+            loadAlerts(currentAlertStatus, selectedLevels);
+            addRecentActivity('Alert updated', 'Just now');
+            updateRecentActivityDisplay();
+        } else {
+            showToast(data.error || 'Failed to update alert', 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Error updating alert:', error);
+        showToast('Error updating alert', 'error');
+    });
+}
+
+// View Alert Details Modal Functions
+function viewAlertDetails(alertId) {
+    console.log('[VIEW] Starting view for alert ID:', alertId);
+    
+    // Fetch alert details using the correct endpoint
+    fetch(`/api/officials/list-alerts?status=all`)
+        .then(response => {
+            console.log('[VIEW] Response status:', response.status);
+            return response.json();
+        })
+        .then(data => {
+            console.log('[VIEW] Response data:', data);
+            if (data.success) {
+                console.log('[VIEW] Number of alerts:', data.alerts.length);
+                const alert = data.alerts.find(a => a.alert_id === alertId);
+                console.log('[VIEW] Found alert:', alert);
+                if (alert) {
+                    openViewAlertModal(alert);
+                } else {
+                    console.error('[VIEW] Alert not found. Looking for:', alertId);
+                    showToast('Alert not found', 'error');
+                }
+            } else {
+                console.error('[VIEW] API returned success=false:', data);
+                showToast(data.error || 'Failed to load alerts', 'error');
+            }
+        })
+        .catch(error => {
+            console.error('[VIEW] Error fetching alert:', error);
+            showToast('Error loading alert details', 'error');
+        });
+}
+
+function openViewAlertModal(alert) {
+    // Populate status badge
+    let statusBadge = '';
+    if (alert.status === 'active') {
+        statusBadge = '<span class="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm font-semibold"><i class="fas fa-circle-check mr-1"></i>Active</span>';
+    } else if (alert.cancelled_by && alert.cancelled_by.includes('System (Resolved)')) {
+        statusBadge = '<span class="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm font-semibold"><i class="fas fa-check-circle mr-1"></i>Resolved</span>';
+    } else {
+        statusBadge = '<span class="px-3 py-1 bg-gray-100 text-gray-800 rounded-full text-sm font-semibold"><i class="fas fa-ban mr-1"></i>Cancelled</span>';
+    }
+    document.getElementById('viewAlertStatusBadge').innerHTML = statusBadge;
+    
+    // Populate level badge
+    let levelBadge = '';
+    if (alert.level === 'critical') {
+        levelBadge = '<span class="px-3 py-1 bg-red-100 text-red-800 rounded-full text-sm font-semibold"><i class="fas fa-exclamation-triangle mr-1"></i>Critical</span>';
+    } else if (alert.level === 'warning') {
+        levelBadge = '<span class="px-3 py-1 bg-amber-100 text-amber-800 rounded-full text-sm font-semibold"><i class="fas fa-exclamation-circle mr-1"></i>Warning</span>';
+    } else {
+        levelBadge = '<span class="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm font-semibold"><i class="fas fa-info-circle mr-1"></i>Info</span>';
+    }
+    document.getElementById('viewAlertLevelBadge').innerHTML = levelBadge;
+    
+    // Populate message
+    document.getElementById('viewAlertMessage').textContent = alert.message || 'No message';
+    
+    // Populate metadata
+    document.getElementById('viewAlertIssuedBy').textContent = alert.issued_by || 'Unknown';
+    document.getElementById('viewAlertIssuedAt').textContent = alert.issued_at ? new Date(alert.issued_at).toLocaleString() : 'Unknown';
+    document.getElementById('viewAlertDuration').textContent = alert.duration_hours ? `${alert.duration_hours} hours` : 'Until Cancelled';
+    document.getElementById('viewAlertExpiresAt').textContent = alert.expires_at ? new Date(alert.expires_at).toLocaleString() : 'Never';
+    
+    // Handle cancellation info
+    if (alert.status === 'cancelled' && alert.cancelled_by) {
+        document.getElementById('viewAlertCancellationInfo').classList.remove('hidden');
+        document.getElementById('viewAlertCancelledBy').textContent = alert.cancelled_by;
+        document.getElementById('viewAlertCancelledAt').textContent = alert.cancelled_at ? new Date(alert.cancelled_at).toLocaleString() : 'Unknown';
+    } else {
+        document.getElementById('viewAlertCancellationInfo').classList.add('hidden');
+    }
+    
+    // Add action buttons for active alerts
+    const actionsContainer = document.getElementById('viewAlertActions');
+    if (alert.status === 'active') {
+        actionsContainer.innerHTML = `
+            <button onclick="editAlertFromView('${alert.alert_id}')" class="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors">
+                <i class="fas fa-edit mr-2"></i>Edit Alert
+            </button>
+            <button onclick="resolveAlertFromView('${alert.alert_id}')" class="px-6 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-semibold transition-colors">
+                <i class="fas fa-check mr-2"></i>Mark Resolved
+            </button>
+            <button onclick="cancelAlertFromView('${alert.alert_id}')" class="px-6 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-semibold transition-colors">
+                <i class="fas fa-ban mr-2"></i>Cancel Alert
+            </button>
+        `;
+    } else {
+        actionsContainer.innerHTML = '';
+    }
+    
+    // Show modal
+    document.getElementById('viewAlertModal').classList.remove('hidden');
+}
+
+function editAlertFromView(alertId) {
+    closeViewAlertModal();
+    editAlertFromTable(alertId);
+}
+
+function resolveAlertFromView(alertId) {
+    closeViewAlertModal();
+    resolveAlertFromTable(alertId);
+}
+
+function cancelAlertFromView(alertId) {
+    closeViewAlertModal();
+    cancelAlertFromTable(alertId);
+}
+
+function closeViewAlertModal() {
+    document.getElementById('viewAlertModal').classList.add('hidden');
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// ===== GENERATE REPORT FUNCTIONS =====
+
+function openGenerateReportModal() {
+    // Set default dates (last 30 days)
+    const endDate = new Date();
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - 30);
+    
+    document.getElementById('reportStartDate').valueAsDate = startDate;
+    document.getElementById('reportEndDate').valueAsDate = endDate;
+    
+    // Set default title with current date
+    const today = new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+    document.getElementById('reportTitle').value = `Health Dashboard Report - ${today}`;
+    
+    // Show modal
+    document.getElementById('generateReportModal').classList.remove('hidden');
+    
+    // Setup character counter for custom notes
+    const notesDiv = document.getElementById('reportCustomNotes');
+    const charCount = document.getElementById('reportNotesCharCount');
+    notesDiv.addEventListener('input', function() {
+        charCount.textContent = `${this.textContent.length} characters`;
+    });
+}
+
+function closeGenerateReportModal() {
+    document.getElementById('generateReportModal').classList.add('hidden');
+}
+
+function toggleAISummaryPreview() {
+    const isChecked = document.getElementById('includeAISummary').checked;
+    const container = document.getElementById('aiSummaryPreviewContainer');
+    container.style.display = isChecked ? 'block' : 'none';
+}
+
+async function generateAISummaryPreview() {
+    const button = event.target.closest('button');
+    const originalText = button.innerHTML;
+    button.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Generating...';
+    button.disabled = true;
+    
+    try {
+        const startDate = document.getElementById('reportStartDate').value;
+        const endDate = document.getElementById('reportEndDate').value;
+        
+        const response = await fetch('/api/officials/generate-report-summary', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ startDate, endDate })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            const summaryDiv = document.getElementById('aiSummaryText');
+            summaryDiv.innerHTML = data.summary.replace(/\n/g, '<br>');
+            document.getElementById('aiSummaryPreview').classList.remove('hidden');
+            showToast('AI summary generated!', 'success');
+        } else {
+            showToast(data.error || 'Failed to generate summary', 'error');
+        }
+    } catch (error) {
+        console.error('Error generating AI summary:', error);
+        showToast('Error generating AI summary', 'error');
+    } finally {
+        button.innerHTML = originalText;
+        button.disabled = false;
+    }
+}
+
+function regenerateAISummary() {
+    generateAISummaryPreview();
+}
+
+function setReportDateRange(days) {
+    const endDate = new Date();
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - days);
+    
+    document.getElementById('reportStartDate').valueAsDate = startDate;
+    document.getElementById('reportEndDate').valueAsDate = endDate;
+}
+
+function formatReportText(format) {
+    const selection = window.getSelection();
+    if (!selection.rangeCount) return;
+    
+    const range = selection.getRangeAt(0);
+    const selectedText = range.toString();
+    
+    if (!selectedText) {
+        showToast('Please select text to format', 'info');
+        return;
+    }
+    
+    let formattedElement;
+    switch(format) {
+        case 'bold':
+            formattedElement = document.createElement('strong');
+            break;
+        case 'italic':
+            formattedElement = document.createElement('em');
+            break;
+        case 'underline':
+            formattedElement = document.createElement('u');
+            break;
+        case 'bullet':
+            formattedElement = document.createElement('li');
+            break;
+    }
+    
+    if (formattedElement) {
+        try {
+            range.surroundContents(formattedElement);
+        } catch(e) {
+            // If can't surround (mixed elements), just apply execCommand
+            document.execCommand(format === 'bullet' ? 'insertUnorderedList' : format, false, null);
+        }
+    }
+}
+
+async function generatePDFReport() {
+    // Get all form values
+    const customNotesDiv = document.getElementById('reportCustomNotes');
+    const aiSummaryDiv = document.getElementById('aiSummaryText');
+    
+    const reportConfig = {
+        includeAISummary: document.getElementById('includeAISummary').checked,
+        aiSummaryText: aiSummaryDiv.innerHTML || '',
+        startDate: document.getElementById('reportStartDate').value,
+        endDate: document.getElementById('reportEndDate').value,
+        includeCharts: document.getElementById('includeCharts').checked,
+        includeAlerts: document.getElementById('includeAlerts').checked,
+        includeReports: document.getElementById('includeReports').checked,
+        includeAirQuality: document.getElementById('includeAirQuality').checked,
+        includeStatistics: document.getElementById('includeStatistics').checked,
+        includeLocations: document.getElementById('includeLocations').checked,
+        customNotes: customNotesDiv.innerHTML || '',
+        reportTitle: document.getElementById('reportTitle').value,
+        preparedBy: document.getElementById('reportPreparedBy').value,
+        recipients: document.getElementById('reportRecipients').value
+    };
+    
+    // Validate
+    if (!reportConfig.startDate || !reportConfig.endDate) {
+        showToast('Please select start and end dates', 'error');
+        return;
+    }
+    
+    if (!reportConfig.reportTitle) {
+        showToast('Please enter a report title', 'error');
+        return;
+    }
+    
+    // Show loading state
+    showToast('Generating report... This may take a moment', 'info');
+    
+    try {
+        // Call backend to generate PDF
+        const response = await fetch('/api/officials/generate-report', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(reportConfig)
+        });
+        
+        if (response.ok) {
+            // Check if response is PDF or JSON error
+            const contentType = response.headers.get('content-type');
+            if (contentType && contentType.includes('application/pdf')) {
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `${reportConfig.reportTitle.replace(/[^a-z0-9]/gi, '_')}.pdf`;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+                
+                showToast('Report generated successfully!', 'success');
+                closeGenerateReportModal();
+                
+                // If recipients specified, show send confirmation
+                if (reportConfig.recipients) {
+                    showToast(`Report sent to: ${reportConfig.recipients}`, 'success');
+                }
+            } else {
+                // Handle error response
+                const error = await response.json();
+                showToast(error.error || 'Failed to generate report', 'error');
+            }
+        } else {
+            // Try to parse error message
+            try {
+                const error = await response.json();
+                showToast(error.error || 'Failed to generate report', 'error');
+            } catch (e) {
+                showToast(`Failed to generate report (${response.status})`, 'error');
+            }
+        }
+    } catch (error) {
+        console.error('Error generating report:', error);
+        showToast('Error generating report. Please try again.', 'error');
+    }
+}
+
+// Call check on page load
+document.addEventListener('DOMContentLoaded', function() {
+    checkForActiveAlert();
+    loadAlerts('all'); // Load all alerts on page load
+});
+
 // Make alert functions globally available
 window.openAlertModal = openAlertModal;
 window.closeAlertModal = closeAlertModal;
 window.setAlertLevel = setAlertLevel;
+window.setAlertDuration = setAlertDuration;
 window.sendAlert = sendAlert;
 window.useAISummary = useAISummary;
 window.dismissAlert = dismissAlert;
+window.openCancelAlertModal = openCancelAlertModal;
+window.closeCancelAlertModal = closeCancelAlertModal;
+window.confirmCancelAlert = confirmCancelAlertOriginal;
+window.filterAlerts = filterAlerts;
+window.toggleLevelFilterDropdown = toggleLevelFilterDropdown;
+window.toggleAllLevels = toggleAllLevels;
+window.updateLevelFilters = updateLevelFilters;
+window.editAlertFromTable = editAlertFromTable;
+window.openEditAlertModal = openEditAlertModal;
+window.closeEditAlertModal = closeEditAlertModal;
+window.setEditAlertLevel = setEditAlertLevel;
+window.setEditAlertDuration = setEditAlertDuration;
+window.confirmEditAlert = confirmEditAlert;
+window.viewAlertDetails = viewAlertDetails;
+window.openViewAlertModal = openViewAlertModal;
+window.closeViewAlertModal = closeViewAlertModal;
+window.editAlertFromView = editAlertFromView;
+window.resolveAlertFromView = resolveAlertFromView;
+window.cancelAlertFromView = cancelAlertFromView;
+window.toggleAlertsTable = toggleAlertsTable;
+window.cancelAlertFromTable = cancelAlertFromTable;
+window.editAlertFromTable = editAlertFromTable;
+window.resolveAlertFromTable = resolveAlertFromTable;
+window.openResolveAlertModal = openResolveAlertModal;
+window.closeResolveAlertModal = closeResolveAlertModal;
+window.confirmResolveAlert = confirmResolveAlert;
+window.viewAlertDetails = viewAlertDetails;
+window.openGenerateReportModal = openGenerateReportModal;
+window.closeGenerateReportModal = closeGenerateReportModal;
+window.toggleAISummaryPreview = toggleAISummaryPreview;
+window.generateAISummaryPreview = generateAISummaryPreview;
+window.regenerateAISummary = regenerateAISummary;
+window.setReportDateRange = setReportDateRange;
+window.formatReportText = formatReportText;
+window.generatePDFReport = generatePDFReport;
+window.loadAlerts = loadAlerts;
+window.showToast = showToast;
