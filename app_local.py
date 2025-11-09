@@ -2255,34 +2255,71 @@ def submit_report():
             'longitude': None
         }
         
-        # Try to insert into BigQuery
+        # ===== PUB/SUB INTEGRATION (MVP) =====
+        # Feature flag: USE_PUBSUB - Only affects report submission
+        # Import at function level to avoid import errors if package not available
+        message_id = None
+        bigquery_success = False
+        use_pubsub_for_this_request = False
+        
         try:
-            project_id = os.getenv('GOOGLE_CLOUD_PROJECT')
-            dataset_id = os.getenv('BIGQUERY_DATASET')
-            table_id = os.getenv('BIGQUERY_TABLE_REPORTS', 'community_reports')
-            
-            if project_id and dataset_id and project_id != 'your-actual-project-id':
-                # Initialize BigQuery client
-                client = bigquery.Client(project=project_id)
-                table_ref = f"{project_id}.{dataset_id}.{table_id}"
+            from pubsub_services import USE_PUBSUB, publish_community_report
+            use_pubsub_for_this_request = USE_PUBSUB
+        except ImportError:
+            print("[PUBSUB] Package not available, using direct insert")
+            use_pubsub_for_this_request = False
+        
+        if use_pubsub_for_this_request:
+            # NEW PATH: Publish to Pub/Sub (async, fast response)
+            try:
+                message_id = publish_community_report(row_data)
                 
-                # Insert row
-                errors = client.insert_rows_json(table_ref, [row_data])
-                
-                if errors:
-                    print(f"[BIGQUERY ERROR] Failed to insert: {errors}")
-                    # Fall back to CSV
-                    save_to_csv(row_data)
+                if message_id:
+                    print(f"[PUBSUB] Report {report_id} queued: {message_id}")
+                    # Don't insert to BigQuery - worker will do it
+                    bigquery_success = True  # Optimistically assume success
                 else:
-                    print(f"[BIGQUERY SUCCESS] Report {report_id} inserted into {table_ref}")
-            else:
-                print("[BIGQUERY] Not configured, saving to CSV only")
-                save_to_csv(row_data)
+                    print(f"[PUBSUB] Failed to queue report {report_id}, falling back to direct insert")
+                    # Fall back to direct insert below
+                    use_pubsub_for_this_request = False
+                    
+            except Exception as pubsub_error:
+                print(f"[PUBSUB ERROR] {pubsub_error}, falling back to direct insert")
+                # Fall back to direct insert below
+                message_id = None
+                use_pubsub_for_this_request = False
+        
+        # OLD PATH: Direct BigQuery insert (fallback or when Pub/Sub disabled)
+        if not use_pubsub_for_this_request or not message_id:
+            # Try to insert into BigQuery
+            try:
+                project_id = os.getenv('GOOGLE_CLOUD_PROJECT')
+                dataset_id = os.getenv('BIGQUERY_DATASET')
+                table_id = os.getenv('BIGQUERY_TABLE_REPORTS', 'community_reports')
                 
-        except Exception as bq_error:
-            print(f"[BIGQUERY ERROR] {str(bq_error)}")
-            # Fall back to CSV
-            save_to_csv(row_data)
+                if project_id and dataset_id and project_id != 'your-actual-project-id':
+                    # Initialize BigQuery client
+                    client = bigquery.Client(project=project_id)
+                    table_ref = f"{project_id}.{dataset_id}.{table_id}"
+                    
+                    # Insert row
+                    errors = client.insert_rows_json(table_ref, [row_data])
+                    
+                    if errors:
+                        print(f"[BIGQUERY ERROR] Failed to insert: {errors}")
+                        # Fall back to CSV
+                        save_to_csv(row_data)
+                    else:
+                        print(f"[BIGQUERY SUCCESS] Report {report_id} inserted into {table_ref}")
+                        bigquery_success = True
+                else:
+                    print("[BIGQUERY] Not configured, saving to CSV only")
+                    save_to_csv(row_data)
+                    
+            except Exception as bq_error:
+                print(f"[BIGQUERY ERROR] {str(bq_error)}")
+                # Fall back to CSV
+                save_to_csv(row_data)
         
         print(f"[REPORT] New report saved: {report_id}")
         print(f"[REPORT] Type: {row_data['report_type']}, Severity: {row_data['severity']}")
@@ -2293,7 +2330,8 @@ def submit_report():
         if ai_result:
             print(f"[REPORT] AI Status: {auto_status}, Confidence: {ai_confidence}")
         
-        return jsonify({
+        # Prepare response
+        response = {
             'success': True,
             'report_id': report_id,
             'message': 'Report submitted successfully',
@@ -2304,7 +2342,16 @@ def submit_report():
                 'confidence': ai_confidence,
                 'status': auto_status
             } if ai_result else None
-        })
+        }
+        
+        # Add Pub/Sub info if used
+        if message_id:
+            response['message_id'] = message_id
+            response['processing'] = 'async'
+        else:
+            response['processing'] = 'sync'
+        
+        return jsonify(response)
         
     except Exception as e:
         print(f"[ERROR] Report submission failed: {str(e)}")
