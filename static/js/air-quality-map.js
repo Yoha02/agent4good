@@ -69,14 +69,16 @@ function initAirQualityMap() {
     console.log('[HEATMAP DEBUG] Starting initAirQualityMap...');
     try {
         console.log('[HEATMAP DEBUG] Creating Cesium Viewer...');
-        Cesium.Ion.defaultAccessToken = 'YOUR_CESIUM_TOKEN';
+        // Initialize CesiumJS viewer
+        Cesium.Ion.defaultAccessToken = 'YOUR_CESIUM_TOKEN'; // Not needed for Google tiles
         
+        // Create viewer without base layer first (avoid deprecated API)
         cesiumViewer = new Cesium.Viewer('airQualityMap', {
-            imageryProvider: false,
+            baseLayer: false, // Disable default base layer
             baseLayerPicker: false,
             geocoder: false,
             homeButton: true,
-            sceneModePicker: true,
+            sceneModePicker: true, // Allow switching between 2D/3D
             navigationHelpButton: false,
             animation: false,
             timeline: false,
@@ -86,8 +88,9 @@ function initAirQualityMap() {
             maximumRenderTimeChange: Infinity
         });
         
-        console.log('[HEATMAP DEBUG] Cesium Viewer created successfully');
+        console.log('[HEATMAP DEBUG] Cesium Viewer created');
         
+        // Add OpenStreetMap as base layer manually
         const osmLayer = cesiumViewer.imageryLayers.addImageryProvider(
             new Cesium.UrlTemplateImageryProvider({
                 url: 'https://a.tile.openstreetmap.org/{z}/{x}/{y}.png',
@@ -95,120 +98,73 @@ function initAirQualityMap() {
                 credit: 'Map data © OpenStreetMap contributors'
             })
         );
-        osmLayer.alpha = 1.0;
+        osmLayer.alpha = 1.0; // Fully visible
+        console.log('[HEATMAP DEBUG] OpenStreetMap base layer added - fully visible');
+        console.log('[HEATMAP DEBUG] Initializing map for air quality visualization...');
         
+        // Configure globe for heatmap display
         cesiumViewer.scene.globe.show = true;
         cesiumViewer.scene.globe.showGroundAtmosphere = true;
         
-        const setMapStatusReady = () => {
-            const statusEl = document.getElementById('mapStatus');
-            if (statusEl) {
-                statusEl.innerHTML = `
-            <i class="fas fa-check-circle text-green-600 mr-2"></i>
-            Real-time air quality heatmap from Google
-        `;
-            }
-        };
+        console.log('[HEATMAP DEBUG] Globe configured for heatmap overlay');
         
-        const fallbackToStoredLocation = () => {
-            if (typeof currentZip !== 'undefined' && currentZip) {
-                console.log('[HEATMAP DEBUG] Using stored location:', currentCity, currentState, currentZip);
-                geocodeZipCode(currentZip);
-            } else {
-                console.log('[HEATMAP DEBUG] Using default location: Golden Gate Bridge');
-                cesiumViewer.camera.flyTo({
-                    destination: Cesium.Cartesian3.fromDegrees(-122.4783, 37.8199, 300),
-                    orientation: {
-                        heading: Cesium.Math.toRadians(0),
-                        pitch: Cesium.Math.toRadians(-30),
-                        roll: 0.0
-                    },
-                    duration: 3
-                });
-                if (typeof loadHeatmapData === 'function') {
-                    loadHeatmapData(null);
+        // Add Google Air Quality Heatmap Tiles as overlay
+        console.log('[HEATMAP DEBUG] Adding air quality overlay...');
+        addAirQualityTileOverlay();
+        
+        console.log('[HEATMAP DEBUG] Getting user location...');
+        // Try to get user's current location
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    const lat = position.coords.latitude;
+                    const lng = position.coords.longitude;
+                    console.log('[HEATMAP DEBUG] Got user location:', lat, lng);
+                    
+                    // Fly to user's location - zoomed in to city level (20km altitude)
+                    // Using top-down view (pitch -90) to accurately center on location
+                    cesiumViewer.camera.flyTo({
+                        destination: Cesium.Cartesian3.fromDegrees(lng, lat, 20000), // 20km altitude - closer zoom to read city names
+                        orientation: {
+                            heading: Cesium.Math.toRadians(0),
+                            pitch: Cesium.Math.toRadians(-90), // Top-down view for accurate centering
+                            roll: 0.0
+                        },
+                        duration: 2
+                    });
+                    
+                    // OPTIONAL: Load backend data for markers (disabled by default to save EPA API calls)
+                    // loadHeatmapData(null);
+                },
+                (error) => {
+                    console.warn('[HEATMAP DEBUG] Geolocation error:', error.message);
+                    // Default to California
+                    console.log('[HEATMAP DEBUG] Using default location: California');
+                    flyToState('California');
                 }
-            }
-        };
-        
-        const startAutoLocation = () => {
-            console.log('[HEATMAP DEBUG] Getting user location...');
-            if (navigator.geolocation) {
-                navigator.geolocation.getCurrentPosition(
-                    (position) => {
-                        const lat = position.coords.latitude;
-                        const lng = position.coords.longitude;
-                        console.log('[HEATMAP DEBUG] Got user location:', lat, lng);
-                        
-                        cesiumViewer.camera.flyTo({
-                            destination: Cesium.Cartesian3.fromDegrees(lng, lat, 300),
-                            orientation: {
-                                heading: Cesium.Math.toRadians(0),
-                                pitch: Cesium.Math.toRadians(-30),
-                                roll: 0.0
-                            },
-                            duration: 3
-                        });
-                        
-                        if (typeof loadHeatmapData === 'function') {
-                            loadHeatmapData(null);
-                        }
-                    },
-                    (error) => {
-                        console.warn('[HEATMAP DEBUG] Geolocation error:', error.message);
-                        fallbackToStoredLocation();
-                    }
-                );
-            } else {
-                console.warn('[HEATMAP DEBUG] Geolocation not supported');
-                fallbackToStoredLocation();
-            }
-        };
-        
-        console.log('[HEATMAP DEBUG] Adding Google 3D Tiles...');
-        let tileset;
-        try {
-            tileset = cesiumViewer.scene.primitives.add(new Cesium.Cesium3DTileset({
-                url: 'https://tile.googleapis.com/v1/3dtiles/root.json?key=AIzaSyALQGawG7iVNjJhG8v5w3Z_eyt5oRdMCvk',
-                showCreditsOnScreen: true
-            }));
-        } catch (tileAddError) {
-            console.error('[HEATMAP DEBUG] Error adding 3D tiles:', tileAddError);
-        }
-        
-        if (tileset && tileset.readyPromise) {
-            tileset.readyPromise.then(() => {
-                console.log('[HEATMAP DEBUG] Tileset loaded and ready');
-                cesiumViewer.scene.globe.show = false;
-                
-                addAirQualityTileOverlay();
-                setMapStatusReady();
-                startAutoLocation();
-            }).catch((error) => {
-                console.error('[HEATMAP DEBUG] Tileset failed to load:', error);
-                cesiumViewer.scene.globe.show = true;
-                addAirQualityTileOverlay();
-                setMapStatusReady();
-                startAutoLocation();
-            });
+            );
         } else {
-            addAirQualityTileOverlay();
-            setMapStatusReady();
-            startAutoLocation();
+            console.warn('[HEATMAP DEBUG] Geolocation not supported');
+            // Default to California
+            flyToState('California');
         }
         
         console.log('[HEATMAP DEBUG] Initialization complete!');
         
+        // Update status to show map is ready
+        document.getElementById('mapStatus').innerHTML = `
+            <i class="fas fa-check-circle text-green-600 mr-2"></i>
+            Real-time air quality heatmap from Google
+        `;
+        
     } catch (error) {
         console.error('[HEATMAP] Error initializing Cesium:', error);
         console.error('[HEATMAP DEBUG] Error stack:', error.stack);
-        const statusEl = document.getElementById('mapStatus');
-        if (statusEl) {
-            statusEl.innerHTML = `
+        document.getElementById('mapStatus').innerHTML = `
             <i class="fas fa-exclamation-triangle text-red-600 mr-2"></i>
             Error loading 3D map. Falling back to 2D.
         `;
-        }
+        // Fall back to 2D if 3D fails
         initFallback2DMap();
     }
 }
@@ -254,30 +210,33 @@ function geocodeZipCode(zipCode) {
             const lng = location.lng();
             console.log('[HEATMAP DEBUG] ZIP geocoded to:', lat, lng);
             
+            // Fly to this location - city level zoom with top-down view
             cesiumViewer.camera.flyTo({
-                destination: Cesium.Cartesian3.fromDegrees(lng, lat, 300), // 300m height
+                destination: Cesium.Cartesian3.fromDegrees(lng, lat, 20000), // 20km altitude - city level
                 orientation: {
                     heading: Cesium.Math.toRadians(0),
-                    pitch: Cesium.Math.toRadians(-30), // 30 degree angle
+                    pitch: Cesium.Math.toRadians(-90), // Top-down view for accurate centering
                     roll: 0.0
                 },
-                duration: 3
+                duration: 2
             });
             
-            loadHeatmapData(null);
+            // DISABLED: Auto-load causes 100+ EPA API calls
+            // loadHeatmapData(null);
         } else {
             console.error('[HEATMAP DEBUG] Geocoding failed:', status);
             // Fall back to Golden Gate Bridge
             cesiumViewer.camera.flyTo({
-                destination: Cesium.Cartesian3.fromDegrees(-122.4783, 37.8199, 300),
+                destination: Cesium.Cartesian3.fromDegrees(-122.4783, 37.8199, 20000), // 20km altitude
                 orientation: {
                     heading: Cesium.Math.toRadians(0),
-                    pitch: Cesium.Math.toRadians(-30),
+                    pitch: Cesium.Math.toRadians(-90), // Top-down view
                     roll: 0.0
                 },
-                duration: 3
+                duration: 2
             });
-            loadHeatmapData(null);
+            // DISABLED: Auto-load causes 100+ EPA API calls
+            // loadHeatmapData(null);
         }
     });
 }
