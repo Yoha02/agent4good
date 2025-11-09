@@ -4,7 +4,24 @@ flask-cors>=6.0.0
 gunicorn>=21.0.0
 python-dotenv>=1.0.0
 
-# Google Cloud & AI - Pinned versions to avoid dependency resolution timeout
+# Google Cloud & AI Dependencies
+# IMPORTANT: Versions are pinned to prevent Cloud Build timeout (30min limit exceeded during pip resolve)
+# DO NOT change these versions without testing Cloud Build deployment time
+#
+# Pub/Sub Integration (Added for async community report processing):
+#   - google-cloud-pubsub==2.28.0: Pub/Sub client library for message publishing/subscribing
+#
+# Pinned Versions (Critical for Build Performance):
+#   - google-adk==1.17.0: Agent Development Kit (pins transitive deps)
+#   - google-cloud-aiplatform==1.121.0: Vertex AI platform (prevents version conflicts with ADK)
+#   - google-cloud-storage==2.19.0: Cloud Storage (compatible with ADK/aiplatform versions)
+#   - firebase-admin==6.9.0: Firebase SDK (prevents conflicts with google-auth)
+#   - tenacity==8.5.0: Retry library (compatible with all Google Cloud libs)
+#
+# Flexible Versions (Can auto-resolve quickly):
+#   - google-genai, google-auth, google-cloud-bigquery, google-cloud-texttospeech, 
+#     google-generativeai: These resolve quickly with ">=" operator
+#
 google-adk==1.17.0
 google-cloud-aiplatform==1.121.0
 google-genai>=0.1.0
