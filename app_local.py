@@ -37,13 +37,22 @@ load_dotenv()
 FIREBASE_AVAILABLE = False
 try:
     firebase_service_account = os.getenv('FIREBASE_SERVICE_ACCOUNT_FILE')
-    if firebase_service_account and os.path.exists(firebase_service_account):
-        cred = credentials.Certificate(firebase_service_account)
-        firebase_admin.initialize_app(cred)
-        FIREBASE_AVAILABLE = True
-        print("[OK] Firebase Admin SDK initialized")
+    if firebase_service_account:
+        # Support both relative and absolute paths
+        if not os.path.isabs(firebase_service_account):
+            # Convert relative path to absolute based on app directory
+            firebase_service_account = os.path.join(os.path.dirname(__file__), firebase_service_account)
+        
+        if os.path.exists(firebase_service_account):
+            cred = credentials.Certificate(firebase_service_account)
+            firebase_admin.initialize_app(cred)
+            FIREBASE_AVAILABLE = True
+            print("[OK] Firebase Admin SDK initialized")
+        else:
+            print(f"[WARNING] Firebase service account file not found at: {firebase_service_account}")
+            print("[WARNING] Firebase authentication disabled")
     else:
-        print("[WARNING] Firebase service account file not found - authentication disabled")
+        print("[WARNING] FIREBASE_SERVICE_ACCOUNT_FILE not set in .env - authentication disabled")
 except Exception as e:
     print(f"[WARNING] Firebase initialization failed: {e}")
     FIREBASE_AVAILABLE = False
