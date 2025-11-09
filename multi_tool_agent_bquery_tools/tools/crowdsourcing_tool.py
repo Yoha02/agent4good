@@ -6,7 +6,15 @@ from google import generativeai as genai
 
 import os, uuid, tempfile, requests
 from google.cloud import storage
-from google.adk import io as adk_io  # ✅ correct import for ADK v2
+
+# Try to import ADK io, but make it optional
+try:
+    from google.adk import io as adk_io
+    ADK_IO_AVAILABLE = True
+except ImportError:
+    print("[WARNING] google.adk.io not available - image handling will be limited")
+    adk_io = None
+    ADK_IO_AVAILABLE = False
 
 # --- Text summarizer (Gemini) ---
 def generate_text_summary(description: str, media_summary: str = None) -> Optional[str]:
@@ -51,17 +59,20 @@ def upload_to_gcs(local_path_or_url: str = None,
         # --- 1️⃣ If ADK gave us in-memory images ---
         if referenced_image_ids:
             print(f"[INFO] Received ADK image references: {referenced_image_ids}")
-            for image_id in referenced_image_ids:
-                try:
-                    img_bytes = adk_io.get_image_bytes(image_id)
-                    if img_bytes:
-                        with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp:
-                            tmp.write(img_bytes)
-                            source = tmp.name
-                            print(f"[INFO] Saved ADK image to temp: {source}")
-                            break
-                except Exception as e:
-                    print(f"[WARN] Could not extract ADK image bytes: {e}")
+            if not ADK_IO_AVAILABLE or adk_io is None:
+                print(f"[WARNING] ADK io not available - cannot process image references")
+            else:
+                for image_id in referenced_image_ids:
+                    try:
+                        img_bytes = adk_io.get_image_bytes(image_id)
+                        if img_bytes:
+                            with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp:
+                                tmp.write(img_bytes)
+                                source = tmp.name
+                                print(f"[INFO] Saved ADK image to temp: {source}")
+                                break
+                    except Exception as e:
+                        print(f"[WARN] Could not extract ADK image bytes: {e}")
 
         # --- 2️⃣ Otherwise, handle external/local path ---
         if not source:

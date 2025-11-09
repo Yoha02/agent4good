@@ -1569,7 +1569,631 @@ function updateChatLocationContext(locationText) {
     }
 }
 
-// Ask AI function
+// ========================================
+// AGENT WORKFLOW VISUALIZATION
+// ========================================
+
+let workflowPanelVisible = false;
+let useStreaming = true; // Set to true to enable workflow visualization
+let workflowView = 'list'; // 'list' or 'graph'
+
+// D3.js graph state
+let graphNodes = [];
+let graphLinks = [];
+let lastNodeInFlow = null; // Track the last node in the workflow sequence
+let simulation = null;
+let svg = null;
+let g = null;
+
+// Toggle between list and graph view
+function setWorkflowView(view) {
+    workflowView = view;
+    const listContainer = document.getElementById('agentFlowContainer');
+    const graphContainer = document.getElementById('agentGraphContainer');
+    const listBtn = document.getElementById('viewListBtn');
+    const graphBtn = document.getElementById('viewGraphBtn');
+    
+    if (view === 'list') {
+        listContainer.classList.remove('hidden');
+        graphContainer.classList.add('hidden');
+        listBtn.classList.add('bg-emerald-500', 'text-white');
+        listBtn.classList.remove('bg-gray-200', 'text-gray-700');
+        graphBtn.classList.remove('bg-emerald-500', 'text-white');
+        graphBtn.classList.add('bg-gray-200', 'text-gray-700');
+    } else {
+        listContainer.classList.add('hidden');
+        graphContainer.classList.remove('hidden');
+        graphBtn.classList.add('bg-emerald-500', 'text-white');
+        graphBtn.classList.remove('bg-gray-200', 'text-gray-700');
+        listBtn.classList.remove('bg-emerald-500', 'text-white');
+        listBtn.classList.add('bg-gray-200', 'text-gray-700');
+        
+        // Initialize or update graph
+        if (!simulation) {
+            initializeGraph();
+        }
+    }
+}
+
+// Initialize D3.js force-directed graph
+function initializeGraph() {
+    const container = document.getElementById('agentGraphContainer');
+    const width = container.clientWidth;
+    const height = container.clientHeight;
+    
+    svg = d3.select('#agentGraphSvg');
+    svg.selectAll('*').remove(); // Clear previous content
+    
+    // Create zoom behavior
+    const zoom = d3.zoom()
+        .scaleExtent([0.5, 3])
+        .on('zoom', (event) => {
+            g.attr('transform', event.transform);
+        });
+    
+    svg.call(zoom);
+    
+    // Create main group
+    g = svg.append('g');
+    
+    // Add arrow markers for links
+    const defs = svg.append('defs');
+    
+    // Regular arrow
+    defs.append('marker')
+        .attr('id', 'arrowhead')
+        .attr('viewBox', '-0 -5 10 10')
+        .attr('refX', 25)
+        .attr('refY', 0)
+        .attr('orient', 'auto')
+        .attr('markerWidth', 8)
+        .attr('markerHeight', 8)
+        .append('path')
+        .attr('d', 'M 0,-5 L 10,0 L 0,5')
+        .attr('fill', '#10b981');
+    
+    // Self-loop arrow (different color)
+    defs.append('marker')
+        .attr('id', 'arrowhead-self')
+        .attr('viewBox', '-0 -5 10 10')
+        .attr('refX', 25)
+        .attr('refY', 0)
+        .attr('orient', 'auto')
+        .attr('markerWidth', 8)
+        .attr('markerHeight', 8)
+        .append('path')
+        .attr('d', 'M 0,-5 L 10,0 L 0,5')
+        .attr('fill', '#f59e0b');
+    
+    // Create force simulation
+    simulation = d3.forceSimulation()
+        .force('link', d3.forceLink().id(d => d.id).distance(100))
+        .force('charge', d3.forceManyBody().strength(-300))
+        .force('center', d3.forceCenter(width / 2, height / 2))
+        .force('collision', d3.forceCollide().radius(40));
+    
+    updateGraph();
+}
+
+// Add node to graph (with deduplication)
+function addGraphNode(stepData) {
+    let nodeType = 'default';
+    let label = 'Processing';
+    let color = '#6b7280';
+    let nodeKey = 'processing'; // Unique key for deduplication
+    
+    if (stepData.type === 'start') {
+        nodeType = 'start';
+        label = 'Start';
+        color = '#3b82f6';
+        nodeKey = 'start';
+    } else if (stepData.type === 'agent_active') {
+        nodeType = 'agent';
+        label = stepData.agent ? formatAgentName(stepData.agent) : 'Agent';
+        color = '#10b981';
+        nodeKey = `agent_${stepData.agent || 'unknown'}`;
+    } else if (stepData.type === 'tool_call') {
+        nodeType = 'tool';
+        label = stepData.tool ? formatToolName(stepData.tool) : 'Tool';
+        color = '#a855f7';
+        nodeKey = `tool_${stepData.tool || 'unknown'}`;
+    } else if (stepData.type === 'thinking') {
+        // Skip "thinking" nodes - they just update the active state of the last agent
+        if (graphNodes.length > 0) {
+            const lastNode = graphNodes[graphNodes.length - 1];
+            if (lastNode.type === 'agent') {
+                lastNode.active = true;
+                updateGraph();
+            }
+        }
+        return;
+    } else if (stepData.type === 'final_response') {
+        nodeType = 'complete';
+        label = 'Complete';
+        color = '#22c55e';
+        nodeKey = 'complete';
+    }
+    
+    // Check if node already exists
+    let existingNode = graphNodes.find(n => n.key === nodeKey);
+    
+    if (existingNode) {
+        // Node exists - just update its active state and add a link
+        existingNode.active = stepData.type === 'agent_active' || stepData.type === 'thinking';
+        existingNode.callCount = (existingNode.callCount || 1) + 1;
+        
+        // Add link from last node in flow to this existing node
+        if (lastNodeInFlow && lastNodeInFlow.id !== existingNode.id) {
+            // Check if link already exists to avoid duplicates
+            const linkExists = graphLinks.some(
+                l => (l.source.id || l.source) === lastNodeInFlow.id && 
+                     (l.target.id || l.target) === existingNode.id
+            );
+            
+            if (!linkExists) {
+                graphLinks.push({
+                    source: lastNodeInFlow.id,
+                    target: existingNode.id
+                });
+            }
+        }
+        
+        // Update last node in flow
+        lastNodeInFlow = existingNode;
+    } else {
+        // Create new node
+        const nodeId = `node_${graphNodes.length}`;
+        const newNode = {
+            id: nodeId,
+            key: nodeKey,
+            type: nodeType,
+            label: label,
+            color: color,
+            active: stepData.type === 'agent_active' || stepData.type === 'thinking',
+            timestamp: stepData.timestamp,
+            callCount: 1
+        };
+        
+        graphNodes.push(newNode);
+        
+        // Add link from last node in flow
+        if (lastNodeInFlow) {
+            graphLinks.push({
+                source: lastNodeInFlow.id,
+                target: nodeId
+            });
+        }
+        
+        // Update last node in flow
+        lastNodeInFlow = newNode;
+    }
+    
+    updateGraph();
+}
+
+// Update D3.js graph
+function updateGraph() {
+    if (!simulation || !g) return;
+    
+    // Update links (separate self-loops from regular links)
+    const regularLinks = graphLinks.filter(l => {
+        const sourceId = l.source.id || l.source;
+        const targetId = l.target.id || l.target;
+        return sourceId !== targetId;
+    });
+    
+    const selfLoops = graphLinks.filter(l => {
+        const sourceId = l.source.id || l.source;
+        const targetId = l.target.id || l.target;
+        return sourceId === targetId;
+    });
+    
+    // Render regular links as lines
+    const link = g.selectAll('.link')
+        .data(regularLinks, d => `${d.source.id || d.source}-${d.target.id || d.target}`);
+    
+    link.exit().remove();
+    
+    const linkEnter = link.enter()
+        .append('line')
+        .attr('class', 'link')
+        .attr('stroke', '#10b981')
+        .attr('stroke-width', 2)
+        .attr('stroke-opacity', 0.6)
+        .attr('marker-end', 'url(#arrowhead)');
+    
+    const linkMerge = linkEnter.merge(link);
+    
+    // Render self-loops as curved paths
+    const selfLoop = g.selectAll('.self-loop')
+        .data(selfLoops, d => `${d.source.id || d.source}-${d.target.id || d.target}`);
+    
+    selfLoop.exit().remove();
+    
+    const selfLoopEnter = selfLoop.enter()
+        .append('path')
+        .attr('class', 'self-loop')
+        .attr('fill', 'none')
+        .attr('stroke', '#f59e0b')
+        .attr('stroke-width', 2)
+        .attr('stroke-opacity', 0.8)
+        .attr('marker-end', 'url(#arrowhead-self)');
+    
+    const selfLoopMerge = selfLoopEnter.merge(selfLoop);
+    
+    // Update nodes
+    const node = g.selectAll('.node')
+        .data(graphNodes, d => d.id);
+    
+    node.exit().remove();
+    
+    const nodeEnter = node.enter()
+        .append('g')
+        .attr('class', 'node')
+        .call(d3.drag()
+            .on('start', dragstarted)
+            .on('drag', dragged)
+            .on('end', dragended));
+    
+    // Add circle
+    nodeEnter.append('circle')
+        .attr('r', 0)
+        .attr('fill', d => d.color)
+        .attr('stroke', '#fff')
+        .attr('stroke-width', 3)
+        .transition()
+        .duration(500)
+        .attr('r', 25);
+    
+    // Add pulsing circle for active nodes
+    nodeEnter.filter(d => d.active)
+        .append('circle')
+        .attr('class', 'pulse')
+        .attr('r', 25)
+        .attr('fill', 'none')
+        .attr('stroke', d => d.color)
+        .attr('stroke-width', 2)
+        .attr('opacity', 0.8)
+        .call(pulse);
+    
+    // Add label
+    nodeEnter.append('text')
+        .attr('dy', 45)
+        .attr('text-anchor', 'middle')
+        .attr('fill', '#1f2937')
+        .attr('font-size', '11px')
+        .attr('font-weight', '600')
+        .text(d => d.label);
+    
+    // Add call count badge for repeated calls
+    nodeEnter.filter(d => (d.callCount || 1) > 1)
+        .append('circle')
+        .attr('cx', 18)
+        .attr('cy', -18)
+        .attr('r', 10)
+        .attr('fill', '#ef4444')
+        .attr('stroke', '#fff')
+        .attr('stroke-width', 2);
+    
+    nodeEnter.filter(d => (d.callCount || 1) > 1)
+        .append('text')
+        .attr('x', 18)
+        .attr('y', -14)
+        .attr('text-anchor', 'middle')
+        .attr('fill', '#fff')
+        .attr('font-size', '10px')
+        .attr('font-weight', 'bold')
+        .text(d => d.callCount);
+    
+    // Add icon
+    nodeEnter.append('text')
+        .attr('dy', 5)
+        .attr('text-anchor', 'middle')
+        .attr('fill', '#fff')
+        .attr('font-size', '14px')
+        .attr('font-family', 'FontAwesome')
+        .text(d => {
+            if (d.type === 'start') return '\uf04b'; // play
+            if (d.type === 'agent') return '\uf544'; // robot
+            if (d.type === 'tool') return '\uf0ad'; // wrench
+            if (d.type === 'complete') return '\uf00c'; // check
+            return '\uf111'; // circle
+        });
+    
+    const nodeMerge = nodeEnter.merge(node);
+    
+    // Update call count badges for existing nodes
+    nodeMerge.selectAll('circle').filter(function() {
+        return d3.select(this).attr('cx') === '18'; // Only the badge circles
+    }).remove();
+    
+    nodeMerge.selectAll('text').filter(function() {
+        return d3.select(this).attr('x') === '18'; // Only the badge text
+    }).remove();
+    
+    nodeMerge.filter(d => (d.callCount || 1) > 1)
+        .append('circle')
+        .attr('cx', 18)
+        .attr('cy', -18)
+        .attr('r', 10)
+        .attr('fill', '#ef4444')
+        .attr('stroke', '#fff')
+        .attr('stroke-width', 2);
+    
+    nodeMerge.filter(d => (d.callCount || 1) > 1)
+        .append('text')
+        .attr('x', 18)
+        .attr('y', -14)
+        .attr('text-anchor', 'middle')
+        .attr('fill', '#fff')
+        .attr('font-size', '10px')
+        .attr('font-weight', 'bold')
+        .text(d => d.callCount);
+    
+    // Update simulation
+    simulation.nodes(graphNodes);
+    simulation.force('link').links(graphLinks);
+    simulation.alpha(1).restart();
+    
+    simulation.on('tick', () => {
+        // Update regular links
+        linkMerge
+            .attr('x1', d => d.source.x)
+            .attr('y1', d => d.source.y)
+            .attr('x2', d => d.target.x)
+            .attr('y2', d => d.target.y);
+        
+        // Update self-loops as curved paths
+        selfLoopMerge.attr('d', d => {
+            const x = d.source.x;
+            const y = d.source.y;
+            const loopSize = 40;
+            return `M ${x},${y - 25} 
+                    C ${x + loopSize},${y - loopSize} 
+                      ${x + loopSize},${y + loopSize} 
+                      ${x},${y + 25}`;
+        });
+        
+        nodeMerge.attr('transform', d => `translate(${d.x},${d.y})`);
+    });
+}
+
+// Pulsing animation for active nodes
+function pulse(selection) {
+    (function repeat() {
+        selection
+            .transition()
+            .duration(1000)
+            .attr('r', 35)
+            .attr('opacity', 0)
+            .transition()
+            .duration(0)
+            .attr('r', 25)
+            .attr('opacity', 0.8)
+            .on('end', repeat);
+    })();
+}
+
+// Drag functions
+function dragstarted(event, d) {
+    if (!event.active) simulation.alphaTarget(0.3).restart();
+    d.fx = d.x;
+    d.fy = d.y;
+}
+
+function dragged(event, d) {
+    d.fx = event.x;
+    d.fy = event.y;
+}
+
+function dragended(event, d) {
+    if (!event.active) simulation.alphaTarget(0);
+    d.fx = null;
+    d.fy = null;
+}
+
+// Clear graph
+function clearGraph() {
+    graphNodes = [];
+    graphLinks = [];
+    lastNodeInFlow = null;
+    if (simulation) {
+        simulation.stop();
+        simulation = null;
+    }
+    if (svg) {
+        svg.selectAll('*').remove();
+        svg = null;
+    }
+    g = null;
+}
+
+// Toggle workflow panel visibility
+function toggleWorkflowPanel() {
+    const panel = document.getElementById('agentWorkflowPanel');
+    const toggleText = document.getElementById('workflowToggleText');
+    const toggleBtn = document.getElementById('workflowToggleBtn');
+    
+    if (!panel || !toggleText) return;
+    
+    workflowPanelVisible = !workflowPanelVisible;
+    
+    if (workflowPanelVisible) {
+        panel.classList.remove('hidden');
+        toggleText.textContent = 'Hide Agent Workflow';
+        if (toggleBtn) {
+            toggleBtn.classList.add('bg-emerald-100', 'border-emerald-400');
+        }
+        
+        // Animate panel opening
+        if (window.anime) {
+            anime({
+                targets: '#agentWorkflowPanel',
+                maxHeight: ['0px', '300px'],
+                opacity: [0, 1],
+                duration: 400,
+                easing: 'easeOutCubic'
+            });
+        }
+    } else {
+        panel.classList.add('hidden');
+        toggleText.textContent = 'Show Agent Workflow';
+        if (toggleBtn) {
+            toggleBtn.classList.remove('bg-emerald-100', 'border-emerald-400');
+        }
+    }
+}
+
+// Clear workflow panel
+function clearWorkflowPanel() {
+    const container = document.getElementById('agentFlowContainer');
+    if (container) {
+        container.innerHTML = `
+            <div class="text-center py-8 text-gray-400 text-sm">
+                <i class="fas fa-robot text-3xl mb-2 opacity-50"></i>
+                <p>Agent workflow will appear here...</p>
+            </div>
+        `;
+    }
+    // Clear graph
+    clearGraph();
+}
+
+// Add agent workflow step with beautiful animation
+function addAgentStep(stepData) {
+    const container = document.getElementById('agentFlowContainer');
+    if (!container) return;
+    
+    // Remove placeholder if it exists
+    const placeholder = container.querySelector('.text-center');
+    if (placeholder) {
+        placeholder.remove();
+    }
+    
+    const stepDiv = document.createElement('div');
+    stepDiv.className = 'workflow-step flex items-start gap-3 p-3 bg-white rounded-xl shadow-sm border-l-4 animate-fadeInUp';
+    
+    let icon, iconClass, borderColor, statusColor, statusBg, title;
+    
+    // Determine step styling based on type
+    if (stepData.type === 'start') {
+        icon = 'fa-play-circle';
+        iconClass = 'text-blue-500 bg-blue-100';
+        borderColor = 'border-blue-500';
+        statusBg = 'bg-blue-100';
+        statusColor = 'text-blue-700';
+        title = 'Starting...';
+    } else if (stepData.type === 'agent_active') {
+        icon = 'fa-robot';
+        iconClass = 'text-emerald-500 bg-emerald-100';
+        borderColor = 'border-emerald-500';
+        statusBg = 'bg-emerald-100';
+        statusColor = 'text-emerald-700';
+        title = stepData.agent ? formatAgentName(stepData.agent) : 'Agent Active';
+    } else if (stepData.type === 'tool_call') {
+        icon = 'fa-wrench';
+        iconClass = 'text-purple-500 bg-purple-100';
+        borderColor = 'border-purple-500';
+        statusBg = 'bg-purple-100';
+        statusColor = 'text-purple-700';
+        title = stepData.tool ? `Tool: ${formatToolName(stepData.tool)}` : 'Tool Call';
+    } else if (stepData.type === 'thinking') {
+        icon = 'fa-brain';
+        iconClass = 'text-amber-500 bg-amber-100';
+        borderColor = 'border-amber-500';
+        statusBg = 'bg-amber-100';
+        statusColor = 'text-amber-700';
+        title = 'Processing...';
+    } else if (stepData.type === 'final_response') {
+        icon = 'fa-check-circle';
+        iconClass = 'text-green-500 bg-green-100';
+        borderColor = 'border-green-500';
+        statusBg = 'bg-green-100';
+        statusColor = 'text-green-700';
+        title = 'Complete';
+    } else if (stepData.type === 'error') {
+        icon = 'fa-exclamation-circle';
+        iconClass = 'text-red-500 bg-red-100';
+        borderColor = 'border-red-500';
+        statusBg = 'bg-red-100';
+        statusColor = 'text-red-700';
+        title = 'Error';
+    } else {
+        icon = 'fa-circle';
+        iconClass = 'text-gray-500 bg-gray-100';
+        borderColor = 'border-gray-500';
+        statusBg = 'bg-gray-100';
+        statusColor = 'text-gray-700';
+        title = 'Processing';
+    }
+    
+    stepDiv.classList.add(borderColor);
+    
+    // Format timestamp
+    const time = stepData.timestamp ? new Date(stepData.timestamp).toLocaleTimeString('en-US', {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+    }) : '';
+    
+    stepDiv.innerHTML = `
+        <div class="flex-shrink-0">
+            <div class="w-10 h-10 ${iconClass} rounded-lg flex items-center justify-center">
+                <i class="fas ${icon} text-lg"></i>
+            </div>
+        </div>
+        <div class="flex-1 min-w-0">
+            <div class="flex items-center justify-between mb-1">
+                <span class="text-sm font-bold text-navy-700">${title}</span>
+                ${stepData.type === 'agent_active' || stepData.type === 'thinking' ? 
+                    '<span class="status-dot bg-emerald-500"></span>' : ''}
+            </div>
+            <p class="text-xs text-gray-600">${stepData.status || ''}</p>
+            ${time ? `<p class="text-xs text-gray-400 mt-1"><i class="fas fa-clock mr-1"></i>${time}</p>` : ''}
+        </div>
+    `;
+    
+    container.appendChild(stepDiv);
+    
+    // Auto-scroll to bottom
+    container.scrollTop = container.scrollHeight;
+    
+    // Animate with anime.js if available
+    if (window.anime) {
+        anime({
+            targets: stepDiv,
+            scale: [0.95, 1],
+            opacity: [0, 1],
+            duration: 400,
+            easing: 'easeOutElastic(1, 0.8)'
+        });
+    }
+    
+    // Also add to graph if graph view is active
+    addGraphNode(stepData);
+}
+
+// Format agent name for display
+function formatAgentName(agentName) {
+    return agentName
+        .replace(/_/g, ' ')
+        .replace(/agent/gi, '')
+        .split(' ')
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(' ')
+        .trim();
+}
+
+// Format tool name for display
+function formatToolName(toolName) {
+    return toolName
+        .replace(/_/g, ' ')
+        .split(' ')
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(' ');
+}
+
+// Ask AI function with streaming support
 async function askAI() {
     const questionInput = document.getElementById('questionInput');
     const chatMessages = document.getElementById('chatMessages');
@@ -1589,6 +2213,25 @@ async function askAI() {
     // Add user message
     addMessage(question, 'user');
     questionInput.value = '';
+    
+    // Clear previous workflow and automatically show panel if streaming enabled
+    if (useStreaming) {
+        clearWorkflowPanel();
+        if (!workflowPanelVisible) {
+            toggleWorkflowPanel();
+        }
+        
+        // Use streaming version
+        await askAIStream(question);
+    } else {
+        // Use original non-streaming version
+        await askAINonStream(question);
+    }
+}
+
+// Original non-streaming version (renamed)
+async function askAINonStream(question) {
+    const chatMessages = document.getElementById('chatMessages');
 
     // Show loading
     const loadingMsg = addMessage('Thinking...', 'bot');
@@ -1707,6 +2350,126 @@ async function askAI() {
         console.error('[ERROR] Error stack:', error.stack);
         addMessage('Sorry, I could not connect to the AI service.', 'bot');
         console.error('Error asking AI:', error);
+    }
+}
+
+// Streaming version with workflow visualization
+async function askAIStream(question) {
+    const chatMessages = document.getElementById('chatMessages');
+    
+    // Show loading message
+    const loadingMsg = addMessage('Thinking...', 'bot');
+    
+    try {
+        // Get stored location data for chat agent
+        const storedLocationData = localStorage.getItem('currentLocationData');
+        let locationContext = null;
+        const storedPersonaType = sessionStorage.getItem('persona');
+        
+        if (storedLocationData) {
+            try {
+                locationContext = JSON.parse(storedLocationData);
+                console.log('[Chat Stream] Using stored location data:', locationContext);
+            } catch (e) {
+                console.warn('[Chat Stream] Failed to parse stored location data:', e);
+            }
+        }
+        
+        // Make POST request and read streaming response
+        const response = await fetch('/api/agent-chat-stream', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                question: question,
+                state: currentState,
+                days: currentDays,
+                location_context: locationContext,
+                persona: storedPersonaType
+            })
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let finalResponse = '';
+        
+        while (true) {
+            const { value, done } = await reader.read();
+            
+            if (done) {
+                break;
+            }
+            
+            // Decode the chunk and add to buffer
+            buffer += decoder.decode(value, { stream: true });
+            
+            // Process complete lines (Server-Sent Events format)
+            const lines = buffer.split('\n');
+            buffer = lines.pop(); // Keep incomplete line in buffer
+            
+            for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                    try {
+                        const eventData = JSON.parse(line.substring(6));
+                        console.log('[Stream Event]', eventData);
+                        
+                        // Add to workflow visualization
+                        addAgentStep(eventData);
+                        
+                        // If final response, save it
+                        if (eventData.type === 'final_response') {
+                            finalResponse = eventData.content || '';
+                        }
+                        
+                        // If error, save error message
+                        if (eventData.type === 'error') {
+                            finalResponse = eventData.content || 'An error occurred';
+                        }
+                    } catch (e) {
+                        console.error('[Stream] Error parsing event:', e);
+                    }
+                }
+            }
+        }
+        
+        // Remove loading message
+        loadingMsg.remove();
+        
+        // Display final response
+        if (finalResponse) {
+            addMessage(finalResponse, 'bot');
+            
+            // Check if response contains video task_id
+            const taskIdMatch = finalResponse.match(/task[_-]?id[:\s]+([a-zA-Z0-9_-]+)/i);
+            if (taskIdMatch) {
+                const taskId = taskIdMatch[1];
+                console.log('[VIDEO] Task ID extracted from stream:', taskId);
+                pollForVideoCompletion(taskId);
+            }
+        } else {
+            addMessage('I received your question but couldn\'t generate a response. Please try again.', 'bot');
+        }
+        
+    } catch (error) {
+        loadingMsg.remove();
+        console.error('[ERROR] Exception in askAIStream:', error);
+        console.error('[ERROR] Error stack:', error.stack);
+        
+        // Add error to workflow
+        addAgentStep({
+            type: 'error',
+            timestamp: new Date().toISOString(),
+            status: 'Connection error',
+            content: error.message
+        });
+        
+        addMessage('Sorry, I could not connect to the AI service. Please try again.', 'bot');
     }
 }
 
