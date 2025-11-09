@@ -369,6 +369,137 @@ def call_agent(query: str, location_context=None, time_frame=None, persona=None)
     logger.warning("[ROOT AGENT] No response received from agent")
     return "No response received from agent."
 
+
+def call_agent_stream(query: str, location_context=None, time_frame=None, persona=None):
+    """Generator function that yields agent events for real-time visualization."""
+    global _runner
+    
+    # Initialize runner if not already done
+    logger.info(f"[ROOT AGENT STREAM] Starting query processing: '{query[:100]}...'")
+    logger.info(f"[ROOT AGENT STREAM] Context - Persona: {persona}, Location: {location_context}, TimeFrame: {time_frame}")
+    
+    _initialize_session_and_runner()
+    
+    # Determine effective persona
+    effective_persona = persona if persona else os.getenv("LOGIN_ROLE", "user")
+    persona_mapping = {
+        "Health Official": "health_official",
+        "Community Resident": "user",
+        "health_official": "health_official",
+        "user": "user"
+    }
+    persona_type = persona_mapping.get(effective_persona, "user")
+    
+    # Build context (same as call_agent)
+    time_context = get_current_time_context()
+    
+    location_info = ""
+    if location_context:
+        location_parts = []
+        if location_context.get('city'):
+            location_parts.append(f"City: {location_context['city']}")
+        if location_context.get('state'):
+            location_parts.append(f"State: {location_context['state']}")
+        if location_context.get('county'):
+            location_parts.append(f"County: {location_context['county']}")
+        if location_context.get('zipCode'):
+            location_parts.append(f"ZIP Code: {location_context['zipCode']}")
+        if location_parts:
+            location_info = f"\n[LOCATION CONTEXT: {', '.join(location_parts)}]"
+    
+    time_frame_info = ""
+    if time_frame:
+        time_frame_info = f"\n[TIME FRAME: {time_frame.get('start_date', '')} to {time_frame.get('end_date', '')}]"
+    
+    persona_info = ""
+    if persona_type == "health_official":
+        persona_info = "\n[USER ROLE: You are speaking with a Health Official who has access to semantic search, analytics, and PSA video generation tools]"
+    else:
+        persona_info = "\n[USER ROLE: You are speaking with a Community Resident who can report issues and get health information]"
+    
+    context_prefix = f"{time_context}{location_info}{time_frame_info}{persona_info}\n\nUser Question: "
+    
+    # Update session state
+    state_change = {"persona_type": persona_type}
+    actions_with_update = EventActions(state_delta=state_change)
+    system_event = Event(
+        invocation_id="inv_login_update",
+        author="system",
+        actions=actions_with_update
+    )
+    asyncio.run(_session_service.append_event(_session, system_event))
+    
+    # Prepare query
+    enhanced_query = context_prefix + query if context_prefix else query
+    content = types.Content(role="user", parts=[types.Part(text=enhanced_query)])
+    logger.info(f"[ROOT AGENT STREAM] Enhanced query prepared, sending to runner")
+    
+    # Yield initial event
+    yield {
+        'type': 'start',
+        'timestamp': datetime.now().isoformat(),
+        'agent': 'root_agent',
+        'status': 'Starting agent workflow...'
+    }
+    
+    # Run and stream events
+    events = _runner.run(user_id=USER_ID, session_id=SESSION_ID, new_message=content)
+    
+    for event in events:
+        event_data = {
+            'timestamp': datetime.now().isoformat()
+        }
+        
+        # Try to extract agent name from event
+        try:
+            if hasattr(event, 'content') and event.content:
+                # This is likely a response event
+                if event.is_final_response():
+                    event_data['type'] = 'final_response'
+                    event_data['content'] = event.content.parts[0].text if event.content.parts else ''
+                    event_data['status'] = 'Complete'
+                    logger.info(f"[ROOT AGENT STREAM] Final response received")
+                    yield event_data
+                    return
+                else:
+                    # Intermediate response or thinking
+                    event_data['type'] = 'thinking'
+                    event_data['status'] = 'Processing...'
+                    yield event_data
+            
+            # Check if this is an agent transfer
+            if hasattr(event, 'author') and event.author:
+                if event.author not in ['user', 'system']:
+                    event_data['type'] = 'agent_active'
+                    event_data['agent'] = event.author
+                    event_data['status'] = f'{event.author} is working...'
+                    logger.info(f"[ROOT AGENT STREAM] Agent active: {event.author}")
+                    yield event_data
+            
+            # Check for tool calls in event actions
+            if hasattr(event, 'actions') and event.actions:
+                if hasattr(event.actions, 'tool_calls') and event.actions.tool_calls:
+                    for tool_call in event.actions.tool_calls:
+                        tool_name = tool_call.name if hasattr(tool_call, 'name') else 'unknown_tool'
+                        event_data['type'] = 'tool_call'
+                        event_data['tool'] = tool_name
+                        event_data['status'] = f'Calling tool: {tool_name}'
+                        logger.info(f"[ROOT AGENT STREAM] Tool call: {tool_name}")
+                        yield event_data
+        except Exception as e:
+            logger.warning(f"[ROOT AGENT STREAM] Error processing event: {e}")
+            # Continue processing other events
+            continue
+    
+    # If we didn't get a final response
+    logger.warning("[ROOT AGENT STREAM] No response received from agent")
+    yield {
+        'type': 'error',
+        'timestamp': datetime.now().isoformat(),
+        'status': 'No response received',
+        'content': 'No response received from agent.'
+    }
+
 # === Interactive Runner ===
 def run_interactive():
     print("🌿 COMMUNITY HEALTH & WELLNESS ASSISTANT 🌿")

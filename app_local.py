@@ -174,12 +174,20 @@ if PSA_VIDEO_AVAILABLE:
 
 # Import ADK agent (optional, for backwards compatibility)
 try:
+    print("[IMPORT] Attempting to import ADK agent...")
     from multi_tool_agent_bquery_tools.agent import call_agent as call_adk_agent
+    print("[IMPORT] call_agent imported successfully")
+    from multi_tool_agent_bquery_tools.agent import call_agent_stream as call_adk_agent_stream
+    print("[IMPORT] call_agent_stream imported successfully")
     ADK_AGENT_AVAILABLE = True
-    print("[OK] ADK Agent loaded successfully!")
+    print("[OK] ✅ ADK Agent loaded successfully!")
 except Exception as e:
-    print(f"[INFO] ADK Agent not available (optional): {e}")
+    print(f"[ERROR] ❌ ADK Agent not available: {e}")
+    import traceback
+    traceback.print_exc()
     ADK_AGENT_AVAILABLE = False
+    call_adk_agent = None
+    call_adk_agent_stream = None
 
 # ===== FILE UPLOAD & AI ANALYSIS HELPERS =====
 
@@ -1370,6 +1378,65 @@ Question: {question}"""
             'success': False,
             'error': str(e)
         }), 500
+
+
+@app.route('/api/agent-chat-stream', methods=['POST'])
+def agent_chat_stream():
+    """API endpoint for streaming ADK agent events in real-time"""
+    try:
+        if not ADK_AGENT_AVAILABLE:
+            print("[STREAM ERROR] ADK Agent not available - cannot stream events")
+            print(f"[STREAM ERROR] ADK_AGENT_AVAILABLE = {ADK_AGENT_AVAILABLE}")
+            return jsonify({
+                'success': False,
+                'error': 'ADK Agent not available. Check server logs for import errors.'
+            }), 503
+        
+        request_data = request.get_json()
+        question = request_data.get('question', '')
+        location_context = request_data.get('location_context', None)
+        persona_type = request_data.get("persona", None)
+        
+        if not question:
+            return jsonify({
+                'success': False,
+                'error': 'No question provided'
+            }), 400
+        
+        def generate():
+            """Generator function for Server-Sent Events"""
+            try:
+                # Stream events from the agent
+                for event_data in call_adk_agent_stream(
+                    query=question,
+                    location_context=location_context,
+                    persona=persona_type
+                ):
+                    # Format as Server-Sent Event
+                    yield f"data: {json.dumps(event_data)}\n\n"
+            except Exception as e:
+                error_event = {
+                    'type': 'error',
+                    'timestamp': datetime.now().isoformat(),
+                    'status': 'Error occurred',
+                    'content': str(e)
+                }
+                yield f"data: {json.dumps(error_event)}\n\n"
+        
+        return app.response_class(
+            generate(),
+            mimetype='text/event-stream',
+            headers={
+                'Cache-Control': 'no-cache',
+                'X-Accel-Buffering': 'no'
+            }
+        )
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
 
 @app.route('/api/text-to-speech', methods=['POST'])
 def text_to_speech():
