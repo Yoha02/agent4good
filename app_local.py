@@ -2540,78 +2540,69 @@ def get_air_quality_detailed():
             'NO2': {'values': [], 'dates': [], 'current': 0, 'min': 0, 'max': 0, 'avg': 0, 'unit': 'ppb'}
         }
         
-        # Parse date range
-        current_date = datetime.strptime(start_date, '%Y-%m-%d')
-        end_dt = datetime.strptime(end_date, '%Y-%m-%d')
+        # Get current parameters only (skip historical loop to avoid timeout)
+        print(f"[DETAILED] Getting current air quality data...")
         
-        total_days = (end_dt - current_date).days + 1
-        print(f"[DETAILED] Processing {total_days} days of data")
+        # CRITICAL: Use use_zipcode (which may come from city lookup)
+        all_current_params = epa_service.get_all_current_parameters(
+            zipcode=use_zipcode, lat=lat, lon=lon, state_code=state_code, distance=50
+        )
         
-        # For each day in the range, get all parameters
-        day_count = 0
-        while current_date <= end_dt:
-            date_str = current_date.strftime('%Y-%m-%d')
+        print(f"[DETAILED] Got {len(all_current_params)} current parameters")
+        for param in all_current_params:
+            print(f"[DETAILED]   - {param.get('parameter')}: AQI {param.get('aqi')}")
+        
+        # Generate dates for the requested range
+        today = datetime.now()
+        dates_list = [(today - timedelta(days=i)).strftime('%Y-%m-%d') for i in range(days - 1, -1, -1)]
+        
+        # Process each parameter and simulate historical data
+        for param_data in all_current_params:
+            parameter_name = param_data.get('parameter', '')
+            current_aqi = param_data.get('aqi', 0)
             
-            # Get all current parameters for this date
-            # Note: AirNow API only has current data, so we simulate historical by variance
-            # CRITICAL: Use use_zipcode (which may come from city lookup)
-            all_current_params = epa_service.get_all_current_parameters(
-                zipcode=use_zipcode, lat=lat, lon=lon, state_code=state_code, distance=50
-            )
+            # Map EPA parameter names to our keys
+            param_key = None
+            if 'PM2.5' in parameter_name.upper():
+                param_key = 'PM2.5'
+            elif 'PM10' in parameter_name.upper() and 'PM2.5' not in parameter_name.upper():
+                param_key = 'PM10'
+            elif 'OZONE' in parameter_name.upper() or 'O3' in parameter_name.upper():
+                param_key = 'OZONE'
+            elif 'CO' in parameter_name.upper() and 'O3' not in parameter_name.upper():
+                param_key = 'CO'
+            elif 'SO2' in parameter_name.upper() or 'SULFUR' in parameter_name.upper():
+                param_key = 'SO2'
+            elif 'NO2' in parameter_name.upper() or 'NITROGEN' in parameter_name.upper():
+                param_key = 'NO2'
             
-            if day_count == 0:  # Log first day only
-                print(f"[DETAILED] Day 1 ({date_str}): Got {len(all_current_params)} parameters")
-                for param in all_current_params:
-                    print(f"[DETAILED]   - {param.get('parameter')}: AQI {param.get('aqi')}")
-            
-            # Process each parameter for this date
-            for param_data in all_current_params:
-                parameter_name = param_data.get('parameter', '')
-                aqi = param_data.get('aqi', 0)
-                
-                # Add variance for historical simulation (±15% based on date)
-                if current_date < datetime.now():
-                    variance_factor = (hash(date_str + parameter_name) % 30) - 15
-                    aqi = max(0, min(500, aqi + int(aqi * variance_factor / 100)))
-                
-                # Map EPA parameter names to our keys
-                param_key = None
-                if 'PM2.5' in parameter_name.upper():
-                    param_key = 'PM2.5'
-                elif 'PM10' in parameter_name.upper() and 'PM2.5' not in parameter_name.upper():
-                    param_key = 'PM10'
-                elif 'OZONE' in parameter_name.upper() or 'O3' in parameter_name.upper():
-                    param_key = 'OZONE'
-                elif 'CO' in parameter_name.upper() and 'O3' not in parameter_name.upper():
-                    param_key = 'CO'
-                elif 'SO2' in parameter_name.upper() or 'SULFUR' in parameter_name.upper():
-                    param_key = 'SO2'
-                elif 'NO2' in parameter_name.upper() or 'NITROGEN' in parameter_name.upper():
-                    param_key = 'NO2'
-                
-                if param_key and param_key in parameters:
+            if param_key and param_key in parameters:
+                # Generate historical values with variance
+                for i, date_str in enumerate(dates_list):
+                    # Add variance based on date (±20% for historical, 0% for today)
+                    if i < len(dates_list) - 1:  # Historical data
+                        variance = (hash(date_str + param_key) % 40) - 20
+                        aqi = max(0, min(500, current_aqi + int(current_aqi * variance / 100)))
+                    else:  # Today's data
+                        aqi = current_aqi
+                    
                     value = aqi_to_concentration(aqi, param_key)
                     parameters[param_key]['values'].append(value)
                     parameters[param_key]['dates'].append(date_str)
-                    
-                    if day_count == 0:  # Log first day mapping
-                        print(f"[DETAILED] Mapped {parameter_name} -> {param_key}, value: {value}")
-            
-            current_date += timedelta(days=1)
-            day_count += 1
-        
-        # Calculate statistics
-        for param_key in parameters:
-            if parameters[param_key]['values']:
+                
+                # Calculate statistics
                 values = parameters[param_key]['values']
-                parameters[param_key]['current'] = values[-1] if values else 0
-                parameters[param_key]['min'] = min(values)
-                parameters[param_key]['max'] = max(values)
-                parameters[param_key]['avg'] = sum(values) / len(values)
+                if values:
+                    parameters[param_key]['current'] = values[-1]
+                    parameters[param_key]['min'] = min(values)
+                    parameters[param_key]['max'] = max(values)
+                    parameters[param_key]['avg'] = sum(values) / len(values)
+                
+                print(f"[DETAILED] {param_key}: {len(values)} values from {dates_list[0]} to {dates_list[-1]}")
         
         # Calculate date range
-        start_date = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
-        end_date = datetime.now().strftime('%Y-%m-%d')
+        start_date = dates_list[0] if dates_list else datetime.now().strftime('%Y-%m-%d')
+        end_date = dates_list[-1] if dates_list else datetime.now().strftime('%Y-%m-%d')
         
         result = {
             'success': True,
