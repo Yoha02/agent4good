@@ -72,11 +72,9 @@ function initAirQualityMap() {
         // Initialize CesiumJS viewer
         Cesium.Ion.defaultAccessToken = 'YOUR_CESIUM_TOKEN'; // Not needed for Google tiles
         
-        // Create viewer with OpenStreetMap base layer (shows roads, cities, labels)
+        // Create viewer without base layer first (avoid deprecated API)
         cesiumViewer = new Cesium.Viewer('airQualityMap', {
-            imageryProvider: new Cesium.OpenStreetMapImageryProvider({
-                url: 'https://a.tile.openstreetmap.org/'
-            }),
+            baseLayer: false, // Disable default base layer
             baseLayerPicker: false,
             geocoder: false,
             homeButton: true,
@@ -90,19 +88,23 @@ function initAirQualityMap() {
             maximumRenderTimeChange: Infinity
         });
         
-        console.log('[HEATMAP DEBUG] Cesium Viewer created with OpenStreetMap base');
+        console.log('[HEATMAP DEBUG] Cesium Viewer created');
+        
+        // Add OpenStreetMap as base layer manually
+        const osmLayer = cesiumViewer.imageryLayers.addImageryProvider(
+            new Cesium.UrlTemplateImageryProvider({
+                url: 'https://a.tile.openstreetmap.org/{z}/{x}/{y}.png',
+                maximumLevel: 19,
+                credit: 'Map data © OpenStreetMap contributors'
+            })
+        );
+        osmLayer.alpha = 1.0; // Fully visible
+        console.log('[HEATMAP DEBUG] OpenStreetMap base layer added - fully visible');
         console.log('[HEATMAP DEBUG] Initializing map for air quality visualization...');
         
         // Configure globe for heatmap display
         cesiumViewer.scene.globe.show = true;
         cesiumViewer.scene.globe.showGroundAtmosphere = true;
-        
-        // Base layer (OpenStreetMap) is now fully visible (alpha = 1.0) for context
-        const baseLayer = cesiumViewer.imageryLayers.get(0);
-        if (baseLayer) {
-            baseLayer.alpha = 1.0; // Fully visible base map with roads, cities, labels
-            console.log('[HEATMAP DEBUG] Base layer (OpenStreetMap) configured - fully visible');
-        }
         
         console.log('[HEATMAP DEBUG] Globe configured for heatmap overlay');
         
