@@ -131,7 +131,7 @@ except Exception as e:
 # Initialize Gemini AI model
 try:
     if GEMINI_API_KEY:
-        model = genai.GenerativeModel('gemini-2.5-pro')
+        model = genai.GenerativeModel('gemini-1.5-pro')
         print("[OK] Gemini AI model initialized")
     else:
         model = None
