@@ -22,6 +22,31 @@ document.addEventListener('DOMContentLoaded', function() {
     let cachedChartReports = []; // Cache reports for chart updates
     let showAllColumns = false; // Column toggle state
     
+    // ===== NEW HELPER FUNCTIONS =====
+    function capitalize(str) {
+        if (!str) return '';
+        return str.charAt(0).toUpperCase() + str.slice(1);
+    }
+    
+    function formatTimeAgo(timestamp) {
+        if (!timestamp) return 'unknown time';
+        const now = new Date();
+        const past = new Date(timestamp);
+        const seconds = Math.floor((now - past) / 1000);
+    
+        let interval = seconds / 31536000;
+        if (interval > 1) return Math.floor(interval) + " years ago";
+        interval = seconds / 2592000;
+        if (interval > 1) return Math.floor(interval) + " months ago";
+        interval = seconds / 86400;
+        if (interval > 1) return Math.floor(interval) + " days ago";
+        interval = seconds / 3600;
+        if (interval > 1) return Math.floor(interval) + " hours ago";
+        interval = seconds / 60;
+        if (interval > 1) return Math.floor(interval) + " minutes ago";
+        return Math.floor(seconds) + " seconds ago";
+    }
+    // ===== END NEW HELPER FUNCTIONS =====
     // Define column sets
     const conciseColumns = ['report_type', 'timestamp', 'city', 'state', 'severity', 'status', 'ai_tags', 'manual_tags'];
     const allColumns = [
@@ -297,12 +322,26 @@ document.addEventListener('DOMContentLoaded', function() {
             const response = await fetch(`/api/community-reports?${params}`);
             const data = await response.json();
             
-            if (data.success) {
+           if (data.success) {
                 allReports = data.reports;
-                totalReports = data.total;
+                totalReports = data.stats.total_reports; // Use new stats object
+                
+                // 1. Update top stat cards
+                updateQuickStats(data.stats); // <-- Renamed to avoid confusion
+                
+                // 2. Update critical alerts list
+                updateCriticalAlertsList(allReports);
+                
+                // 3. Apply filters and render table
                 applyClientSideFilters();
+                
+                // 4. Update pagination controls
                 updatePagination();
-                updateStatsCards(allReports);
+
+                // 5. Update table summary stats (this is your original function)
+                updateStatsCards(allReports); 
+                
+                // 6. Update charts
                 updateCharts(allReports);
             } else {
                 console.error('Failed to load reports:', data.error);
@@ -611,11 +650,133 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('pendingReportsCount').textContent = statusCounts.pending;
         document.getElementById('resolvedReportsCount').textContent = statusCounts.resolved;
     }
+
+    // ===== NEW FUNCTION for "Quick Stats" =====
+    function updateQuickStats(stats) {
+        // 1. Active Alerts
+        const activeEl = document.querySelector('#quick-stat-active h3');
+        const activeSubEl = document.querySelector('#quick-stat-active p:last-of-type');
+        if (activeEl) activeEl.textContent = stats.active_high_priority_alerts;
+        if (activeSubEl) activeSubEl.textContent = `${stats.active_high_priority_alerts} High Priority`;
+        
+        // 2. New Cases (re-purposing Avg AQI card)
+        const newCasesEl = document.querySelector('#quick-stat-new-cases h3');
+        const newCasesSubEl = document.querySelector('#quick-stat-new-cases p:last-of-type');
+        const newCasesLabelEl = document.querySelector('#quick-stat-new-cases p:first-of-type');
+        
+        if (newCasesEl) newCasesEl.textContent = stats.new_cases_this_week;
+        if (newCasesLabelEl) newCasesLabelEl.textContent = 'New Cases (This Week)'; // Change label
+
+        // Calculate trend vs last week
+        let trendText = 'vs last week';
+        let trendClass = 'text-gray-500';
+        if (stats.new_cases_last_week > 0) {
+            const trend = ((stats.new_cases_this_week - stats.new_cases_last_week) / stats.new_cases_last_week) * 100;
+            if (trend > 5) {
+                trendText = `<i class="fas fa-arrow-up"></i> ${trend.toFixed(0)}% vs last week`;
+                trendClass = 'text-red-500';
+            } else if (trend < -5) {
+                trendText = `<i class="fas fa-arrow-down"></i> ${Math.abs(trend).toFixed(0)}% vs last week`;
+                trendClass = 'text-green-500';
+            }
+        } else if (stats.new_cases_this_week > 0) {
+            trendText = `<i class="fas fa-arrow-up"></i> ${stats.new_cases_this_week} new`;
+            trendClass = 'text-green-500';
+        }
+        if (newCasesSubEl) {
+            newCasesSubEl.innerHTML = trendText;
+            newCasesSubEl.className = `text-sm ${trendClass} mt-1`; // Apply color
+        }
+
+        // 3. Pending Review (re-purposing Disease Cases card)
+        const pendingEl = document.querySelector('#quick-stat-pending h3');
+        const pendingSubEl = document.querySelector('#quick-stat-pending p:last-of-type');
+        const pendingLabelEl = document.querySelector('#quick-stat-pending p:first-of-type');
+        if (pendingEl) pendingEl.textContent = stats.pending_review;
+        if (pendingLabelEl) pendingLabelEl.textContent = 'Pending Review'; // Change label
+        if (pendingSubEl) pendingSubEl.textContent = 'Awaiting triage'; // Change sub-label
+
+        // 4. Total Reports (re-purposing Population card)
+        const totalEl = document.querySelector('#quick-stat-total h3');
+        const totalSubEl = document.querySelector('#quick-stat-total p:last-of-type');
+        const totalLabelEl = document.querySelector('#quick-stat-total p:first-of-type');
+        if (totalEl) totalEl.textContent = stats.total_reports;
+        if (totalLabelEl) totalLabelEl.textContent = 'Total Reports'; // Change label
+        if (totalSubEl) totalSubEl.textContent = 'In filtered view'; // Change sub-label
+    }
     
     // Handle search
     function handleSearch(event) {
         applyClientSideFilters();
     }
+
+    // ===== NEW FUNCTION for "Critical Alerts" =====
+    function updateCriticalAlertsList(reports) {
+        const container = document.getElementById('critical-alerts-list-container');
+        if (!container) return; // Exit if ID not found
+    
+        // Filter for top 3 critical/high reports from the fetched data
+        const criticalReports = reports
+            .filter(r => r.severity === 'high' || r.severity === 'critical')
+            .slice(0, 3); // Get the first 3
+    
+        if (criticalReports.length === 0) {
+            container.innerHTML = `
+                <div class="border-l-4 border-green-500 bg-green-50 p-4 rounded-r-xl">
+                    <div class="flex items-start justify-between">
+                        <div class="flex-1">
+                            <h4 class="font-semibold text-navy-800 mb-1">No Critical Alerts</h4>
+                            <p class="text-sm text-gray-700">No high or critical severity reports found in the current view.</p>
+                        </div>
+                        <i class="fas fa-check-circle text-green-500 ml-4 mt-1"></i>
+                    </div>
+                </div>
+            `;
+            return;
+        }
+    
+        // Build new HTML for the alerts
+        container.innerHTML = criticalReports.map(report => {
+            let displaySeverity, colorClass, borderColor, iconClass;
+            
+            // Map BQ severity to your HTML's style
+            if (report.severity === 'critical') {
+                displaySeverity = 'HIGH';
+                colorClass = 'bg-red-500';
+                borderColor = 'border-red-500';
+                iconClass = 'text-red-600';
+            } else { // 'high'
+                displaySeverity = 'MEDIUM';
+                colorClass = 'bg-amber-500';
+                borderColor = 'border-amber-500';
+                iconClass = 'text-amber-600';
+            }
+
+            const timeAgo = formatTimeAgo(report.timestamp);
+            let title = report.specific_type || `${capitalize(report.report_type)} Report`;
+            if (report.city) title += ` in ${report.city}`;
+    
+            return `
+                <div class="border-l-4 ${borderColor} bg-gray-50 p-4 rounded-r-xl cursor-pointer hover:bg-white transition-all"
+                     onclick="viewReportDetails(${JSON.stringify(report).replace(/"/g, '&quot;')})">
+                    <div class="flex items-start justify-between">
+                        <div class="flex-1">
+                            <div class="flex items-center space-x-2 mb-2">
+                                <span class="px-2 py-1 ${colorClass} text-white text-xs font-bold rounded-full">${displaySeverity}</span>
+                                <span class="text-sm text-gray-600">${timeAgo}</span>
+                            </div>
+                            <h4 class="font-semibold text-navy-800 mb-1">${title}</h4>
+                            <p class="text-sm text-gray-700">${(report.ai_overall_summary || report.description || 'No description').substring(0, 100)}...</p>
+                        </div>
+                        <button class="text-gray-500 hover:${iconClass} ml-4">
+                            <i class="fas fa-arrow-right"></i>
+                        </button>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
     
     // Export data
     async function exportData(format) {

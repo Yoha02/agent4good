@@ -8,9 +8,7 @@ def generate_report_embeddings(limit: int = 50) -> str:
     Generates and stores text embeddings for new reports from CrowdSourceData
     into ReportEmbeddings table using Gemini text-embedding-004 API.
     """
-    GEMINI_KEY = os.getenv(
-        "GEMINI_API_KEY", "AIzaSyALQGawG7iVNjJhG8v5w3Z_eyt5oRdMCvk"
-    )
+    GEMINI_KEY = os.getenv("GEMINI_API_KEY")
     BQ_PROJECT = os.getenv("GOOGLE_CLOUD_PROJECT", "qwiklabs-gcp-00-4a7d408c735c")
     DATASET = "CrowdsourceData"
     SOURCE = f"{BQ_PROJECT}.{DATASET}.CrowdSourceData"

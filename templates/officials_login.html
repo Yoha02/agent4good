@@ -128,11 +128,17 @@
                     </div>
                 </div>
                 
-                <!-- Back to Home -->
-                <button onclick="window.location.href='/'" class="text-gray-300 hover:text-white transition-colors duration-300 flex items-center space-x-2">
-                    <i class="fas fa-arrow-left"></i>
-                    <span class="hidden md:block">Back to Public Portal</span>
-                </button>
+                <!-- Back to Home / Logout -->
+                <div class="flex items-center space-x-4">
+                    <button onclick="clearSession()" class="text-gray-300 hover:text-red-400 transition-colors duration-300 flex items-center space-x-2" title="Clear Session">
+                        <i class="fas fa-sign-out-alt"></i>
+                        <span class="hidden md:block">Clear Session</span>
+                    </button>
+                    <button onclick="window.location.href='/'" class="text-gray-300 hover:text-white transition-colors duration-300 flex items-center space-x-2">
+                        <i class="fas fa-arrow-left"></i>
+                        <span class="hidden md:block">Back to Public Portal</span>
+                    </button>
+                </div>
             </div>
         </div>
     </nav>
@@ -237,14 +243,14 @@
                 </div>
             </div>
 
-            <!-- Demo Credentials Notice -->
-            <div class="mt-6 p-4 bg-amber-50 border-2 border-amber-200 rounded-xl">
+            <!-- Auth Info Notice -->
+            <div class="mt-6 p-4 bg-blue-50 border-2 border-blue-200 rounded-xl">
                 <div class="text-center">
-                    <p class="text-amber-800 font-semibold text-sm">
-                        <i class="fas fa-code mr-2"></i>Demo Mode - Use Any Credentials
+                    <p class="text-blue-800 font-semibold text-sm">
+                        <i class="fas fa-shield-alt mr-2"></i>Firebase Authentication
                     </p>
-                    <p class="text-amber-700 text-xs mt-1">
-                        This is a demonstration. Any email/password combination will work.
+                    <p class="text-blue-700 text-xs mt-1">
+                        Login with authorized credentials. Contact your administrator for access.
                     </p>
                 </div>
             </div>
@@ -259,10 +265,53 @@
         </div>
     </div>
 
+    <!-- Firebase SDK -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getAuth, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+
+        // Firebase configuration
+        const firebaseConfig = {
+            apiKey: "{{ firebase_config.apiKey or 'AIzaSyDTK4NBTDymbXtuRpNhbU9gDH1yX60JGw0' }}",
+            authDomain: "{{ firebase_config.authDomain or 'qwiklabs-gcp-00-4a7d408c735c.firebaseapp.com' }}",
+            projectId: "{{ firebase_config.projectId or 'qwiklabs-gcp-00-4a7d408c735c' }}",
+            storageBucket: "{{ firebase_config.storageBucket or 'qwiklabs-gcp-00-4a7d408c735c.firebasestorage.app' }}",
+            messagingSenderId: "{{ firebase_config.messagingSenderId or '776464277441' }}",
+            appId: "{{ firebase_config.appId or '1:776464277441:web:f4faf70781e429a4671940' }}"
+        };
+
+        console.log('Firebase config loaded:', { projectId: firebaseConfig.projectId });
+
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+
+        // Store auth in window for non-module scripts
+        window.firebaseAuth = auth;
+        window.firebaseSignIn = signInWithEmailAndPassword;
+        
+        console.log('Firebase initialized successfully');
+    </script>
+
     <!-- Scripts -->
     <script src="{{ url_for('static', filename='js/three-bg.js') }}"></script>
     
     <script>
+        // Clear session function
+        async function clearSession() {
+            if (confirm('Clear your login session?')) {
+                try {
+                    await fetch('/officials-logout', { method: 'POST' });
+                    alert('Session cleared. You can now login again.');
+                    window.location.reload();
+                } catch (error) {
+                    console.error('Clear session error:', error);
+                    alert('Session cleared locally.');
+                    window.location.reload();
+                }
+            }
+        }
+
         // Toggle password visibility
         function togglePassword() {
             const passwordInput = document.getElementById('password');
@@ -277,34 +326,74 @@
             }
         }
 
-        // Handle form submission
-        document.getElementById('loginForm').addEventListener('submit', function(e) {
+        // Handle form submission with Firebase Authentication
+        document.getElementById('loginForm').addEventListener('submit', async function(e) {
             e.preventDefault();
             
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            
+            if (!email || !password) {
+                alert('Please fill in all fields');
+                return;
+            }
+
             // Show loading overlay
             document.getElementById('loadingOverlay').classList.remove('hidden');
             document.getElementById('loadingOverlay').classList.add('flex');
             
-            // Simulate authentication delay
-            setTimeout(function() {
+            try {
+                // Sign in with Firebase
+                const userCredential = await window.firebaseSignIn(window.firebaseAuth, email, password);
+                const user = userCredential.user;
+                
+                // Get ID token
+                const idToken = await user.getIdToken();
+                
+                // Send token to backend for verification
+                const response = await fetch('/officials-verify-token', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ idToken: idToken })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    // Set persona in sessionStorage
+                    sessionStorage.setItem('persona', 'Health Official');
+                    console.log('Login successful: Persona updated to "Health Official"');
+                    
+                    // Redirect to dashboard
+                    window.location.href = '/officials-dashboard';
+                } else {
+                    throw new Error(data.error || 'Authentication failed');
+                }
+                
+            } catch (error) {
+                console.error('Login error:', error);
+                
                 // Hide loading overlay
                 document.getElementById('loadingOverlay').classList.add('hidden');
                 document.getElementById('loadingOverlay').classList.remove('flex');
                 
-                // For demo purposes, any credentials work
-                const email = document.getElementById('email').value;
-                const password = document.getElementById('password').value;
+                // Show user-friendly error message
+                let errorMessage = 'Login failed. Please check your credentials.';
                 
-                if (email && password) {
-                    // Set the persona in sessionStorage on successful login
-                    sessionStorage.setItem('persona', 'Health Official');
-                    console.log('Login successful: Persona updated to "Health Official"');
-                    // Redirect to officials dashboard
-                    window.location.href = '/officials-dashboard';
-                } else {
-                    alert('Please fill in all fields');
+                if (error.code === 'auth/invalid-credential' || error.code === 'auth/wrong-password') {
+                    errorMessage = 'Invalid email or password.';
+                } else if (error.code === 'auth/user-not-found') {
+                    errorMessage = 'No account found with this email.';
+                } else if (error.code === 'auth/too-many-requests') {
+                    errorMessage = 'Too many failed attempts. Please try again later.';
+                } else if (error.code === 'auth/network-request-failed') {
+                    errorMessage = 'Network error. Please check your connection.';
                 }
-            }, 2000);
+                
+                alert(errorMessage);
+            }
         });
 
         // Add floating animation to login card

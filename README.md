@@ -24,6 +24,12 @@ A full-stack web application combining beautiful UI dashboards with Google's Age
 - State-based filtering for localized insights
 - 7-day, 14-day, and 30-day trend analysis
 
+### **Public Health Officials Portal**
+- **Secure Firebase Authentication**: Login system for authorized officials
+- **Protected Dashboard**: Access to community reports and health data
+- **Session Management**: Secure logout and session handling
+- **No Signup Required**: Officials created by admins in Firebase Console
+
 ### **Real Data Sources**
 - **EPA Air Quality**: Public BigQuery dataset `bigquery-public-data.epa_historical_air_quality` (2010-2021)
 - **Infectious Diseases**: CDC BEAM Dashboard via your project's BigQuery dataset
@@ -119,6 +125,9 @@ EPA_API_KEY=your-epa-api-key
 AQS_API_KEY=your-aqs-api-key
 AQS_EMAIL=your-email@example.com
 
+# Firebase Authentication (for Officials Login)
+FIREBASE_SERVICE_ACCOUNT_FILE=/path/to/firebase-service-account.json
+
 # Optional
 PORT=8080
 ```
@@ -128,6 +137,7 @@ PORT=8080
 - **Google Maps API**: https://console.cloud.google.com/google/maps-apis
 - **EPA AirNow API**: https://docs.airnowapi.org/account/request
 - **EPA AQS API**: https://aqs.epa.gov/data/api/signup?email=youremail
+- **Firebase Config**: See [Firebase Setup](#-firebase-authentication-setup) below
 
 ---
 
@@ -151,6 +161,37 @@ See **[SETUP_BIGQUERY.md](SETUP_BIGQUERY.md)** for complete step-by-step instruc
 3. Generate and download JSON key
 4. Share securely with team (encrypted email, secure file sharing)
 5. **Never commit the JSON file to git!** (already in `.gitignore`)
+
+---
+
+## 🔥 Firebase Authentication Setup
+
+The platform includes a secure login system for Public Health Officials using Firebase Authentication.
+
+### **Quick Setup for Developers**
+
+1. **Get the service account file** from your admin
+2. **Store it securely**:
+   ```bash
+   mkdir -p ~/secrets/firebase
+   mv firebase-adminsdk-xxxxx.json ~/secrets/firebase/service_account.json
+   ```
+3. **Update `.env`**:
+   ```env
+   FIREBASE_SERVICE_ACCOUNT_FILE=/Users/YOUR_USERNAME/secrets/firebase/service_account.json
+   ```
+4. **Install dependencies**: `pip install firebase-admin`
+5. **Test**: `python app_local.py` (look for "[OK] Firebase Admin SDK initialized")
+6. **Login**: http://localhost:8080/officials-login
+
+### **For Complete Setup Instructions**
+
+See **[FIREBASE_README.md](FIREBASE_README.md)** for:
+- 📋 Complete developer setup guide
+- 🔧 Admin guide (creating Firebase project, managing users)
+- 🔄 Switching Firebase projects
+- 🐛 Troubleshooting common issues
+- 📚 Additional resources
 
 ---
 

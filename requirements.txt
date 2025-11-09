@@ -34,3 +34,6 @@ xmltodict>=0.13.0
 
 # US Location Data - lightweight, no complex dependencies
 zipcodes>=1.2.0
+
+# Firebase Authentication
+firebase-admin>=6.0.0

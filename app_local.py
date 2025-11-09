@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, session, redirect, url_for
 import os
 from dotenv import load_dotenv
 import pandas as pd
@@ -19,6 +19,8 @@ from google_pollen_service import GooglePollenService
 from google.cloud import storage, bigquery, texttospeech
 import google.generativeai as genai
 import base64
+import firebase_admin
+from firebase_admin import credentials, auth
 
 # PSA Video Integration
 try:
@@ -30,6 +32,21 @@ except ImportError as e:
 
 # Load environment variables
 load_dotenv()
+
+# Initialize Firebase Admin SDK
+FIREBASE_AVAILABLE = False
+try:
+    firebase_service_account = os.getenv('FIREBASE_SERVICE_ACCOUNT_FILE')
+    if firebase_service_account and os.path.exists(firebase_service_account):
+        cred = credentials.Certificate(firebase_service_account)
+        firebase_admin.initialize_app(cred)
+        FIREBASE_AVAILABLE = True
+        print("[OK] Firebase Admin SDK initialized")
+    else:
+        print("[WARNING] Firebase service account file not found - authentication disabled")
+except Exception as e:
+    print(f"[WARNING] Firebase initialization failed: {e}")
+    FIREBASE_AVAILABLE = False
 
 # Simple in-memory cache for API responses
 API_CACHE = {}
@@ -1488,14 +1505,92 @@ def get_locations():
             'error': str(e)
         }), 500
 
+# ===== FIREBASE AUTHENTICATION =====
+
+def require_official_auth(f):
+    """Decorator to protect routes requiring official authentication"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        # Always check for session authentication
+        if 'officials_uid' not in session:
+            print("[WARNING] Unauthorized access attempt - redirecting to login")
+            return redirect(url_for('officials_login'))
+        
+        return f(*args, **kwargs)
+    return decorated_function
+
 @app.route('/officials-login')
 def officials_login():
     """Public Health Officials login page"""
-    return render_template('officials_login.html')
+    # Pass Firebase config to template
+    firebase_config = {
+        'apiKey': os.getenv('FIREBASE_API_KEY', ''),
+        'authDomain': os.getenv('FIREBASE_AUTH_DOMAIN', ''),
+        'projectId': os.getenv('FIREBASE_PROJECT_ID', ''),
+        'storageBucket': os.getenv('FIREBASE_STORAGE_BUCKET', ''),
+        'messagingSenderId': os.getenv('FIREBASE_MESSAGING_SENDER_ID', ''),
+        'appId': os.getenv('FIREBASE_APP_ID', '')
+    }
+    return render_template('officials_login.html', firebase_config=firebase_config)
+
+@app.route('/officials-verify-token', methods=['POST'])
+def officials_verify_token():
+    """Verify Firebase ID token and create session"""
+    if not FIREBASE_AVAILABLE:
+        return jsonify({
+            'success': False, 
+            'error': 'Firebase authentication not configured on server. Please configure FIREBASE_SERVICE_ACCOUNT_FILE in .env'
+        }), 500
+    
+    try:
+        data = request.get_json()
+        id_token = data.get('idToken')
+        
+        if not id_token:
+            return jsonify({'success': False, 'error': 'No token provided'}), 400
+        
+        # Verify the ID token
+        decoded_token = auth.verify_id_token(id_token)
+        uid = decoded_token['uid']
+        email = decoded_token.get('email', '')
+        
+        # Create session
+        session['officials_uid'] = uid
+        session['officials_email'] = email
+        session['role'] = 'official'
+        
+        print(f"[OK] Official logged in: {email} (UID: {uid})")
+        
+        return jsonify({
+            'success': True,
+            'uid': uid,
+            'email': email
+        })
+    
+    except auth.InvalidIdTokenError:
+        return jsonify({'success': False, 'error': 'Invalid authentication token'}), 401
+    except auth.ExpiredIdTokenError:
+        return jsonify({'success': False, 'error': 'Authentication token expired'}), 401
+    except Exception as e:
+        print(f"[ERROR] Token verification failed: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/officials-logout', methods=['POST', 'GET'])
+def officials_logout():
+    """Logout official and clear session"""
+    session.clear()  # Clear entire session
+    
+    # If it's a POST request (AJAX), return JSON
+    if request.method == 'POST':
+        return jsonify({'success': True})
+    
+    # If it's a GET request (direct navigation), redirect to login
+    return redirect(url_for('officials_login'))
 
 @app.route('/officials-dashboard')
+@require_official_auth
 def officials_dashboard():
-    """Public Health Officials dashboard - requires authentication in production"""
+    """Public Health Officials dashboard - requires authentication"""
     return render_template('officials_dashboard.html')
 
 @app.route('/api/community-reports', methods=['GET'])
@@ -1522,6 +1617,31 @@ def get_community_reports():
         project_id = os.getenv('GOOGLE_CLOUD_PROJECT')
         dataset_id = os.getenv('BIGQUERY_DATASET')
         table_id = os.getenv('BIGQUERY_TABLE_REPORTS')
+
+        # ===== NEW: Build reusable filter string =====
+        filter_conditions = ""
+        if state:
+            filter_conditions += f" AND state = '{state}'"
+        if city:
+            filter_conditions += f" AND city = '{city}'"
+        if county:
+            filter_conditions += f" AND county = '{county}'"
+        if zipcode:
+            filter_conditions += f" AND zip_code = '{zipcode}'"
+        if report_type:
+            filter_conditions += f" AND report_type = '{report_type}'"
+        if severity:
+            filter_conditions += f" AND severity = '{severity}'"
+        if status:
+            filter_conditions += f" AND status = '{status}'"
+        if start_date:
+            filter_conditions += f" AND timestamp >= TIMESTAMP('{start_date}')"
+        if end_date:
+            filter_conditions += f" AND timestamp <= TIMESTAMP('{end_date}')"
+        if timeframe:
+            filter_conditions += f" AND timeframe = '{timeframe}'"
+        # ===== END NEW =====
+
         
         if not all([project_id, dataset_id, table_id]):
             print("[ERROR] Missing BigQuery configuration in environment variables")
@@ -1571,7 +1691,7 @@ def get_community_reports():
         )
         SELECT * EXCEPT(rn)
         FROM LatestReports
-        WHERE rn = 1 AND 1=1
+        WHERE rn = 1 {filter_conditions} # <-- USE THE FILTER STRING
         """
         
         # Add filter conditions
@@ -1647,36 +1767,51 @@ def get_community_reports():
             }
             reports.append(report)
         
-        # Get total count for pagination
-        count_query = f"""
-        SELECT COUNT(*) as total
-        FROM `{project_id}.{dataset_id}.{table_id}`
-        WHERE 1=1
+# Get total count and dashboard statistics
+        stats_query = f"""
+        WITH FilteredData AS (
+            SELECT
+                timestamp,
+                severity,
+                status
+            FROM `{project_id}.{dataset_id}.{table_id}`
+            WHERE 1=1 {filter_conditions} # <-- REUSE THE FILTER STRING
+        )
+        SELECT
+            COUNT(*) as total_reports,
+            
+            COUNTIF(timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY)) as new_cases_this_week,
+            
+            COUNTIF(timestamp < TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY) 
+                    AND timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 14 DAY)) as new_cases_last_week,
+            
+            COUNTIF(status IN ('Pending', 'Under Review', 'Valid - Action Required', 'pending', 'reviewed') 
+                    AND severity IN ('high', 'critical')) as active_high_priority_alerts,
+            
+            COUNTIF(status = 'Pending' OR status = 'pending') as pending_review
+            
+        FROM FilteredData
         """
-        if state:
-            count_query += f" AND state = '{state}'"
-        if city:
-            count_query += f" AND city = '{city}'"
-        if county:
-            count_query += f" AND county = '{county}'"
-        if zipcode:
-            count_query += f" AND zip_code = '{zipcode}'"
-        if report_type:
-            count_query += f" AND report_type = '{report_type}'"
-        if severity:
-            count_query += f" AND severity = '{severity}'"
-        if status:
-            count_query += f" AND status = '{status}'"
         
-        count_job = client.query(count_query)
-        count_result = list(count_job.result())[0]
-        total_count = count_result.total
+        stats_job = client.query(stats_query)
+        stats_result = list(stats_job.result())[0]
+        
+        # Package stats into a dictionary
+        stats = {
+            'total_reports': stats_result.total_reports,
+            'new_cases_this_week': stats_result.new_cases_this_week,
+            'new_cases_last_week': stats_result.new_cases_last_week,
+            'active_high_priority_alerts': stats_result.active_high_priority_alerts,
+            'pending_review': stats_result.pending_review
+        }
+        total_count = stats['total_reports']
         
         print(f"[SUCCESS] Retrieved {len(reports)} reports (total: {total_count})")
         
         return jsonify({
             'success': True,
             'reports': reports,
+            'stats':stats,
             'total': total_count,
             'limit': limit,
             'offset': offset
