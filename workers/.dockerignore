@@ -1,0 +1,6 @@
+# Ignore everything except what we need
+**/*
+!requirements.txt
+!bigquery_worker.py
+!Dockerfile
+

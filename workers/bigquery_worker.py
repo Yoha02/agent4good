@@ -7,6 +7,8 @@ import os
 import sys
 import json
 import logging
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
 from google.cloud import pubsub_v1, bigquery
 from concurrent import futures
 import signal
@@ -30,6 +32,43 @@ TABLE_ID = os.getenv('BIGQUERY_TABLE_REPORTS', 'CrowdSourceData')
 subscriber = None
 bigquery_client = None
 subscription_path = None
+health_status = {"healthy": False, "messages_processed": 0}
+
+# Simple HTTP health check server for Cloud Run
+class HealthCheckHandler(BaseHTTPRequestHandler):
+    """HTTP handler for health checks"""
+    
+    def log_message(self, format, *args):
+        """Suppress HTTP logs"""
+        pass
+    
+    def do_GET(self):
+        """Respond to GET requests"""
+        if self.path in ['/', '/health', '/healthz']:
+            if health_status["healthy"]:
+                self.send_response(200)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                response = json.dumps({
+                    "status": "healthy",
+                    "messages_processed": health_status["messages_processed"]
+                })
+                self.wfile.write(response.encode())
+            else:
+                self.send_response(503)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(b'{"status":"initializing"}')
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+def start_health_server():
+    """Start HTTP health check server in background thread"""
+    port = int(os.getenv('PORT', '8080'))
+    server = HTTPServer(('0.0.0.0', port), HealthCheckHandler)
+    logger.info(f"[HEALTH] Starting health check server on port {port}")
+    server.serve_forever()
 
 def initialize_clients():
     """Initialize Pub/Sub subscriber and BigQuery client"""
@@ -103,6 +142,9 @@ def process_message(message: pubsub_v1.subscriber.message.Message):
             # Acknowledge message (will not be redelivered)
             message.ack()
             
+            # Update health status
+            health_status["messages_processed"] += 1
+            
             elapsed = time.time() - start_time
             logger.info(f"[SUCCESS] Report {report_id} processed in {elapsed:.2f}s")
         else:
@@ -125,10 +167,18 @@ def main():
     logger.info("[WORKER] Starting BigQuery Worker")
     logger.info(f"[WORKER] Target: {PROJECT_ID}.{DATASET_ID}.{TABLE_ID}")
     
+    # Start health check server in background thread
+    health_thread = threading.Thread(target=start_health_server, daemon=True)
+    health_thread.start()
+    
     # Initialize clients
     if not initialize_clients():
         logger.error("[WORKER] Failed to initialize, exiting")
         sys.exit(1)
+    
+    # Mark as healthy
+    health_status["healthy"] = True
+    logger.info("[WORKER] Worker is healthy and ready")
     
     # Configure flow control
     flow_control = pubsub_v1.types.FlowControl(
