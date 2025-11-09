@@ -189,9 +189,9 @@ try:
     from multi_tool_agent_bquery_tools.agent import call_agent_stream as call_adk_agent_stream
     print("[IMPORT] call_agent_stream imported successfully")
     ADK_AGENT_AVAILABLE = True
-    print("[OK] ✅ ADK Agent loaded successfully!")
+    print("[OK] ADK Agent loaded successfully!")
 except Exception as e:
-    print(f"[ERROR] ❌ ADK Agent not available: {e}")
+    print(f"[ERROR] ADK Agent not available: {e}")
     import traceback
     traceback.print_exc()
     ADK_AGENT_AVAILABLE = False
