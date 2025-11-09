@@ -7,6 +7,7 @@ import json
 import random
 import zipcodes
 import requests
+import uuid
 from PIL import Image
 from io import BytesIO
 from functools import lru_cache, wraps
@@ -2419,6 +2420,153 @@ def export_reports(format):
             
     except Exception as e:
         print(f"[ERROR] Failed to export reports: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/officials/generate-alert-summary', methods=['POST'])
+def generate_alert_summary():
+    """Generate AI summary of recent reports for alert creation"""
+    try:
+        data = request.get_json()
+        filters = data.get('filters', {})
+        
+        # Get recent reports from BigQuery
+        project_id = os.getenv('GOOGLE_CLOUD_PROJECT')
+        dataset_id = os.getenv('BIGQUERY_DATASET')
+        table_id = os.getenv('BIGQUERY_TABLE_REPORTS')
+        
+        # Build filter conditions
+        filter_conditions = "1=1"
+        if filters.get('state'):
+            filter_conditions += f" AND state = '{filters['state']}'"
+        if filters.get('city'):
+            filter_conditions += f" AND city = '{filters['city']}'"
+        if filters.get('county'):
+            filter_conditions += f" AND county = '{filters['county']}'"
+        if filters.get('zipcode'):
+            filter_conditions += f" AND zip_code = '{filters['zipcode']}'"
+        
+        # Query for recent high-priority reports
+        query = f"""
+        SELECT 
+            report_type,
+            severity,
+            description,
+            city,
+            state,
+            county,
+            zip_code,
+            timestamp,
+            people_affected,
+            ai_overall_summary,
+            ai_tags
+        FROM `{project_id}.{dataset_id}.{table_id}`
+        WHERE {filter_conditions}
+            AND timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY)
+            AND severity IN ('high', 'critical', 'medium')
+        ORDER BY timestamp DESC
+        LIMIT 50
+        """
+        
+        query_job = bq_client.query(query)
+        results = list(query_job.result())
+        
+        if not results:
+            return jsonify({
+                'success': True,
+                'summary': 'No recent high-priority reports found in the selected area. Consider expanding your search criteria or time range.'
+            })
+        
+        # Prepare data for AI summary
+        reports_summary = []
+        for row in results:
+            reports_summary.append({
+                'type': row.report_type,
+                'severity': row.severity,
+                'description': row.description[:200] if row.description else '',
+                'location': f"{row.city}, {row.state}" if row.city else row.state,
+                'affected': row.people_affected,
+                'tags': row.ai_tags if hasattr(row, 'ai_tags') else None
+            })
+        
+        # Generate AI summary using Gemini
+        model = genai.GenerativeModel('gemini-2.0-flash-exp')
+        prompt = f"""You are a public health official. Analyze these recent community health reports and create a concise, actionable public health alert summary.
+
+Recent Reports ({len(reports_summary)} total):
+{json.dumps(reports_summary, indent=2)}
+
+Create a 2-3 sentence summary that:
+1. Identifies the main health concerns or patterns
+2. Notes the affected areas
+3. Suggests immediate actions or precautions
+
+Be clear, direct, and focus on actionable information for the public."""
+
+        response = model.generate_content(prompt)
+        ai_summary = response.text.strip()
+        
+        print(f"[AI SUMMARY] Generated alert summary from {len(results)} reports")
+        
+        return jsonify({
+            'success': True,
+            'summary': ai_summary,
+            'report_count': len(results),
+            'high_severity_count': sum(1 for r in results if r.severity in ['high', 'critical'])
+        })
+        
+    except Exception as e:
+        print(f"[ERROR] Failed to generate alert summary: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/officials/post-alert', methods=['POST'])
+def post_alert():
+    """Post a public health alert"""
+    try:
+        data = request.get_json()
+        message = data.get('message', '').strip()
+        level = data.get('level', 'critical')
+        filters = data.get('filters', {})
+        
+        if not message:
+            return jsonify({
+                'success': False,
+                'error': 'Alert message is required'
+            }), 400
+        
+        # Create alert record
+        alert = {
+            'id': str(uuid.uuid4()),
+            'message': message,
+            'level': level,
+            'filters': filters,
+            'timestamp': datetime.now().isoformat(),
+            'issued_by': 'Dr. Sarah Johnson',  # In production, get from session
+            'active': True
+        }
+        
+        # In a production app, this would be stored in a database or cache
+        # For now, we'll return it to be displayed client-side
+        # You could also integrate with notification services here
+        
+        print(f"[ALERT POSTED] Level: {level}, Message: {message[:50]}...")
+        
+        return jsonify({
+            'success': True,
+            'alert': alert
+        })
+        
+    except Exception as e:
+        print(f"[ERROR] Failed to post alert: {str(e)}")
         import traceback
         traceback.print_exc()
         return jsonify({

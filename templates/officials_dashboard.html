@@ -177,6 +177,27 @@
         </div>
     </nav>
 
+    <!-- Alert Banner (Hidden by default) -->
+    <div id="alertBanner" class="hidden fixed top-20 left-0 right-0 z-40 bg-gradient-to-r from-red-600 to-red-700 text-white shadow-2xl">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-4 flex-1">
+                    <div class="flex-shrink-0">
+                        <i class="fas fa-exclamation-triangle text-2xl animate-pulse"></i>
+                    </div>
+                    <div class="flex-1">
+                        <p class="font-bold text-lg">PUBLIC HEALTH ALERT</p>
+                        <p id="alertMessage" class="text-red-100 mt-1"></p>
+                        <p id="alertTimestamp" class="text-red-200 text-sm mt-1"></p>
+                    </div>
+                </div>
+                <button onclick="dismissAlert()" class="flex-shrink-0 ml-4 text-white hover:text-red-200 transition-colors">
+                    <i class="fas fa-times text-xl"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- Main Content -->
     <div class="pt-24 pb-12">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -414,7 +435,7 @@
                         </h3>
                         
                         <div class="space-y-3">
-                            <button class="w-full text-left p-4 bg-emerald-50 hover:bg-emerald-100 rounded-xl transition-colors duration-200 flex items-center space-x-3">
+                            <button onclick="openAlertModal()" class="w-full text-left p-4 bg-emerald-50 hover:bg-emerald-100 rounded-xl transition-colors duration-200 flex items-center space-x-3">
                                 <div class="w-10 h-10 bg-emerald-500 rounded-lg flex items-center justify-center">
                                     <i class="fas fa-bullhorn text-white"></i>
                                 </div>
@@ -1621,6 +1642,106 @@
         
         #chatWidgetMessages::-webkit-scrollbar-thumb:hover {
             background: #059669;
+        }
+    </style>
+
+    <!-- Issue Alert Modal -->
+    <div id="alertModal" class="hidden fixed inset-0 z-50 overflow-y-auto">
+        <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
+            <!-- Background overlay -->
+            <div class="fixed inset-0 transition-opacity bg-gray-900 bg-opacity-75 backdrop-blur-sm" onclick="closeAlertModal()"></div>
+
+            <!-- Modal panel -->
+            <div class="inline-block align-bottom bg-white rounded-2xl text-left overflow-hidden shadow-2xl transform transition-all sm:my-8 sm:align-middle sm:max-w-3xl sm:w-full">
+                <!-- Header -->
+                <div class="bg-gradient-to-r from-red-600 to-red-700 px-6 py-4">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center space-x-3">
+                            <div class="w-10 h-10 bg-white bg-opacity-20 rounded-lg flex items-center justify-center">
+                                <i class="fas fa-bullhorn text-white text-lg"></i>
+                            </div>
+                            <h3 class="text-xl font-bold text-white">Issue Public Health Alert</h3>
+                        </div>
+                        <button onclick="closeAlertModal()" class="text-white hover:text-red-200 transition-colors">
+                            <i class="fas fa-times text-2xl"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Content -->
+                <div class="px-6 py-6 space-y-6">
+                    <!-- AI Summary Section -->
+                    <div class="bg-blue-50 border-l-4 border-blue-500 rounded-lg p-4">
+                        <div class="flex items-start space-x-3">
+                            <i class="fas fa-robot text-blue-600 text-xl mt-1"></i>
+                            <div class="flex-1">
+                                <h4 class="font-bold text-navy-800 mb-2">AI-Generated Summary</h4>
+                                <div id="aiSummaryContent" class="text-gray-700 text-sm">
+                                    <div class="flex items-center space-x-2">
+                                        <i class="fas fa-spinner fa-spin text-blue-600"></i>
+                                        <span>Generating summary based on recent reports...</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Alert Message Input -->
+                    <div>
+                        <label for="alertMessageInput" class="block text-sm font-bold text-navy-800 mb-2">
+                            <i class="fas fa-edit text-emerald-500 mr-2"></i>Alert Message
+                        </label>
+                        <textarea 
+                            id="alertMessageInput" 
+                            rows="6" 
+                            class="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-red-500 resize-none"
+                            placeholder="Enter your public health alert message here. Be clear, concise, and actionable..."
+                        ></textarea>
+                        <p class="mt-2 text-sm text-gray-500">
+                            <i class="fas fa-info-circle mr-1"></i>
+                            This message will be displayed prominently on the dashboard
+                        </p>
+                    </div>
+
+                    <!-- Alert Level -->
+                    <div>
+                        <label class="block text-sm font-bold text-navy-800 mb-2">
+                            <i class="fas fa-exclamation-triangle text-yellow-500 mr-2"></i>Alert Level
+                        </label>
+                        <div class="grid grid-cols-3 gap-3">
+                            <button onclick="setAlertLevel('info')" class="alert-level-btn px-4 py-3 border-2 rounded-lg transition-all hover:shadow-md" data-level="info">
+                                <i class="fas fa-info-circle text-blue-500 text-lg mb-1"></i>
+                                <p class="text-sm font-semibold">Info</p>
+                            </button>
+                            <button onclick="setAlertLevel('warning')" class="alert-level-btn px-4 py-3 border-2 rounded-lg transition-all hover:shadow-md" data-level="warning">
+                                <i class="fas fa-exclamation-triangle text-yellow-500 text-lg mb-1"></i>
+                                <p class="text-sm font-semibold">Warning</p>
+                            </button>
+                            <button onclick="setAlertLevel('critical')" class="alert-level-btn px-4 py-3 border-2 border-red-500 bg-red-50 rounded-lg transition-all hover:shadow-md active" data-level="critical">
+                                <i class="fas fa-exclamation-circle text-red-600 text-lg mb-1"></i>
+                                <p class="text-sm font-semibold text-red-600">Critical</p>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Footer -->
+                <div class="bg-gray-50 px-6 py-4 flex items-center justify-between">
+                    <button onclick="closeAlertModal()" class="px-6 py-2 text-gray-700 bg-white border-2 border-gray-300 rounded-lg font-semibold hover:bg-gray-50 transition-colors">
+                        Cancel
+                    </button>
+                    <button onclick="sendAlert()" class="px-8 py-3 bg-gradient-to-r from-red-600 to-red-700 text-white rounded-lg font-bold hover:from-red-700 hover:to-red-800 transition-all shadow-lg hover:shadow-xl">
+                        <i class="fas fa-bullhorn mr-2"></i>Send Alert
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <style>
+        .alert-level-btn.active {
+            border-color: currentColor;
+            box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1);
         }
     </style>
 

@@ -1,18 +1,23 @@
 // Officials Dashboard JavaScript
+
+// Global variables - moved outside DOMContentLoaded for alert system
+let currentFilters = {
+    state: '',
+    city: '',
+    county: '',
+    zipcode: '',
+    report_type: '',
+    severity: '',
+    status: '',
+    timeframe: '',
+    timePeriod: 'live'
+};
+
+// Make currentFilters accessible globally
+window.currentFilters = currentFilters;
+
 document.addEventListener('DOMContentLoaded', function() {
-    // Global variables
-    let currentFilters = {
-        state: '',
-        city: '',
-        county: '',
-        zipcode: '',
-        report_type: '',
-        severity: '',
-        status: '',
-        timeframe: '',
-        timePeriod: 'live'
-    };
-    
+    // Other variables remain in DOMContentLoaded scope
     let currentPage = 1;
     const rowsPerPage = 20;
     let totalReports = 0;
@@ -177,6 +182,7 @@ document.addEventListener('DOMContentLoaded', function() {
         currentFilters.city = '';
         currentFilters.county = '';
         currentFilters.zipcode = '';
+        window.currentFilters = currentFilters; // Ensure global reference is updated
         
         if (stateCode) {
             try {
@@ -2248,3 +2254,206 @@ window.closeChatWidget = closeChatWidget;
 window.sendChatWidgetMessage = sendChatWidgetMessage;
 window.clearChatWidget = clearChatWidget;
 window.askQuickQuestion = askQuickQuestion;
+
+// ===== PUBLIC HEALTH ALERT SYSTEM =====
+let currentAlertLevel = 'critical';
+
+function openAlertModal() {
+    const modal = document.getElementById('alertModal');
+    if (modal) {
+        modal.classList.remove('hidden');
+        // Generate AI summary when modal opens
+        generateAlertSummary();
+    }
+}
+
+function closeAlertModal() {
+    const modal = document.getElementById('alertModal');
+    if (modal) {
+        modal.classList.add('hidden');
+        // Clear the input
+        document.getElementById('alertMessageInput').value = '';
+    }
+}
+
+function setAlertLevel(level) {
+    currentAlertLevel = level;
+    
+    // Update button states
+    const buttons = document.querySelectorAll('.alert-level-btn');
+    buttons.forEach(btn => {
+        const btnLevel = btn.getAttribute('data-level');
+        if (btnLevel === level) {
+            btn.classList.add('active');
+        } else {
+            btn.classList.remove('active');
+        }
+    });
+}
+
+async function generateAlertSummary() {
+    const summaryContent = document.getElementById('aiSummaryContent');
+    
+    try {
+        summaryContent.innerHTML = `
+            <div class="flex items-center space-x-2">
+                <i class="fas fa-spinner fa-spin text-blue-600"></i>
+                <span>Generating summary based on recent reports...</span>
+            </div>
+        `;
+        
+        // Ensure currentFilters exists
+        const filters = window.currentFilters || currentFilters || {
+            state: '',
+            city: '',
+            county: '',
+            zipcode: '',
+            report_type: '',
+            severity: '',
+            status: '',
+            timeframe: '',
+            timePeriod: 'live'
+        };
+        
+        const response = await fetch('/api/officials/generate-alert-summary', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                filters: filters
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            summaryContent.innerHTML = `
+                <div class="space-y-2">
+                    <p class="text-gray-700">${data.summary}</p>
+                    <div class="text-xs text-gray-500 mt-2">
+                        <i class="fas fa-info-circle mr-1"></i>
+                        Based on ${data.report_count} recent reports
+                        ${data.high_severity_count > 0 ? `(${data.high_severity_count} high severity)` : ''}
+                    </div>
+                    <button onclick="useAISummary()" class="mt-2 text-sm text-blue-600 hover:text-blue-700 font-semibold">
+                        <i class="fas fa-arrow-down mr-1"></i>Use this summary
+                    </button>
+                </div>
+            `;
+        } else {
+            summaryContent.innerHTML = `
+                <p class="text-red-600">
+                    <i class="fas fa-exclamation-circle mr-1"></i>
+                    Failed to generate summary: ${data.error || 'Unknown error'}
+                </p>
+            `;
+        }
+    } catch (error) {
+        console.error('Error generating summary:', error);
+        summaryContent.innerHTML = `
+            <p class="text-red-600">
+                <i class="fas fa-exclamation-circle mr-1"></i>
+                Error: ${error.message || 'Please try again.'}
+            </p>
+        `;
+    }
+}
+
+function useAISummary() {
+    const summaryText = document.querySelector('#aiSummaryContent p').textContent;
+    document.getElementById('alertMessageInput').value = summaryText;
+}
+
+async function sendAlert() {
+    const message = document.getElementById('alertMessageInput').value.trim();
+    
+    if (!message) {
+        alert('Please enter an alert message');
+        return;
+    }
+    
+    try {
+        // Ensure currentFilters exists
+        const filters = window.currentFilters || currentFilters || {
+            state: '',
+            city: '',
+            county: '',
+            zipcode: '',
+            report_type: '',
+            severity: '',
+            status: '',
+            timeframe: '',
+            timePeriod: 'live'
+        };
+        
+        const response = await fetch('/api/officials/post-alert', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                message: message,
+                level: currentAlertLevel,
+                filters: filters
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            // Close modal
+            closeAlertModal();
+            
+            // Display alert banner
+            displayAlertBanner(data.alert);
+            
+            // Show success message
+            alert('Public health alert issued successfully!');
+        } else {
+            alert('Failed to post alert: ' + data.error);
+        }
+    } catch (error) {
+        console.error('Error posting alert:', error);
+        alert('Error posting alert. Please try again.');
+    }
+}
+
+function displayAlertBanner(alert) {
+    const banner = document.getElementById('alertBanner');
+    const messageEl = document.getElementById('alertMessage');
+    const timestampEl = document.getElementById('alertTimestamp');
+    
+    if (banner && messageEl && timestampEl) {
+        messageEl.textContent = alert.message;
+        
+        const timestamp = new Date(alert.timestamp);
+        timestampEl.textContent = `Issued ${timestamp.toLocaleString()} by ${alert.issued_by}`;
+        
+        banner.classList.remove('hidden');
+        
+        // Add color based on level
+        banner.classList.remove('from-red-600', 'to-red-700', 'from-yellow-500', 'to-yellow-600', 'from-blue-500', 'to-blue-600');
+        if (alert.level === 'critical') {
+            banner.classList.add('from-red-600', 'to-red-700');
+        } else if (alert.level === 'warning') {
+            banner.classList.add('from-yellow-500', 'to-yellow-600');
+        } else {
+            banner.classList.add('from-blue-500', 'to-blue-600');
+        }
+        
+        // Smooth scroll to top to show banner
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+}
+
+function dismissAlert() {
+    const banner = document.getElementById('alertBanner');
+    if (banner) {
+        banner.classList.add('hidden');
+    }
+}
+
+// Make alert functions globally available
+window.openAlertModal = openAlertModal;
+window.closeAlertModal = closeAlertModal;
+window.setAlertLevel = setAlertLevel;
+window.sendAlert = sendAlert;
+window.useAISummary = useAISummary;
+window.dismissAlert = dismissAlert;
