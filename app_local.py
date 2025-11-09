@@ -484,8 +484,10 @@ class AirQualityAgent:
             response = self.model.generate_content(prompt)
             return response.text
         except Exception as e:
-            print(f"Error with AI analysis: {e}")
-            return "Unable to generate AI analysis at this time."
+            print(f"[ERROR] AI analysis failed: {type(e).__name__}: {e}")
+            import traceback
+            traceback.print_exc()
+            return f"Unable to generate AI analysis at this time. (Error: {type(e).__name__})"
     
     def get_statistics(self, data):
         """Calculate statistics from air quality data"""
