@@ -17,7 +17,7 @@ except ImportError:
     ADK_IO_AVAILABLE = False
 
 # --- Text summarizer (Gemini) ---
-def generate_text_summary(description: str, media_summary: str | None = None) -> Optional[str]:
+def generate_text_summary(description: str, media_summary: Optional[str] = None) -> Optional[str]:
     """Use Gemini to create a concise, plain-text overall issue summary."""
     if not description and not media_summary:
         return None
@@ -45,8 +45,8 @@ def generate_text_summary(description: str, media_summary: str | None = None) ->
 
 
 
-def upload_to_gcs(local_path_or_url: str | None = None,
-                  referenced_image_ids: list[str] | None = None,
+def upload_to_gcs(local_path_or_url: Optional[str] = None,
+                  referenced_image_ids: Optional[List[str]] = None,
                   bucket_name: str = "agent4good-report-attachments") -> str:
     """
     Uploads image to GCS (supports both ADK image bytes and external URLs).
