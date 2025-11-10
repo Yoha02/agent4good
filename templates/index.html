@@ -255,6 +255,27 @@
         </div>
     </nav>
 
+    <!-- Alert Banner (Hidden by default) -->
+    <div id="alertBanner" class="hidden fixed top-20 left-0 right-0 z-40 bg-gradient-to-r from-red-600 to-red-700 text-white shadow-2xl">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-4 flex-1">
+                    <div class="flex-shrink-0">
+                        <i class="fas fa-exclamation-triangle text-2xl animate-pulse"></i>
+                    </div>
+                    <div class="flex-1">
+                        <p class="font-bold text-lg">PUBLIC HEALTH ALERT</p>
+                        <p id="alertMessage" class="text-red-100 mt-1"></p>
+                        <p id="alertTimestamp" class="text-red-200 text-sm mt-1"></p>
+                    </div>
+                </div>
+                <button onclick="dismissAlert()" class="flex-shrink-0 ml-4 text-white hover:text-red-200 transition-colors">
+                    <i class="fas fa-times text-xl"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- Hero Section -->
     <section class="relative pt-32 pb-20 overflow-hidden">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -1137,11 +1158,79 @@
     </div>
 
     <!-- Scripts -->
+    <script src="{{ url_for('static', filename='js/translator.js') }}"></script>
     <script src="{{ url_for('static', filename='js/app.js') }}"></script>
     <script src="{{ url_for('static', filename='js/air-quality-map.js') }}"></script>
     <script src="{{ url_for('static', filename='js/pollutant-charts.js') }}"></script>
     <script src="{{ url_for('static', filename='js/respiratory-chart.js') }}"></script>
     <script src="{{ url_for('static', filename='js/three-bg.js') }}"></script>
     <script src="{{ url_for('static', filename='js/animations.js') }}"></script>
+    
+    <!-- Alert System -->
+    <script>
+        // Check for active alert on page load
+        async function checkActiveAlert() {
+            try {
+                const response = await fetch('/api/officials/get-active-alert');
+                const data = await response.json();
+                
+                if (data.success && data.alert) {
+                    // Check if this specific alert was dismissed
+                    const dismissedKey = `alertDismissed_${data.alert.id}`;
+                    if (!sessionStorage.getItem(dismissedKey)) {
+                        displayAlertBanner(data.alert);
+                    }
+                }
+            } catch (error) {
+                console.error('Error checking for active alert:', error);
+            }
+        }
+        
+        function displayAlertBanner(alert) {
+            const banner = document.getElementById('alertBanner');
+            const messageEl = document.getElementById('alertMessage');
+            const timestampEl = document.getElementById('alertTimestamp');
+            
+            if (banner && messageEl && timestampEl) {
+                messageEl.textContent = alert.message;
+                
+                // Use issued_at instead of timestamp
+                const timestamp = new Date(alert.issued_at);
+                timestampEl.textContent = `Issued ${timestamp.toLocaleString()} by ${alert.issued_by}`;
+                
+                banner.classList.remove('hidden');
+                
+                // Store the current alert ID so we can track dismissals
+                banner.setAttribute('data-alert-id', alert.id);
+                
+                // Add color based on level
+                banner.classList.remove('from-red-600', 'to-red-700', 'from-yellow-500', 'to-yellow-600', 'from-blue-500', 'to-blue-600');
+                if (alert.level === 'critical') {
+                    banner.classList.add('from-red-600', 'to-red-700');
+                } else if (alert.level === 'warning') {
+                    banner.classList.add('from-yellow-500', 'to-yellow-600');
+                } else {
+                    banner.classList.add('from-blue-500', 'to-blue-600');
+                }
+            }
+        }
+        
+        function dismissAlert() {
+            const banner = document.getElementById('alertBanner');
+            if (banner) {
+                const alertId = banner.getAttribute('data-alert-id');
+                banner.classList.add('hidden');
+                // Store dismissal for this specific alert ID
+                if (alertId) {
+                    sessionStorage.setItem(`alertDismissed_${alertId}`, 'true');
+                }
+            }
+        }
+        
+        // Check for alert on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            checkActiveAlert();
+        });
+    </script>
 </body>
 </html>

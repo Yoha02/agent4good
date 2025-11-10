@@ -1,0 +1,24 @@
+{
+  "id": "b160b028-9645-4ed9-bb58-dcec27fe7f73",
+  "message": "**Public Health Alert Summary:**\n\nMultiple critical emergencies, primarily large fires and significant flooding, are occurring in San Ramon and Dublin, California. Residents in these areas should evacuate immediately if instructed by authorities, seek shelter from floodwaters, and take precautions to avoid smoke inhalation due to the fires. Monitor local news and official channels for updates and evacuation orders.",
+  "level": "critical",
+  "duration_hours": null,
+  "expires_at": null,
+  "filters": {
+    "state": "",
+    "city": "",
+    "county": "",
+    "zipcode": "",
+    "report_type": "",
+    "severity": "",
+    "status": "",
+    "timeframe": "",
+    "timePeriod": "live"
+  },
+  "timestamp": "2025-11-08T21:54:36.146128",
+  "issued_by": "Dr. Sarah Johnson",
+  "active": true,
+  "cancelled": false,
+  "cancelled_by": null,
+  "cancelled_at": null
+}
