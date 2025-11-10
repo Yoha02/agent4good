@@ -3207,7 +3207,14 @@ function updateWeatherDisplay(weather) {
     // Update summary card
     const summaryTempEl = document.getElementById('summaryTemp');
     if (summaryTempEl) {
-        summaryTempEl.textContent = `${temp}°`;
+        let temp = current.temperature || 0;
+        // Convert if needed
+        if (currentTempUnit === 'C' && current.temperature_unit === 'F') {
+            temp = (temp - 32) * 5/9;
+        } else if (currentTempUnit === 'F' && current.temperature_unit === 'C') {
+            temp = (temp * 9/5) + 32;
+        }
+        summaryTempEl.textContent = `${Math.round(temp)}°`;
     }
     
     console.log('[Weather] Display updated successfully');
