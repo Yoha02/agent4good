@@ -6,6 +6,7 @@ let heatmapEntities = [];
 let currentMapState = null;
 let use3DMode = false; // Toggle between 2D and 3D
 let aqiTileLayer = null; // Air Quality tile overlay
+let currentHeatmapType = 'US_AQI'; // Track current heatmap type (US_AQI or UAQI_INDIGO_PERSIAN)
 
 const GOOGLE_API_KEY = 'AIzaSyALQGawG7iVNjJhG8v5w3Z_eyt5oRdMCvk';
 
@@ -68,15 +69,14 @@ function initAirQualityMap() {
     console.log('[HEATMAP DEBUG] Starting initAirQualityMap...');
     try {
         console.log('[HEATMAP DEBUG] Creating Cesium Viewer...');
-        // Initialize CesiumJS viewer
-        Cesium.Ion.defaultAccessToken = 'YOUR_CESIUM_TOKEN'; // Not needed for Google tiles
+        Cesium.Ion.defaultAccessToken = 'YOUR_CESIUM_TOKEN';
         
         cesiumViewer = new Cesium.Viewer('airQualityMap', {
             imageryProvider: false,
             baseLayerPicker: false,
             geocoder: false,
             homeButton: true,
-            sceneModePicker: true, // Allow switching between 2D/3D
+            sceneModePicker: true,
             navigationHelpButton: false,
             animation: false,
             timeline: false,
@@ -87,81 +87,37 @@ function initAirQualityMap() {
         });
         
         console.log('[HEATMAP DEBUG] Cesium Viewer created successfully');
-        console.log('[HEATMAP DEBUG] Adding Google 3D Tiles...');
         
-        // Add Google's Photorealistic 3D Tiles
-        const tileset = cesiumViewer.scene.primitives.add(new Cesium.Cesium3DTileset({
-            url: "https://tile.googleapis.com/v1/3dtiles/root.json?key=AIzaSyALQGawG7iVNjJhG8v5w3Z_eyt5oRdMCvk",
-            showCreditsOnScreen: true
-        }));
+        const osmLayer = cesiumViewer.imageryLayers.addImageryProvider(
+            new Cesium.UrlTemplateImageryProvider({
+                url: 'https://a.tile.openstreetmap.org/{z}/{x}/{y}.png',
+                maximumLevel: 19,
+                credit: 'Map data © OpenStreetMap contributors'
+            })
+        );
+        osmLayer.alpha = 1.0;
         
-        console.log('[HEATMAP DEBUG] 3D Tileset added');
+        cesiumViewer.scene.globe.show = true;
+        cesiumViewer.scene.globe.showGroundAtmosphere = true;
         
-        // Wait for tileset to be ready before positioning camera
-        tileset.readyPromise.then(() => {
-            console.log('[HEATMAP DEBUG] Tileset loaded and ready');
-            
-            // Hide the default globe to show only 3D tiles
-            cesiumViewer.scene.globe.show = false;
-            console.log('[HEATMAP DEBUG] Globe hidden');
-            
-            // Add Google Air Quality Heatmap Tiles as overlay
-            console.log('[HEATMAP DEBUG] Adding air quality overlay...');
-            addAirQualityTileOverlay();
-            
-            console.log('[HEATMAP DEBUG] Getting user location...');
-            // Try to get user's current location
-            if (navigator.geolocation) {
-                navigator.geolocation.getCurrentPosition(
-                    (position) => {
-                        const lat = position.coords.latitude;
-                        const lng = position.coords.longitude;
-                        console.log('[HEATMAP DEBUG] Got user location:', lat, lng);
-                        
-                        // Fly to user's location - very close to ground
-                        cesiumViewer.camera.flyTo({
-                            destination: Cesium.Cartesian3.fromDegrees(lng, lat, 300), // 300m height - very close
-                            orientation: {
-                                heading: Cesium.Math.toRadians(0),
-                                pitch: Cesium.Math.toRadians(-30), // 30 degree angle
-                                roll: 0.0
-                            },
-                            duration: 3
-                        });
-                        
-                        // Load data for this location (will use state from global vars if available)
-                        // DISABLED: Auto-load causes 100+ EPA API calls. User must click "Load Map" button
-                        // loadHeatmapData(null);
-                    },
-                    (error) => {
-                        console.warn('[HEATMAP DEBUG] Geolocation error:', error.message);
-                        // Fall back to using global currentZip, currentCity, currentState if available
-                        if (typeof currentZip !== 'undefined' && currentZip) {
-                            console.log('[HEATMAP DEBUG] Using global location:', currentCity, currentState, currentZip);
-                            // Geocode the ZIP to get coordinates
-                            geocodeZipCode(currentZip);
-                        } else {
-                            // Default to Golden Gate Bridge
-                            console.log('[HEATMAP DEBUG] Using default location: Golden Gate Bridge');
-                            cesiumViewer.camera.flyTo({
-                                destination: Cesium.Cartesian3.fromDegrees(-122.4783, 37.8199, 300), // 300m height
-                                orientation: {
-                                    heading: Cesium.Math.toRadians(0),
-                                    pitch: Cesium.Math.toRadians(-30),
-                                    roll: 0.0
-                                },
-                                duration: 3
-                            });
-                            // DISABLED: Auto-load causes 100+ EPA API calls
-                            // loadHeatmapData(null);
-                        }
-                    }
-                );
+        const setMapStatusReady = () => {
+            const statusEl = document.getElementById('mapStatus');
+            if (statusEl) {
+                statusEl.innerHTML = `
+            <i class="fas fa-check-circle text-green-600 mr-2"></i>
+            Real-time air quality heatmap from Google
+        `;
+            }
+        };
+        
+        const fallbackToStoredLocation = () => {
+            if (typeof currentZip !== 'undefined' && currentZip) {
+                console.log('[HEATMAP DEBUG] Using stored location:', currentCity, currentState, currentZip);
+                geocodeZipCode(currentZip);
             } else {
-                console.warn('[HEATMAP DEBUG] Geolocation not supported');
-                // Fall back to Golden Gate Bridge
+                console.log('[HEATMAP DEBUG] Using default location: Golden Gate Bridge');
                 cesiumViewer.camera.flyTo({
-                    destination: Cesium.Cartesian3.fromDegrees(-122.4783, 37.8199, 300), // 300m height
+                    destination: Cesium.Cartesian3.fromDegrees(-122.4783, 37.8199, 300),
                     orientation: {
                         heading: Cesium.Math.toRadians(0),
                         pitch: Cesium.Math.toRadians(-30),
@@ -169,22 +125,90 @@ function initAirQualityMap() {
                     },
                     duration: 3
                 });
-                loadHeatmapData(null);
+                if (typeof loadHeatmapData === 'function') {
+                    loadHeatmapData(null);
+                }
             }
-            
-            console.log('[HEATMAP DEBUG] Initialization complete!');
-        }).catch((error) => {
-            console.error('[HEATMAP DEBUG] Tileset failed to load:', error);
-        });
+        };
+        
+        const startAutoLocation = () => {
+            console.log('[HEATMAP DEBUG] Getting user location...');
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        const lat = position.coords.latitude;
+                        const lng = position.coords.longitude;
+                        console.log('[HEATMAP DEBUG] Got user location:', lat, lng);
+                        
+                        cesiumViewer.camera.flyTo({
+                            destination: Cesium.Cartesian3.fromDegrees(lng, lat, 300),
+                            orientation: {
+                                heading: Cesium.Math.toRadians(0),
+                                pitch: Cesium.Math.toRadians(-30),
+                                roll: 0.0
+                            },
+                            duration: 3
+                        });
+                        
+                        if (typeof loadHeatmapData === 'function') {
+                            loadHeatmapData(null);
+                        }
+                    },
+                    (error) => {
+                        console.warn('[HEATMAP DEBUG] Geolocation error:', error.message);
+                        fallbackToStoredLocation();
+                    }
+                );
+            } else {
+                console.warn('[HEATMAP DEBUG] Geolocation not supported');
+                fallbackToStoredLocation();
+            }
+        };
+        
+        console.log('[HEATMAP DEBUG] Adding Google 3D Tiles...');
+        let tileset;
+        try {
+            tileset = cesiumViewer.scene.primitives.add(new Cesium.Cesium3DTileset({
+                url: 'https://tile.googleapis.com/v1/3dtiles/root.json?key=AIzaSyALQGawG7iVNjJhG8v5w3Z_eyt5oRdMCvk',
+                showCreditsOnScreen: true
+            }));
+        } catch (tileAddError) {
+            console.error('[HEATMAP DEBUG] Error adding 3D tiles:', tileAddError);
+        }
+        
+        if (tileset && tileset.readyPromise) {
+            tileset.readyPromise.then(() => {
+                console.log('[HEATMAP DEBUG] Tileset loaded and ready');
+                cesiumViewer.scene.globe.show = false;
+                
+                addAirQualityTileOverlay();
+                setMapStatusReady();
+                startAutoLocation();
+            }).catch((error) => {
+                console.error('[HEATMAP DEBUG] Tileset failed to load:', error);
+                cesiumViewer.scene.globe.show = true;
+                addAirQualityTileOverlay();
+                setMapStatusReady();
+                startAutoLocation();
+            });
+        } else {
+            addAirQualityTileOverlay();
+            setMapStatusReady();
+            startAutoLocation();
+        }
+        
+        console.log('[HEATMAP DEBUG] Initialization complete!');
         
     } catch (error) {
         console.error('[HEATMAP] Error initializing Cesium:', error);
         console.error('[HEATMAP DEBUG] Error stack:', error.stack);
-        document.getElementById('mapStatus').innerHTML = `
+        const statusEl = document.getElementById('mapStatus');
+        if (statusEl) {
+            statusEl.innerHTML = `
             <i class="fas fa-exclamation-triangle text-red-600 mr-2"></i>
             Error loading 3D map. Falling back to 2D.
         `;
-        // Fall back to 2D if 3D fails
+        }
         initFallback2DMap();
     }
 }
@@ -230,7 +254,6 @@ function geocodeZipCode(zipCode) {
             const lng = location.lng();
             console.log('[HEATMAP DEBUG] ZIP geocoded to:', lat, lng);
             
-            // Fly to this location - very close to ground
             cesiumViewer.camera.flyTo({
                 destination: Cesium.Cartesian3.fromDegrees(lng, lat, 300), // 300m height
                 orientation: {
@@ -241,8 +264,7 @@ function geocodeZipCode(zipCode) {
                 duration: 3
             });
             
-            // DISABLED: Auto-load causes 100+ EPA API calls
-            // loadHeatmapData(null);
+            loadHeatmapData(null);
         } else {
             console.error('[HEATMAP DEBUG] Geocoding failed:', status);
             // Fall back to Golden Gate Bridge
@@ -255,8 +277,7 @@ function geocodeZipCode(zipCode) {
                 },
                 duration: 3
             });
-            // DISABLED: Auto-load causes 100+ EPA API calls
-            // loadHeatmapData(null);
+            loadHeatmapData(null);
         }
     });
 }
@@ -293,62 +314,39 @@ function flyToState(stateName) {
 function addAirQualityTileOverlay() {
     if (!cesiumViewer) return;
     
-    console.log('[HEATMAP] Adding Google Air Quality tile overlay...');
+    console.log(`[HEATMAP] Adding Google Air Quality tile overlay (${currentHeatmapType})...`);
     
     try {
-        // Create imagery provider for Google Air Quality tiles
-        // URL pattern: https://airquality.googleapis.com/v1/mapTypes/US_AQI/heatmapTiles/{z}/{x}/{y}?key=API_KEY
+        // Create provider using current heatmap type (US_AQI or UAQI_INDIGO_PERSIAN)
         const aqiProvider = new Cesium.UrlTemplateImageryProvider({
-            url: `https://airquality.googleapis.com/v1/mapTypes/US_AQI/heatmapTiles/{z}/{x}/{y}?key=${GOOGLE_API_KEY}`,
+            url: `https://airquality.googleapis.com/v1/mapTypes/${currentHeatmapType}/heatmapTiles/{z}/{x}/{y}?key=${GOOGLE_API_KEY}`,
             maximumLevel: 16,
             minimumLevel: 0,
-            credit: 'Air Quality data from Google',
+            credit: new Cesium.Credit('Google Air Quality API', false),
             tilingScheme: new Cesium.WebMercatorTilingScheme(),
             hasAlphaChannel: true
         });
         
-        // Add as an imagery layer with transparency
+        // Add as an imagery layer
         aqiTileLayer = cesiumViewer.imageryLayers.addImageryProvider(aqiProvider);
+        aqiTileLayer.alpha = 0.25; // 25% opacity - subtle green, yellow/orange/red colors highly visible
+        aqiTileLayer.show = true;
         
-        // Make the layer EXTREMELY visible - maximum settings
-        aqiTileLayer.alpha = 1.0; // 100% opaque
-        aqiTileLayer.brightness = 3.0; // VERY bright
-        aqiTileLayer.contrast = 3.0; // VERY high contrast
-        aqiTileLayer.saturation = 3.0; // VERY vivid colors
-        aqiTileLayer.gamma = 2.0; // Much brighter mid-tones
-        aqiTileLayer.hue = 0.0; // No hue shift
-        
-        console.log('[HEATMAP] Air Quality tile overlay added successfully');
-        console.log('[HEATMAP] Tile URL pattern:', `https://airquality.googleapis.com/v1/mapTypes/US_AQI/heatmapTiles/{z}/{x}/{y}?key=${GOOGLE_API_KEY}`);
-        
-        // Test a specific tile URL for San Francisco area
-        const testUrl = `https://airquality.googleapis.com/v1/mapTypes/US_AQI/heatmapTiles/5/5/12?key=${GOOGLE_API_KEY}`;
-        console.log('[HEATMAP] Test tile URL:', testUrl);
-        console.log('[HEATMAP] Click the URL above to test if tiles are loading');
-        
-        // Listen for errors
-        aqiProvider.errorEvent.addEventListener((error) => {
-            console.error('[HEATMAP] Tile loading error:', error);
-        });
-        
-        // Listen for tile load success
-        aqiProvider.readyPromise.then(() => {
-            console.log('[HEATMAP] Γ£à Tile provider is ready!');
-        }).catch((error) => {
-            console.error('[HEATMAP] Γ¥î Tile provider failed:', error);
-        });
+        console.log(`[HEATMAP] ✓ ${currentHeatmapType} tile overlay added (opacity: 0.25)`);
+        console.log('[HEATMAP] Layer index:', cesiumViewer.imageryLayers.indexOf(aqiTileLayer));
+        console.log('[HEATMAP] Total imagery layers:', cesiumViewer.imageryLayers.length);
         
     } catch (error) {
         console.error('[HEATMAP] Error adding tile overlay:', error);
         document.getElementById('mapStatus').innerHTML = `
             <i class="fas fa-exclamation-circle text-orange-600 mr-2"></i>
-            Air quality overlay unavailable - check console
+            Error loading air quality overlay
         `;
     }
 }
 
 // Fly camera to specific coordinates (for city/ZIP level zoom)
-function flyToCoordinates(lat, lng, height = 50000) {
+function flyToCoordinates(lat, lng, height = 20000) {
     if (!cesiumViewer) {
         console.log('[HEATMAP] Cannot fly to coordinates - viewer not ready');
         return;
@@ -360,7 +358,7 @@ function flyToCoordinates(lat, lng, height = 50000) {
         destination: Cesium.Cartesian3.fromDegrees(lng, lat, height),
         orientation: {
             heading: Cesium.Math.toRadians(0),
-            pitch: Cesium.Math.toRadians(-45),
+            pitch: Cesium.Math.toRadians(-90), // Top-down view for accurate centering
             roll: 0.0
         },
         duration: 2
@@ -369,6 +367,41 @@ function flyToCoordinates(lat, lng, height = 50000) {
 
 // Make functions globally accessible
 window.flyToCoordinates = flyToCoordinates;
+
+// Switch between different Google heatmap types (for AQI/Intensity toggle)
+function switchGoogleHeatmapTiles(mapType) {
+    console.log(`[HEATMAP] Switching to Google ${mapType} tiles`);
+    
+    // Remove old imagery layer if it exists
+    if (aqiTileLayer) {
+        cesiumViewer.imageryLayers.remove(aqiTileLayer);
+        console.log(`[HEATMAP] Removed old tile layer`);
+    }
+    
+    // Create new provider with selected map type
+    const aqiProvider = new Cesium.UrlTemplateImageryProvider({
+        url: `https://airquality.googleapis.com/v1/mapTypes/${mapType}/heatmapTiles/{z}/{x}/{y}?key=${GOOGLE_API_KEY}`,
+        maximumLevel: 16,
+        minimumLevel: 0,
+        tilingScheme: new Cesium.WebMercatorTilingScheme(),
+        hasAlphaChannel: true,
+        credit: new Cesium.Credit('Google Air Quality API', false)
+    });
+    
+    // Add new imagery layer
+    aqiTileLayer = cesiumViewer.imageryLayers.addImageryProvider(aqiProvider);
+    aqiTileLayer.alpha = 0.25; // 25% opacity - subtle green, yellow/orange/red highly visible
+    aqiTileLayer.show = true;
+    
+    console.log(`[HEATMAP] ✓ Loaded ${mapType} tiles (opacity: 0.25)`);
+    
+    // Update status message
+    const typeLabel = mapType === 'US_AQI' ? 'Standard AQI' : 'High Contrast';
+    document.getElementById('mapStatus').innerHTML = `
+        <i class="fas fa-check-circle text-green-600 mr-2"></i>
+        Showing ${typeLabel} air quality heatmap
+    `;
+}
 
 // Load heatmap data from API
 async function loadHeatmapData(state = null) {
@@ -386,17 +419,21 @@ async function loadHeatmapData(state = null) {
         }
         
         // Fetch individual readings to show as markers
-        let url = '/api/air-quality-map';
+        let url = '/api/air-quality-map?limit=20'; // Increased limit to get more data
         if (state) {
-            url += `?state=${encodeURIComponent(state)}`;
+            url += `&state=${encodeURIComponent(state)}`;
         }
         
+        console.log('[HEATMAP] Fetching from:', url);
         const response = await fetch(url);
         const result = await response.json();
         
-        if (result.success && result.data) {
+        console.log('[HEATMAP] API Response:', result);
+        
+        if (result.success && result.data && result.data.length > 0) {
             heatmapData = result.data;
-            console.log('[HEATMAP] Received', result.data.length, 'data points');
+            console.log('[HEATMAP] ✓ Received', result.data.length, 'REAL data points from backend');
+            console.log('[HEATMAP] First data point:', result.data[0]);
             updateHeatmap(); // Add markers showing readings
             
             document.getElementById('mapStatus').innerHTML = `
@@ -404,17 +441,26 @@ async function loadHeatmapData(state = null) {
                 Showing ${result.count} air quality readings
             `;
         } else {
+            // NO DATA - Show error and suggest checking backend
+            console.error('[HEATMAP] ✗ No data from backend API');
+            console.error('[HEATMAP] API Response:', result);
+            console.error('[HEATMAP] Check backend logs for EPA API errors');
+            
+            heatmapData = [];
+            
             document.getElementById('mapStatus').innerHTML = `
-                <i class="fas fa-check-circle text-green-600 mr-2"></i>
-                Showing real-time air quality data from Google
+                <i class="fas fa-exclamation-circle text-red-600 mr-2"></i>
+                No air quality data available - check backend logs
             `;
         }
         
     } catch (error) {
-        console.error('[HEATMAP] Error:', error);
+        console.error('[HEATMAP] Error loading data:', error);
+        console.error('[HEATMAP] Error details:', error.message, error.stack);
+        
         document.getElementById('mapStatus').innerHTML = `
-            <i class="fas fa-check-circle text-green-600 mr-2"></i>
-            Showing air quality tile overlay
+            <i class="fas fa-exclamation-circle text-red-600 mr-2"></i>
+            Error loading air quality data
         `;
     }
 }
@@ -505,41 +551,22 @@ function toggleHeatmapType(type) {
     const intensityBtn = document.getElementById('btnIntensity');
     
     if (type === 'aqi') {
-        // Show AQI-based heatmap - EXTREMELY bright
-        if (aqiTileLayer) {
-            aqiTileLayer.alpha = 1.0;
-            aqiTileLayer.brightness = 3.0;
-            aqiTileLayer.contrast = 3.0;
-            aqiTileLayer.saturation = 3.0;
-            aqiTileLayer.gamma = 2.0;
-        }
-        if (window.fallbackHeatmap) {
-            window.fallbackHeatmap.setOptions({ 
-                radius: 50, 
-                opacity: 1.0,
-                maxIntensity: 200,
-                dissipating: true
-            });
-        }
+        // Switch to standard US AQI heatmap (EPA color scale)
+        console.log('[HEATMAP] Switching to US_AQI (standard EPA colors)');
+        currentHeatmapType = 'US_AQI';
+        switchGoogleHeatmapTiles('US_AQI');
+        
+        // Update button styles (active state)
         aqiBtn.className = 'px-4 py-2 bg-navy-600 text-white rounded-lg hover:bg-navy-700 transition-colors font-medium text-sm';
         intensityBtn.className = 'px-4 py-2 bg-gray-200 text-navy-700 rounded-lg hover:bg-gray-300 transition-colors font-medium text-sm';
+        
     } else if (type === 'intensity') {
-        // Show intensity-based heatmap - MAXIMUM visibility (nuclear bright!)
-        if (aqiTileLayer) {
-            aqiTileLayer.alpha = 1.0;
-            aqiTileLayer.brightness = 5.0; // MAXIMUM brightness
-            aqiTileLayer.contrast = 5.0; // MAXIMUM contrast
-            aqiTileLayer.saturation = 5.0; // MAXIMUM saturation
-            aqiTileLayer.gamma = 3.0; // MAXIMUM gamma
-        }
-        if (window.fallbackHeatmap) {
-            window.fallbackHeatmap.setOptions({ 
-                radius: 70, 
-                opacity: 0.9,
-                maxIntensity: 150,
-                dissipating: false
-            });
-        }
+        // Switch to high-contrast INDIGO_PERSIAN heatmap (maximum visibility)
+        console.log('[HEATMAP] Switching to UAQI_INDIGO_PERSIAN (high contrast)');
+        currentHeatmapType = 'UAQI_INDIGO_PERSIAN';
+        switchGoogleHeatmapTiles('UAQI_INDIGO_PERSIAN');
+        
+        // Update button styles (active state)
         aqiBtn.className = 'px-4 py-2 bg-gray-200 text-navy-700 rounded-lg hover:bg-gray-300 transition-colors font-medium text-sm';
         intensityBtn.className = 'px-4 py-2 bg-navy-600 text-white rounded-lg hover:bg-navy-700 transition-colors font-medium text-sm';
     }

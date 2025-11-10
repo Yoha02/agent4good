@@ -38,13 +38,22 @@ load_dotenv()
 FIREBASE_AVAILABLE = False
 try:
     firebase_service_account = os.getenv('FIREBASE_SERVICE_ACCOUNT_FILE')
-    if firebase_service_account and os.path.exists(firebase_service_account):
-        cred = credentials.Certificate(firebase_service_account)
-        firebase_admin.initialize_app(cred)
-        FIREBASE_AVAILABLE = True
-        print("[OK] Firebase Admin SDK initialized")
+    if firebase_service_account:
+        # Support both relative and absolute paths
+        if not os.path.isabs(firebase_service_account):
+            # Convert relative path to absolute based on app directory
+            firebase_service_account = os.path.join(os.path.dirname(__file__), firebase_service_account)
+        
+        if os.path.exists(firebase_service_account):
+            cred = credentials.Certificate(firebase_service_account)
+            firebase_admin.initialize_app(cred)
+            FIREBASE_AVAILABLE = True
+            print("[OK] Firebase Admin SDK initialized")
+        else:
+            print(f"[WARNING] Firebase service account file not found at: {firebase_service_account}")
+            print("[WARNING] Firebase authentication disabled")
     else:
-        print("[WARNING] Firebase service account file not found - authentication disabled")
+        print("[WARNING] FIREBASE_SERVICE_ACCOUNT_FILE not set in .env - authentication disabled")
 except Exception as e:
     print(f"[WARNING] Firebase initialization failed: {e}")
     FIREBASE_AVAILABLE = False
@@ -494,8 +503,10 @@ class AirQualityAgent:
             response = self.model.generate_content(prompt)
             return response.text
         except Exception as e:
-            print(f"Error with AI analysis: {e}")
-            return "Unable to generate AI analysis at this time."
+            print(f"[ERROR] AI analysis failed: {type(e).__name__}: {e}")
+            import traceback
+            traceback.print_exc()
+            return f"Unable to generate AI analysis at this time. (Error: {type(e).__name__})"
     
     def get_statistics(self, data):
         """Calculate statistics from air quality data"""
@@ -3885,78 +3896,69 @@ def get_air_quality_detailed():
             'NO2': {'values': [], 'dates': [], 'current': 0, 'min': 0, 'max': 0, 'avg': 0, 'unit': 'ppb'}
         }
         
-        # Parse date range
-        current_date = datetime.strptime(start_date, '%Y-%m-%d')
-        end_dt = datetime.strptime(end_date, '%Y-%m-%d')
+        # Get current parameters only (skip historical loop to avoid timeout)
+        print(f"[DETAILED] Getting current air quality data...")
         
-        total_days = (end_dt - current_date).days + 1
-        print(f"[DETAILED] Processing {total_days} days of data")
+        # CRITICAL: Use use_zipcode (which may come from city lookup)
+        all_current_params = epa_service.get_all_current_parameters(
+            zipcode=use_zipcode, lat=lat, lon=lon, state_code=state_code, distance=50
+        )
         
-        # For each day in the range, get all parameters
-        day_count = 0
-        while current_date <= end_dt:
-            date_str = current_date.strftime('%Y-%m-%d')
+        print(f"[DETAILED] Got {len(all_current_params)} current parameters")
+        for param in all_current_params:
+            print(f"[DETAILED]   - {param.get('parameter')}: AQI {param.get('aqi')}")
+        
+        # Generate dates for the requested range
+        today = datetime.now()
+        dates_list = [(today - timedelta(days=i)).strftime('%Y-%m-%d') for i in range(days - 1, -1, -1)]
+        
+        # Process each parameter and simulate historical data
+        for param_data in all_current_params:
+            parameter_name = param_data.get('parameter', '')
+            current_aqi = param_data.get('aqi', 0)
             
-            # Get all current parameters for this date
-            # Note: AirNow API only has current data, so we simulate historical by variance
-            # CRITICAL: Use use_zipcode (which may come from city lookup)
-            all_current_params = epa_service.get_all_current_parameters(
-                zipcode=use_zipcode, lat=lat, lon=lon, state_code=state_code, distance=50
-            )
+            # Map EPA parameter names to our keys
+            param_key = None
+            if 'PM2.5' in parameter_name.upper():
+                param_key = 'PM2.5'
+            elif 'PM10' in parameter_name.upper() and 'PM2.5' not in parameter_name.upper():
+                param_key = 'PM10'
+            elif 'OZONE' in parameter_name.upper() or 'O3' in parameter_name.upper():
+                param_key = 'OZONE'
+            elif 'CO' in parameter_name.upper() and 'O3' not in parameter_name.upper():
+                param_key = 'CO'
+            elif 'SO2' in parameter_name.upper() or 'SULFUR' in parameter_name.upper():
+                param_key = 'SO2'
+            elif 'NO2' in parameter_name.upper() or 'NITROGEN' in parameter_name.upper():
+                param_key = 'NO2'
             
-            if day_count == 0:  # Log first day only
-                print(f"[DETAILED] Day 1 ({date_str}): Got {len(all_current_params)} parameters")
-                for param in all_current_params:
-                    print(f"[DETAILED]   - {param.get('parameter')}: AQI {param.get('aqi')}")
-            
-            # Process each parameter for this date
-            for param_data in all_current_params:
-                parameter_name = param_data.get('parameter', '')
-                aqi = param_data.get('aqi', 0)
-                
-                # Add variance for historical simulation (±15% based on date)
-                if current_date < datetime.now():
-                    variance_factor = (hash(date_str + parameter_name) % 30) - 15
-                    aqi = max(0, min(500, aqi + int(aqi * variance_factor / 100)))
-                
-                # Map EPA parameter names to our keys
-                param_key = None
-                if 'PM2.5' in parameter_name.upper():
-                    param_key = 'PM2.5'
-                elif 'PM10' in parameter_name.upper() and 'PM2.5' not in parameter_name.upper():
-                    param_key = 'PM10'
-                elif 'OZONE' in parameter_name.upper() or 'O3' in parameter_name.upper():
-                    param_key = 'OZONE'
-                elif 'CO' in parameter_name.upper() and 'O3' not in parameter_name.upper():
-                    param_key = 'CO'
-                elif 'SO2' in parameter_name.upper() or 'SULFUR' in parameter_name.upper():
-                    param_key = 'SO2'
-                elif 'NO2' in parameter_name.upper() or 'NITROGEN' in parameter_name.upper():
-                    param_key = 'NO2'
-                
-                if param_key and param_key in parameters:
+            if param_key and param_key in parameters:
+                # Generate historical values with variance
+                for i, date_str in enumerate(dates_list):
+                    # Add variance based on date (±20% for historical, 0% for today)
+                    if i < len(dates_list) - 1:  # Historical data
+                        variance = (hash(date_str + param_key) % 40) - 20
+                        aqi = max(0, min(500, current_aqi + int(current_aqi * variance / 100)))
+                    else:  # Today's data
+                        aqi = current_aqi
+                    
                     value = aqi_to_concentration(aqi, param_key)
                     parameters[param_key]['values'].append(value)
                     parameters[param_key]['dates'].append(date_str)
-                    
-                    if day_count == 0:  # Log first day mapping
-                        print(f"[DETAILED] Mapped {parameter_name} -> {param_key}, value: {value}")
-            
-            current_date += timedelta(days=1)
-            day_count += 1
-        
-        # Calculate statistics
-        for param_key in parameters:
-            if parameters[param_key]['values']:
+                
+                # Calculate statistics
                 values = parameters[param_key]['values']
-                parameters[param_key]['current'] = values[-1] if values else 0
-                parameters[param_key]['min'] = min(values)
-                parameters[param_key]['max'] = max(values)
-                parameters[param_key]['avg'] = sum(values) / len(values)
+                if values:
+                    parameters[param_key]['current'] = values[-1]
+                    parameters[param_key]['min'] = min(values)
+                    parameters[param_key]['max'] = max(values)
+                    parameters[param_key]['avg'] = sum(values) / len(values)
+                
+                print(f"[DETAILED] {param_key}: {len(values)} values from {dates_list[0]} to {dates_list[-1]}")
         
         # Calculate date range
-        start_date = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
-        end_date = datetime.now().strftime('%Y-%m-%d')
+        start_date = dates_list[0] if dates_list else datetime.now().strftime('%Y-%m-%d')
+        end_date = dates_list[-1] if dates_list else datetime.now().strftime('%Y-%m-%d')
         
         result = {
             'success': True,
@@ -4056,13 +4058,23 @@ def get_weather():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/air-quality-map', methods=['GET'])
-@cached_api_call('air-quality-map')
+# @cached_api_call('air-quality-map')  # DISABLED: Need fresh data for testing
 def get_air_quality_map():
-    """API endpoint to get air quality data for heatmap visualization"""
+    """
+    API endpoint for supplemental air quality marker overlays.
+    
+    NOTE: Primary visualization now uses Google Air Quality heatmap tiles directly.
+    This endpoint provides data points for optional marker overlays and tooltips.
+    
+    Reduced limits to minimize EPA API load:
+    - Default: 10 locations
+    - Maximum: 20 locations
+    """
     try:
         # Get state filter (optional)
         state_name = request.args.get('state')
-        limit = int(request.args.get('limit', 10))  # Reduced from 100 to 10 to prevent EPA rate limiting
+        # Reduce default limit to minimize EPA API calls (tiles provide main visualization)
+        limit = min(int(request.args.get('limit', 10)), 20)  # Default 10, max 20
         
         print(f"[HEATMAP API] Request - State: {state_name}, Limit: {limit}")
         
@@ -4097,34 +4109,55 @@ def get_air_quality_map():
                         'longitude': loc_info.get('longitude')
                     })
         else:
-            # Sample major US cities across all states
-            major_states = ['CA', 'NY', 'TX', 'FL', 'IL', 'PA', 'OH', 'GA', 'NC', 'MI']
-            cities_per_state = max(1, limit // len(major_states))
+            # Use major US cities with known air quality monitors
+            major_cities = [
+                {'city': 'Los Angeles', 'state': 'CA', 'zip': '90001'},
+                {'city': 'San Francisco', 'state': 'CA', 'zip': '94102'},
+                {'city': 'San Diego', 'state': 'CA', 'zip': '92101'},
+                {'city': 'Sacramento', 'state': 'CA', 'zip': '95814'},
+                {'city': 'Oakland', 'state': 'CA', 'zip': '94601'},
+                {'city': 'San Jose', 'state': 'CA', 'zip': '95110'},
+                {'city': 'New York', 'state': 'NY', 'zip': '10001'},
+                {'city': 'Brooklyn', 'state': 'NY', 'zip': '11201'},
+                {'city': 'Houston', 'state': 'TX', 'zip': '77001'},
+                {'city': 'Dallas', 'state': 'TX', 'zip': '75201'},
+                {'city': 'Miami', 'state': 'FL', 'zip': '33101'},
+                {'city': 'Chicago', 'state': 'IL', 'zip': '60601'},
+                {'city': 'Philadelphia', 'state': 'PA', 'zip': '19019'},
+                {'city': 'Phoenix', 'state': 'AZ', 'zip': '85001'},
+                {'city': 'Seattle', 'state': 'WA', 'zip': '98101'},
+                {'city': 'Denver', 'state': 'CO', 'zip': '80201'},
+                {'city': 'Atlanta', 'state': 'GA', 'zip': '30301'},
+                {'city': 'Boston', 'state': 'MA', 'zip': '02101'},
+                {'city': 'Las Vegas', 'state': 'NV', 'zip': '89101'},
+                {'city': 'Portland', 'state': 'OR', 'zip': '97201'}
+            ]
             
-            for state in major_states:
-                cities = location_service.get_cities_by_state(state)
-                step = max(1, len(cities) // cities_per_state)
-                for i in range(0, min(len(cities), cities_per_state * step), step):
-                    city = cities[i]
-                    loc_info = location_service.get_location_info(
-                        state_code=state,
-                        city_name=city['name']
-                    )
-                    if loc_info and loc_info.get('zipcodes'):
+            print(f"[HEATMAP API] Using {len(major_cities)} major cities with AQ monitors")
+            
+            for city_data in major_cities[:limit]:
+                loc_info = location_service.get_zipcode_info(city_data['zip'])
+                if loc_info:
                         locations_to_sample.append({
-                            'zipcode': loc_info['zipcodes'][0],
-                            'city': city['name'],
-                            'state': state,
+                        'zipcode': city_data['zip'],
+                        'city': city_data['city'],
+                        'state': city_data['state'],
                             'latitude': loc_info.get('latitude'),
                             'longitude': loc_info.get('longitude')
                         })
         
         # Get air quality data for each location
         heatmap_data = []
-        for loc in locations_to_sample[:limit]:
+        print(f"[HEATMAP API] Querying EPA for {len(locations_to_sample[:limit])} locations...")
+        
+        for idx, loc in enumerate(locations_to_sample[:limit], 1):
             try:
+                print(f"[HEATMAP API] [{idx}/{limit}] Checking {loc['city']}, {loc['state']} (ZIP: {loc['zipcode']})")
+                
                 # Get current AQI for this location
                 aqi_data = epa_service.get_current_aqi(loc['zipcode'])
+                
+                print(f"[HEATMAP API]   Response: success={aqi_data.get('success') if aqi_data else False}, has_data={bool(aqi_data.get('data')) if aqi_data else False}")
                 
                 if aqi_data and aqi_data.get('success') and aqi_data.get('data'):
                     # Find the highest AQI value
@@ -4133,6 +4166,8 @@ def get_air_quality_map():
                         aqi = reading.get('AQI', 0)
                         if aqi > max_aqi:
                             max_aqi = aqi
+                    
+                    print(f"[HEATMAP API]   Max AQI: {max_aqi}")
                     
                     if max_aqi > 0 and loc.get('latitude') and loc.get('longitude'):
                         heatmap_data.append({
@@ -4144,17 +4179,24 @@ def get_air_quality_map():
                             'state': loc['state'],
                             'zipcode': loc['zipcode']
                         })
+                        print(f"[HEATMAP API]   ✓ Added to results")
+                    else:
+                        print(f"[HEATMAP API]   ✗ Skipped: AQI={max_aqi}, lat={loc.get('latitude')}, lng={loc.get('longitude')}")
+                else:
+                    print(f"[HEATMAP API]   ✗ No AQI data available")
+                    
             except Exception as e:
-                print(f"[HEATMAP API] Error getting data for {loc['city']}, {loc['state']}: {e}")
+                print(f"[HEATMAP API]   ✗ Error: {e}")
                 continue
         
-        print(f"[HEATMAP API] Returning {len(heatmap_data)} locations with AQI data")
+        print(f"[HEATMAP API] ===== FINAL: Returning {len(heatmap_data)} locations with AQI data =====")
         
         return jsonify({
             'success': True,
             'data': heatmap_data,
             'count': len(heatmap_data),
-            'source': 'EPA AirNow API'
+            'source': 'EPA AirNow API',
+            'note': 'Google Air Quality heatmap tiles provide primary visualization'
         })
         
     except Exception as e:

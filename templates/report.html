@@ -688,11 +688,11 @@
 
         // Initialize Google Maps Places Autocomplete - MUST be global for callback
         function initializeGoogleMaps() {
-            console.log('≡ƒù║∩╕Å Initializing Google Maps autocomplete for report page...');
+            console.log('🗺️ Initializing Google Maps autocomplete for report page...');
             
             const input = document.getElementById('locationSearchInput');
             if (!input) {
-                console.error('Γ¥î Location search input not found!');
+                console.error('❌ Location search input not found!');
                 return;
             }
 
@@ -709,7 +709,7 @@
             // Handle place selection
             reportAutocomplete.addListener('place_changed', handlePlaceSelect);
 
-            console.log('Γ£à Google Maps autocomplete initialized');
+            console.log('✅ Google Maps autocomplete initialized');
         }
 
         // Handle place selection from autocomplete
@@ -717,11 +717,11 @@
             const place = reportAutocomplete.getPlace();
             
             if (!place.geometry) {
-                console.error('Γ¥î No geometry data for selected place');
+                console.error('❌ No geometry data for selected place');
                 return;
             }
 
-            console.log('≡ƒôì Place selected:', place);
+            console.log('📍 Place selected:', place);
 
             // Extract address components
             let streetNumber = '';
@@ -777,10 +777,10 @@
 
         // Auto-detect user's location on page load
         function autoDetectLocation() {
-            console.log('≡ƒîì Attempting auto-location detection...');
+            console.log('🌍 Attempting auto-location detection...');
 
             if (!navigator.geolocation) {
-                console.warn('ΓÜá∩╕Å Geolocation not supported by browser');
+                console.warn('⚠️ Geolocation not supported by browser');
                 return;
             }
 
@@ -792,7 +792,7 @@
 
             navigator.geolocation.getCurrentPosition(
                 (position) => {
-                    console.log('Γ£à Geolocation successful:', position.coords);
+                    console.log('✅ Geolocation successful:', position.coords);
                     
                     // Wait for geocoder to be ready before reverse geocoding
                     const waitForGeocoder = setInterval(() => {
@@ -800,7 +800,7 @@
                             clearInterval(waitForGeocoder);
                             reverseGeocode(position.coords.latitude, position.coords.longitude);
                         } else {
-                            console.log('ΓÅ│ Waiting for Google Maps geocoder to initialize...');
+                            console.log('⏳ Waiting for Google Maps geocoder to initialize...');
                         }
                     }, 100);
                     
@@ -808,7 +808,7 @@
                     setTimeout(() => {
                         clearInterval(waitForGeocoder);
                         if (!reportGeocoder) {
-                            console.error('Γ¥î Geocoder initialization timeout');
+                            console.error('❌ Geocoder initialization timeout');
                             if (useMyLocationBtn) {
                                 useMyLocationBtn.innerHTML = '<i class="fas fa-location-arrow"></i> Use My Location';
                                 useMyLocationBtn.disabled = false;
@@ -817,7 +817,7 @@
                     }, 10000);
                 },
                 (error) => {
-                    console.error('Γ¥î Geolocation error:', error.message);
+                    console.error('❌ Geolocation error:', error.message);
                     if (useMyLocationBtn) {
                         useMyLocationBtn.innerHTML = '<i class="fas fa-location-arrow"></i> Use My Location';
                         useMyLocationBtn.disabled = false;
@@ -829,10 +829,10 @@
 
         // Reverse geocode coordinates to address
         function reverseGeocode(lat, lng) {
-            console.log(`≡ƒöä Reverse geocoding: ${lat}, ${lng}`);
+            console.log(`🔄 Reverse geocoding: ${lat}, ${lng}`);
 
             if (!reportGeocoder) {
-                console.error('Γ¥î Geocoder not initialized');
+                console.error('❌ Geocoder not initialized');
                 return;
             }
 
@@ -840,7 +840,7 @@
                 const useMyLocationBtn = document.getElementById('useMyLocationBtn');
                 
                 if (status === 'OK' && results[0]) {
-                    console.log('Γ£à Reverse geocode successful:', results[0]);
+                    console.log('✅ Reverse geocode successful:', results[0]);
 
                     // Extract components from first result
                     let streetNumber = '';
@@ -888,7 +888,7 @@
                         }, 2000);
                     }
                 } else {
-                    console.error('Γ¥î Reverse geocoding failed:', status);
+                    console.error('❌ Reverse geocoding failed:', status);
                     if (useMyLocationBtn) {
                         useMyLocationBtn.innerHTML = '<i class="fas fa-location-arrow"></i> Use My Location';
                         useMyLocationBtn.disabled = false;
@@ -899,7 +899,7 @@
 
         // Update all location fields in the form
         function updateLocationFields(data) {
-            console.log('≡ƒô¥ Updating location fields:', data);
+            console.log('📝 Updating location fields:', data);
 
             // Update visible display fields
             const displayElements = {
@@ -940,12 +940,12 @@
                 autoLocationInfo.classList.remove('hidden');
             }
 
-            console.log('Γ£à Location fields updated successfully');
+            console.log('✅ Location fields updated successfully');
         }
 
         // Wire up "Use My Location" button and auto-detect on load
         document.addEventListener('DOMContentLoaded', function() {
-            console.log('≡ƒÜÇ Report page loaded, initializing location features...');
+            console.log('🚀 Report page loaded, initializing location features...');
             
             const useMyLocationBtn = document.getElementById('useMyLocationBtn');
             if (useMyLocationBtn) {
@@ -953,7 +953,7 @@
             }
             
             // Auto-detect location on page load
-            console.log('≡ƒÄ» Starting auto-location detection on page load...');
+            console.log('🎯 Starting auto-location detection on page load...');
             autoDetectLocation();
         });
     </script>

@@ -214,8 +214,38 @@ let locationData = {}; // Cache location data
 let autocomplete = null; // Google Places Autocomplete
 let geocoder = null; // Google Geocoder
 
+// Add getters/setters to track location changes
+let _currentState = '';
+let _currentCity = '';
+let _currentZip = '';
+
+Object.defineProperty(window, 'currentState', {
+    get() { return _currentState; },
+    set(value) {
+        console.log(`🔄 [LOCATION CHANGE] currentState: "${_currentState}" → "${value}"`);
+        _currentState = value;
+    }
+});
+
+Object.defineProperty(window, 'currentCity', {
+    get() { return _currentCity; },
+    set(value) {
+        console.log(`🔄 [LOCATION CHANGE] currentCity: "${_currentCity}" → "${value}"`);
+        _currentCity = value;
+    }
+});
+
+Object.defineProperty(window, 'currentZip', {
+    get() { return _currentZip; },
+    set(value) {
+        console.log(`🔄 [LOCATION CHANGE] currentZip: "${_currentZip}" → "${value}"`);
+        _currentZip = value;
+    }
+});
+
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', function() {
+    console.log('🚀 [INIT] DOMContentLoaded event fired');
     initializeApp();
     setupEventListeners();
     initializeGoogleAutocomplete();
@@ -235,9 +265,9 @@ function initializeGoogleAutocomplete() {
         return;
     }
     
-    // Initialize autocomplete for US cities, regions, and postal codes
+    // Initialize autocomplete for US locations including landmarks, cities, regions, and postal codes
     autocomplete = new google.maps.places.Autocomplete(input, {
-        types: ['(regions)'],  // Includes cities, states, counties, and postal codes
+        // Remove type restriction to allow all place types including landmarks
         componentRestrictions: { country: 'us' }
     });
     
@@ -334,11 +364,8 @@ function onPlaceSelected() {
         document.getElementById('stateSelect').value = state || '';
     }
     
-    // Load data
-    loadAirQualityData();
-    loadHealthRecommendations();
-    loadWeatherData();  // NEW: Load weather
-    loadPollenData();   // NEW: Load pollen
+    // Load ALL data for this location
+    loadAllDataForLocation();
     
     // Update heatmap and zoom to location
     if (typeof loadHeatmapData === 'function') {
@@ -349,7 +376,7 @@ function onPlaceSelected() {
         const lat = place.geometry.location.lat();
         const lng = place.geometry.location.lng();
         console.log('[Location Search] Flying to coordinates:', lat, lng);
-        flyToCoordinates(lat, lng, zipCode ? 50000 : 200000); // Closer for ZIP, further for city
+        flyToCoordinates(lat, lng, 300); // Always use 300m height for close ground view
     }
     
     // Show success message
@@ -441,8 +468,8 @@ function getAutoLocation() {
                             localStorage.setItem('currentLocationData', JSON.stringify(locationData));
                             console.log('[Auto-location] Location data stored for chat agent:', locationData);
                             
-                            // Update search box
-                            document.getElementById('locationSearch').value = `${city}, ${state} ${zipCode}`;
+                            // Update search box with full formatted address
+                            document.getElementById('locationSearch').value = results[0].formatted_address;
                             
                             // Update dropdowns
     const stateSelect = document.getElementById('stateSelect');
@@ -450,19 +477,16 @@ function getAutoLocation() {
                                 stateSelect.value = state || '';
                             }
                             
-                            // Load ALL data
-            loadAirQualityData();
-            loadHealthRecommendations();
-                            loadWeatherData();
-                            loadPollenData();
+                            // Load ALL data for this location
+            loadAllDataForLocation();
                             
                             // Update heatmap - fly to specific location instead of just state
                             if (typeof loadHeatmapData === 'function') {
                                 loadHeatmapData(state);
                             }
-                            // Zoom to specific coordinates (city level)
+                            // Zoom to specific coordinates - close ground view
                             if (typeof flyToCoordinates === 'function') {
-                                flyToCoordinates(position.coords.latitude, position.coords.longitude, 50000); // 50km height for city view
+                                flyToCoordinates(position.coords.latitude, position.coords.longitude, 300); // 300m height for close view
                             }
                             
                             updateAPIStatus('success', 'Location Detected', `${city}, ${state} (${zipCode})`);
@@ -515,76 +539,281 @@ function getAutoLocation() {
 
 // Initialize the application
 function initializeApp() {
-    // Load stored location data if available
-    loadStoredLocationData();
-    
-    // Set default to California if no stored location
-    if (!currentState) {
-        currentState = 'California';
-    }
-    
-    // Make currentState globally accessible for other scripts (like respiratory-chart.js)
-    window.currentState = currentState;
-    
     // Set default date range (2024 to 2025)
     setDefaultDateRange();
     
     // Update date range display
     updateDateRangeDisplay();
     
-    updateAPIStatus('loading', 'Initializing...', 'Loading location data');
+    updateAPIStatus('loading', 'Initializing...', 'Detecting your location...');
     
-    // Load cities for current state on startup
-    onStateChange();
-    
-    // Load all data on page load
-    loadAirQualityData();
-    loadHealthRecommendations();
-    
-    // Use default location for initial data if no location is set
     const defaultZip = '94102';
     const defaultCity = 'San Francisco';
     const defaultState = 'California';
     
-    // Set temporary current location if none exists
-    if (!currentZip && !currentCity) {
+    const restoredFromStorage = loadStoredLocationData();
+    
+    if (!currentState && !currentCity && !currentZip) {
         console.log('[APP] Using default location for initial data load:', defaultCity);
         currentZip = defaultZip;
         currentCity = defaultCity;
         currentState = defaultState;
         
-        // Load weather and pollen data with default location
-        loadWeatherData();
-        loadPollenData();
-        
-        // Initialize pollutant charts
-        if (typeof initializePollutantCharts === 'function') {
-            initializePollutantCharts(defaultZip, defaultCity, defaultState);
+        const searchInput = document.getElementById('locationSearch');
+        if (searchInput) {
+            searchInput.value = `${defaultCity}, ${defaultState} ${defaultZip}`;
         }
     } else {
-        console.log('[APP] Using current location:', currentCity || currentZip);
-        // Load weather and pollen data
-        loadWeatherData();
-        loadPollenData();
-        
-        // Initialize pollutant charts
-        if (typeof initializePollutantCharts === 'function') {
-            initializePollutantCharts(currentZip, currentCity, currentState);
-        }
+        console.log('[APP] Initial location resolved:', {
+            currentCity,
+            currentState,
+            currentZip
+        });
     }
     
-    // Load summary cards data
+    const stateSelect = document.getElementById('stateSelect');
+    if (stateSelect && currentState) {
+        stateSelect.value = currentState;
+    }
+    
+    loadAllDataForLocation();
+    
+    if (!restoredFromStorage) {
+        console.log('[APP] No stored location detected, attempting auto-location...');
+        autoDetectAndLoadLocation();
+    }
+}
+
+// Auto-detect location and load all data
+function autoDetectAndLoadLocation() {
+    const defaultZip = '94102';
+    const defaultCity = 'San Francisco';
+    const defaultState = 'California';
+    
+    const applyDefaultLocation = (statusDetails) => {
+        currentZip = defaultZip;
+        currentCity = defaultCity;
+        currentState = defaultState;
+        
+        const searchInput = document.getElementById('locationSearch');
+        if (searchInput) {
+            searchInput.value = `${defaultCity}, ${defaultState} ${defaultZip}`;
+        }
+        
+        const stateSelect = document.getElementById('stateSelect');
+        if (stateSelect) {
+            stateSelect.value = defaultState;
+        }
+        
+        loadAllDataForLocation();
+        updateAPIStatus('warning', 'Using Default', statusDetails || `${defaultCity}, ${defaultState}`);
+    };
+    
+    if (!navigator.geolocation) {
+        console.warn('[APP] Geolocation not supported - defaulting to California');
+        applyDefaultLocation(`${defaultCity}, ${defaultState} (geolocation not supported)`);
+        return;
+    }
+    
+    if (typeof google === 'undefined' || typeof google.maps === 'undefined') {
+        console.warn('[APP] Google Maps not loaded yet - defaulting to California');
+        applyDefaultLocation(`${defaultCity}, ${defaultState} (maps not ready)`);
+        return;
+    }
+    
+    navigator.geolocation.getCurrentPosition(
+        (position) => {
+            const lat = position.coords.latitude;
+            const lon = position.coords.longitude;
+            
+            console.log(`[APP Auto-location] Coordinates: ${lat}, ${lon}`);
+            
+            if (!geocoder) {
+                geocoder = new google.maps.Geocoder();
+            }
+            
+            geocoder.geocode(
+                { location: { lat, lng: lon } },
+                (results, status) => {
+                    if (status === 'OK' && results[0]) {
+                        console.log('[APP Auto-location] Geocoded result:', results[0]);
+                        
+                        let city = '';
+                        let state = '';
+                        let zipCode = '';
+                        let county = '';
+                        
+                        for (const component of results[0].address_components) {
+                            const types = component.types;
+                            
+                            if (types.includes('locality')) {
+                                city = component.long_name;
+                            }
+                            if (types.includes('administrative_area_level_2')) {
+                                county = component.long_name;
+                            }
+                            if (types.includes('administrative_area_level_1')) {
+                                state = component.long_name;
+                            }
+                            if (types.includes('postal_code')) {
+                                zipCode = component.short_name;
+                            }
+                        }
+                        
+                        console.log(`[APP Auto-location] Detected: ${city}, ${state} ${zipCode}`);
+                        
+                        if (state) {
+                            currentZip = zipCode;
+                            currentState = state;
+                            currentCity = city;
+                            
+                            const locationData = {
+                                city: city,
+                                state: state,
+                                county: county,
+                                zipCode: zipCode,
+                                formattedAddress: results[0].formatted_address,
+                                coordinates: {
+                                    lat: position.coords.latitude,
+                                    lng: position.coords.longitude
+                                },
+                                timestamp: new Date().toISOString(),
+                                source: 'auto-detection'
+                            };
+                            
+                            localStorage.setItem('currentLocationData', JSON.stringify(locationData));
+                            console.log('[APP Auto-location] Location data stored:', locationData);
+                            
+                            const searchInput = document.getElementById('locationSearch');
+                            if (searchInput) {
+                                searchInput.value = `${city}, ${state}${zipCode ? ' ' + zipCode : ''}`;
+                            }
+                            
+                            const stateSelect = document.getElementById('stateSelect');
+                            if (stateSelect) {
+                                stateSelect.value = state || '';
+                            }
+                            
+                            loadAllDataForLocation();
+                            
+                            if (typeof loadHeatmapData === 'function') {
+                                loadHeatmapData(state);
+                            }
+                            if (typeof flyToCoordinates === 'function') {
+                                flyToCoordinates(position.coords.latitude, position.coords.longitude, 50000);
+                            }
+                            
+                            const locationPieces = [city, state].filter(Boolean);
+                            const details = locationPieces.length ? locationPieces.join(', ') : state || 'Location detected';
+                            const zipDetails = zipCode ? ` (${zipCode})` : '';
+                            updateAPIStatus('success', 'Location Detected', `${details}${zipDetails}`);
+                        } else {
+                            console.warn('[APP Auto-location] Could not determine state - defaulting to California');
+                            applyDefaultLocation(`${defaultCity}, ${defaultState} (state not detected)`);
+                        }
+                    } else {
+                        console.error('[APP Auto-location] Geocoding failed:', status);
+                        applyDefaultLocation(`${defaultCity}, ${defaultState} (geocoding failed)`);
+                    }
+                }
+            );
+        },
+        (error) => {
+            console.error('[APP Auto-location] Error:', error);
+            applyDefaultLocation(`${defaultCity}, ${defaultState} (location denied)`);
+        },
+        {
+            enableHighAccuracy: true,
+            timeout: 10000,
+            maximumAge: 0
+        }
+    );
+}
+
+// Load all data for the current location
+function loadAllDataForLocation() {
+    console.log('');
+    console.log('═══════════════════════════════════════════════════════');
+    console.log('[DATA LOAD DEBUG] Starting loadAllDataForLocation()');
+    console.log('[DATA LOAD DEBUG] Current State:', currentState);
+    console.log('[DATA LOAD DEBUG] Current City:', currentCity);
+    console.log('[DATA LOAD DEBUG] Current ZIP:', currentZip);
+    console.log('═══════════════════════════════════════════════════════');
+    console.log('');
+    
+    // Update location indicators on all components
+    console.log('[1/7] Updating location indicators...');
+    updateLocationIndicators();
+    
+    // Load air quality data and health recommendations
+    console.log('[2/7] Loading air quality data...');
+    loadAirQualityData();
+    
+    console.log('[3/7] Loading health recommendations...');
+    loadHealthRecommendations();
+    
+    // Load weather and pollen data
+    console.log('[4/7] Loading weather data...');
+    loadWeatherData();
+    
+    console.log('[5/7] Loading pollen data...');
+    loadPollenData();
+    
+    console.log('[6/7] Loading summary cards...');
     loadSummaryCards();
     
-    // Initialize disease cards after a short delay to ensure respiratory-chart.js is loaded
+    console.log('[7/7] Updating disease cards (async)...');
     setTimeout(() => {
         if (typeof window.updateDiseaseCards === 'function') {
-            console.log('[APP] Calling updateDiseaseCards for initial load');
-            window.updateDiseaseCards(7);
+            window.updateDiseaseCards(currentDays || 7);
         } else {
-            console.warn('[APP] updateDiseaseCards function not available yet');
+            console.warn('[DATA LOAD DEBUG] updateDiseaseCards function not available yet');
         }
     }, 1000);
+    
+    console.log('');
+    console.log('[DATA LOAD DEBUG] All load functions called');
+    console.log('═══════════════════════════════════════════════════════');
+    console.log('');
+}
+
+// Update location indicators on all components
+function updateLocationIndicators() {
+    const locationText = currentCity && currentState 
+        ? `${currentCity}, ${currentState}${currentZip ? ' ' + currentZip : ''}`
+        : currentState || 'No location';
+    
+    console.log('[Location Indicators] ===== UPDATING INDICATORS =====');
+    console.log('[Location Indicators] Current location:', { currentCity, currentState, currentZip });
+    console.log('[Location Indicators] Display text:', locationText);
+    
+    // Update each component's location indicator
+    const indicators = [
+        'aqiLocationIndicator',
+        'trendLocationIndicator',
+        'weatherLocationIndicator',
+        'pollenLocationIndicator',
+        'dataExplorerLocationIndicator'
+    ];
+    
+    indicators.forEach(id => {
+        const element = document.getElementById(id);
+        console.log(`[Location Indicators] Looking for element: ${id}`, element ? 'FOUND' : 'NOT FOUND');
+        if (element) {
+            const span = element.querySelector('span');
+            console.log(`[Location Indicators] Looking for span inside ${id}:`, span ? 'FOUND' : 'NOT FOUND');
+            if (span) {
+                span.textContent = locationText;
+                console.log(`[Location Indicators] ✓ Updated ${id} to: ${locationText}`);
+            } else {
+                console.error(`[Location Indicators] ✗ No span found in ${id}`);
+            }
+        } else {
+            console.error(`[Location Indicators] ✗ Element ${id} not found in DOM`);
+        }
+    });
+    
+    console.log('[Location Indicators] ===== DONE =====');
 }
 
 // Set default date range (2024 to 2025)
@@ -604,6 +833,7 @@ function setDefaultDateRange() {
 // Load stored location data from localStorage
 function loadStoredLocationData() {
     const storedLocationData = localStorage.getItem('currentLocationData');
+    let restored = false;
     
     if (storedLocationData) {
         try {
@@ -618,6 +848,7 @@ function loadStoredLocationData() {
                 currentState = locationData.state || '';
                 currentCity = locationData.city || '';
                 currentZip = locationData.zipCode || '';
+                restored = true;
                 
                 // Update search box if it exists
                 const searchInput = document.getElementById('locationSearch');
@@ -636,6 +867,8 @@ function loadStoredLocationData() {
             localStorage.removeItem('currentLocationData');
         }
     }
+    
+    return restored;
 }
 
 // Handle state selection change
@@ -847,8 +1080,9 @@ function applyLocationFilter() {
     updateChatLocationContext(locationText);
     
     console.log('Applying filter - State:', currentState, 'City:', currentCity, 'ZIP:', currentZip);
-    loadAirQualityData();
-    loadHealthRecommendations();
+    
+    // Load ALL data for the new location
+    loadAllDataForLocation();
     
     // Update heatmap - zoom to state level
     if (typeof loadHeatmapData === 'function') {
@@ -886,8 +1120,9 @@ function clearLocationFilter() {
     onStateChange();
     
     updateLocationDisplay('California');
-    loadAirQualityData();
-    loadHealthRecommendations();
+    
+    // Load ALL data for California
+    loadAllDataForLocation();
     
     // Update heatmap if it exists
     if (typeof loadHeatmapData === 'function') {
@@ -1036,6 +1271,15 @@ function updateAPIStatus(status, message, details = '') {
 
 // Load air quality data
 async function loadAirQualityData() {
+    console.log('┌─────────────────────────────────────────────────────┐');
+    console.log('│ [AIR QUALITY] Starting loadAirQualityData()        │');
+    console.log('├─────────────────────────────────────────────────────┤');
+    console.log('│ Location Variables:                                 │');
+    console.log('│  - State:', currentState || '(empty)');
+    console.log('│  - City:', currentCity || '(empty)');
+    console.log('│  - ZIP:', currentZip || '(empty)');
+    console.log('└─────────────────────────────────────────────────────┘');
+    
     showLoading();
     updateAPIStatus('loading', 'Fetching EPA data...', `Requesting data for: ${currentZip || currentState || 'Default location'}`);
     
@@ -2804,10 +3048,21 @@ function smoothScrollToSections() {
 
 // Load weather data
 async function loadWeatherData() {
+    console.log('┌─────────────────────────────────────────────────────┐');
+    console.log('│ [WEATHER] Starting loadWeatherData()               │');
+    console.log('├─────────────────────────────────────────────────────┤');
+    console.log('│ Location Variables:                                 │');
+    console.log('│  - State:', currentState || '(empty)');
+    console.log('│  - City:', currentCity || '(empty)');
+    console.log('│  - ZIP:', currentZip || '(empty)');
+    
     if (!currentZip && !currentCity) {
-        console.log('[Weather] No location set - ZIP:', currentZip, 'City:', currentCity);
+        console.log('│ ❌ STOPPING: No ZIP or City set                    │');
+        console.log('└─────────────────────────────────────────────────────┘');
         return;
     }
+    console.log('│ ✓ Location check passed                            │');
+    console.log('└─────────────────────────────────────────────────────┘');
     
     console.log('[Weather] Loading data for ZIP:', currentZip, 'City:', currentCity, 'State:', currentState);
     
@@ -2850,16 +3105,32 @@ async function loadWeatherData() {
     
     // Load detailed pollutant charts
     if (typeof initializePollutantCharts === 'function') {
+        console.log('');
+        console.log('📊 [WEATHER] Calling initializePollutantCharts with:');
+        console.log('   ZIP:', currentZip);
+        console.log('   City:', currentCity);
+        console.log('   State:', currentState);
         initializePollutantCharts(currentZip, currentCity, currentState);
     }
 }
 
 // Load pollen data
 async function loadPollenData() {
+    console.log('┌─────────────────────────────────────────────────────┐');
+    console.log('│ [POLLEN] Starting loadPollenData()                 │');
+    console.log('├─────────────────────────────────────────────────────┤');
+    console.log('│ Location Variables:                                 │');
+    console.log('│  - State:', currentState || '(empty)');
+    console.log('│  - City:', currentCity || '(empty)');
+    console.log('│  - ZIP:', currentZip || '(empty)');
+    
     if (!currentZip && !currentCity) {
-        console.log('[Pollen] No location set - ZIP:', currentZip, 'City:', currentCity);
+        console.log('│ ❌ STOPPING: No ZIP or City set                    │');
+        console.log('└─────────────────────────────────────────────────────┘');
         return;
     }
+    console.log('│ ✓ Location check passed                            │');
+    console.log('└─────────────────────────────────────────────────────┘');
     
     console.log('[Pollen] Loading data for ZIP:', currentZip, 'City:', currentCity, 'State:', currentState);
     
@@ -2908,14 +3179,14 @@ function updateWeatherDisplay(weather) {
         return;
     }
     
+    // Store weather data for temperature unit conversion
+    weatherData = weather;
+    
     const current = weather.current;
     console.log('[Weather] Current data:', current);
     
-    // Temperature
-    const temp = Math.round(current.temperature || 0);
-    const unit = current.temperature_unit || 'F';
-    document.getElementById('temperature').textContent = `${temp}°${unit}`;
-    document.getElementById('feelsLike').textContent = `Feels like ${Math.round(current.feels_like || 0)}°${unit}`;
+    // Temperature - use conversion function
+    updateTemperatureDisplay();
     
     // Humidity
     document.getElementById('humidity').textContent = `${Math.round(current.humidity || 0)}%`;
@@ -3102,4 +3373,47 @@ function getPollenIcon(upi) {
     if (upi == 3) return '🌺';
     if (upi == 4) return '🌼';
     return '🌻';
+}
+
+// Temperature unit conversion
+let weatherData = null; // Store weather data for unit conversion
+let currentTempUnit = 'F'; // Track current unit
+
+function setTemperatureUnit(unit) {
+    currentTempUnit = unit;
+    
+    // Update button styles
+    const btnF = document.getElementById('tempUnitF');
+    const btnC = document.getElementById('tempUnitC');
+    
+    if (unit === 'F') {
+        btnF.className = 'px-3 py-1 rounded bg-white text-blue-600 font-semibold text-sm transition-all';
+        btnC.className = 'px-3 py-1 rounded text-white font-semibold text-sm transition-all hover:bg-white/20';
+    } else {
+        btnC.className = 'px-3 py-1 rounded bg-white text-blue-600 font-semibold text-sm transition-all';
+        btnF.className = 'px-3 py-1 rounded text-white font-semibold text-sm transition-all hover:bg-white/20';
+    }
+    
+    // Update temperature display
+    updateTemperatureDisplay();
+}
+
+function updateTemperatureDisplay() {
+    if (!weatherData || !weatherData.current) return;
+    
+    const current = weatherData.current;
+    let temp = current.temperature || 0;
+    let feelsLike = current.feels_like || 0;
+    
+    // Convert if needed
+    if (currentTempUnit === 'C' && current.temperature_unit === 'F') {
+        temp = (temp - 32) * 5/9;
+        feelsLike = (feelsLike - 32) * 5/9;
+    } else if (currentTempUnit === 'F' && current.temperature_unit === 'C') {
+        temp = (temp * 9/5) + 32;
+        feelsLike = (feelsLike * 9/5) + 32;
+    }
+    
+    document.getElementById('temperature').textContent = `${Math.round(temp)}°${currentTempUnit}`;
+    document.getElementById('feelsLike').textContent = `Feels like ${Math.round(feelsLike)}°${currentTempUnit}`;
 }

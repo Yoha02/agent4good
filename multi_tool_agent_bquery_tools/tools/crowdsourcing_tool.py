@@ -45,8 +45,8 @@ def generate_text_summary(description: str, media_summary: str = None) -> Option
 
 
 
-def upload_to_gcs(local_path_or_url: str = None,
-                  referenced_image_ids: list[str] = None,
+def upload_to_gcs(local_path_or_url: Optional[str] = None,
+                  referenced_image_ids: Optional[List[str]] = None,
                   bucket_name: str = "agent4good-report-attachments") -> str:
     """
     Uploads image to GCS (supports both ADK image bytes and external URLs).
