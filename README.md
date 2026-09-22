@@ -1,8 +1,16 @@
-# Community Health & Wellness Agent
+# AI-mmunity: Community Health & Wellness Agent
 
-A full-stack web application combining beautiful UI dashboards with Google's Agent Development Kit (ADK) multi-agent system for real-time community health monitoring.
+A community-health prototype combining web dashboards with Google's Agent Development Kit (ADK), Gemini, and specialized data-access agents.
 
-**Live Demo**: https://community-health-agent-776464277441.us-central1.run.app
+**Start here:** [Architecture and integration case study](docs/CASE_STUDY.md) · [Google Cloud Next ’26 presentation and team](https://yoha02.github.io/A4G_LandingPage/)
+
+## Team and my contribution
+
+I'm **Yoha (Eyoha Girma)**. I led the team, coordinated and integrated code from teammates, and worked on agent setup and orchestration. Our AI-mmunity team won Google Cloud's Agentic AI Arena, and I presented **Silos to Synergy: Architecting Scalable Multi-Agent Systems** at the Google Cloud Next ’26 Developer Theater.
+
+This was a team project with **Abhi Ram Salammagari, Eyoha Girma, Semaa Amin, Aashna Kunkolienker, Tianchen Cai, and Sreekanth Kannan**. The case study links the integrated architecture to the source and explains what another developer can learn from it.
+
+The original Cloud Run demo URL was unavailable during the September 22, 2026 review. Use the presentation page and source walkthrough while the demonstration route is being reconciled. The prototype is not presented as a validated clinical system.
 
 ![Platform Overview](https://img.shields.io/badge/Platform-Google_Cloud-4285F4?style=for-the-badge&logo=google-cloud)
 ![Python](https://img.shields.io/badge/Python-3.11-3776AB?style=for-the-badge&logo=python)
